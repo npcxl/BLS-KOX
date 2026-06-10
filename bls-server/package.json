@@ -1,0 +1,41 @@
+{
+  "name": "bls-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Koa + TypeScript + MySQL multi-tenant SaaS backend for Ant Design Pro.",
+  "scripts": {
+    "dev": "tsx watch src/app.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/app.js",
+    "lint": "tsc --noEmit",
+    "db:init": "tsx src/scripts/init-db.ts"
+  },
+  "dependencies": {
+    "@koa/cors": "latest",
+    "bcryptjs": "latest",
+    "dotenv": "latest",
+    "jsonwebtoken": "latest",
+    "koa": "latest",
+    "koa-bodyparser": "latest",
+    "koa-compose": "latest",
+    "koa-helmet": "latest",
+    "koa-router": "latest",
+    "mysql2": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "latest",
+    "@types/jsonwebtoken": "latest",
+    "@types/koa": "latest",
+    "@types/koa__cors": "^5.0.1",
+    "@types/koa-bodyparser": "latest",
+    "@types/koa-compose": "latest",
+    "@types/koa-router": "latest",
+    "@types/node": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}

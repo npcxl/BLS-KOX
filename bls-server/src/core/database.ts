@@ -1,0 +1,46 @@
+import mysql from 'mysql2/promise';
+import { env } from '../config/env';
+
+export const pool = mysql.createPool({
+  host: env.db.host,
+  port: env.db.port,
+  user: env.db.user,
+  password: env.db.password,
+  database: env.db.database,
+  connectionLimit: env.db.connectionLimit,
+  namedPlaceholders: true,
+  timezone: '+08:00',
+  dateStrings: true,
+});
+
+export type QueryParams = Record<string, unknown> | unknown[];
+
+export async function query<T>(sql: string, params?: QueryParams): Promise<T[]> {
+  const [rows] = await pool.query(sql, params);
+  return rows as T[];
+}
+
+export async function queryOne<T>(sql: string, params?: QueryParams): Promise<T | null> {
+  const rows = await query<T>(sql, params);
+  return rows[0] ?? null;
+}
+
+export async function execute(sql: string, params?: QueryParams): Promise<mysql.ResultSetHeader> {
+  const [result] = await pool.execute(sql, params);
+  return result as mysql.ResultSetHeader;
+}
+
+export async function transaction<T>(runner: (conn: mysql.PoolConnection) => Promise<T>): Promise<T> {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await runner(conn);
+    await conn.commit();
+    return result;
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
