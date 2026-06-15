@@ -1,24 +1,27 @@
 import { Context } from 'koa';
 import { z } from 'zod';
-import { pageSuccess, success } from '../../../core/response';
 import { ValidationError } from '../../../core/errors';
+import { pageSuccess, success } from '../../../core/response';
 import { TenantService } from './tenant.service';
 
 const tenantSchema = z.object({
+  tenantId: z.string().min(1).optional(),
   tenantName: z.string().min(1, '租户名称不能为空'),
+  packageId: z.string().min(1).nullable().optional(),
+  expireTime: z.string().nullable().optional(),
+  domainName: z.string().nullable().optional(),
   contactUser: z.string().optional(),
   contactPhone: z.string().optional(),
   status: z.enum(['0', '1']).optional(),
   remark: z.string().optional(),
 });
+const editTenantSchema = tenantSchema.extend({ tenantId: z.string().min(1) });
+const statusSchema = z.object({ tenantId: z.string().min(1), status: z.enum(['0', '1']) });
 
-const editTenantSchema = tenantSchema.extend({ tenantId: z.coerce.number().int().min(0) });
-const statusSchema = z.object({ tenantId: z.coerce.number().int().min(0), status: z.enum(['0', '1']) });
-
-function parseIds(value: unknown): number[] {
-  if (Array.isArray(value)) return value.map(Number).filter(Number.isFinite);
-  if (typeof value === 'string') return value.split(',').map(Number).filter(Number.isFinite);
-  if (typeof value === 'number') return [value];
+function parseIds(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean);
+  if (typeof value === 'number') return [String(value)];
   return [];
 }
 

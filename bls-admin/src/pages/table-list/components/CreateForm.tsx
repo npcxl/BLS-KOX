@@ -52,7 +52,7 @@ const CreateForm: FC<CreateFormProps> = (props) => {
           </Button>
         }
         width="400px"
-        modalProps={{ okButtonProps: { loading } }}
+        modalProps={{ destroyOnHidden: true, okButtonProps: { loading } }}
         onFinish={async (value) => {
           try {
             await run({ data: value as API.RuleListItem });

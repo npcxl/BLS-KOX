@@ -259,6 +259,7 @@ const BasicList: FC = () => {
       <Button
         type="dashed"
         onClick={() => {
+          setCurrent(undefined);
           setVisible(true);
         }}
         style={{

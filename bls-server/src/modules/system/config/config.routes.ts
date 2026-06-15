@@ -6,7 +6,10 @@ import { ConfigController } from './config.controller';
 const controller = new ConfigController();
 export const configRouter = new Router({ prefix: '/system/config' });
 
+configRouter.get('/current', jwtAuth(), controller.current);
 configRouter.get('/list', jwtAuth(), hasPerm('system:config:list'), controller.list);
+configRouter.get('/public-theme', controller.publicTheme);
+configRouter.get('/public-system', controller.publicSystem);
 configRouter.get('/:configId', jwtAuth(), hasPerm('system:config:list'), controller.detail);
 configRouter.post('/add', jwtAuth(), hasPerm('system:config:add'), controller.add);
 configRouter.put('/edit', jwtAuth(), hasPerm('system:config:edit'), controller.edit);

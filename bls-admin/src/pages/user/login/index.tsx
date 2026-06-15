@@ -1,9 +1,9 @@
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
-import { LoginForm, ProFormSelect, ProFormText } from '@ant-design/pro-components';
+import { LoginForm, ProFormCheckbox, ProFormSelect, ProFormText } from '@ant-design/pro-components';
 import { FormattedMessage, Helmet, SelectLang, useIntl, useModel } from '@umijs/max';
 import { Alert, App } from 'antd';
 import { createStyles } from 'antd-style';
-import React, { startTransition, useEffect, useState } from 'react';
+import React, { startTransition, useEffect, useRef, useState } from 'react';
 import { Footer } from '@/components';
 import { login, tenantLoginOptions } from '@/services/ant-design-pro/api';
 import Settings from '../../../../config/defaultSettings';
@@ -43,26 +43,64 @@ const LoginMessage: React.FC<{ content: string }> = ({ content }) => (
 const Login: React.FC = () => {
   const [userLoginState, setUserLoginState] = useState<API.LoginResult>({});
   const [tenantOptions, setTenantOptions] = useState<API.TenantOption[]>([]);
+  const [defaultTenantId, setDefaultTenantId] = useState<string | undefined>(undefined);
+  const formRef = useRef<any>(null);
+  const rememberPasswordKey = 'rememberLoginCredentials';
+  const usernameKey = 'rememberLoginUsername';
+  const passwordKey = 'rememberLoginPassword';
   const { initialState, setInitialState } = useModel('@@initialState');
   const { styles } = useStyles();
   const { message } = App.useApp();
   const intl = useIntl();
+  const appName = initialState?.systemMap?.['sys.app.name'] ?? Settings.title ?? 'title-default';
+  const appLogo = initialState?.systemMap?.['sys.app.logo'] ?? Settings.logo;
 
   useEffect(() => {
-    tenantLoginOptions()
-      .then((res) => setTenantOptions(res.data ?? []))
-      .catch(() => setTenantOptions([]));
+    let cancelled = false;
+
+    const loadTenantOptions = async () => {
+      try {
+        const res = await tenantLoginOptions();
+        if (cancelled) return;
+        const list = res.data ?? [];
+        setTenantOptions(list);
+        const savedTenantId = localStorage.getItem('lastTenantId') ?? undefined;
+        const firstTenantId = list.find((item) => item.tenantId === savedTenantId)?.tenantId ?? list[0]?.tenantId;
+        setDefaultTenantId(firstTenantId);
+        const rememberPassword = localStorage.getItem(rememberPasswordKey) === 'true';
+        const rememberedUsername = localStorage.getItem(usernameKey) ?? undefined;
+        const rememberedPassword = rememberPassword ? (localStorage.getItem(passwordKey) ?? undefined) : undefined;
+        if (firstTenantId !== undefined) {
+          formRef.current?.setFieldsValue({
+            tenantId: firstTenantId,
+            username: rememberedUsername,
+            password: rememberedPassword,
+            rememberPassword,
+          });
+        }
+      } catch {
+        if (cancelled) return;
+        setTenantOptions([]);
+        setDefaultTenantId(undefined);
+      }
+    };
+
+    void loadTenantOptions();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const getSafeRedirectUrl = (redirect: string | null): string => {
-    if (!redirect?.startsWith('/')) return '/';
-    if (redirect.startsWith('//')) return '/';
+    if (!redirect?.startsWith('/')) return '/dashboard';
+    if (redirect.startsWith('//')) return '/dashboard';
     try {
       const parsed = new URL(redirect, window.location.origin);
-      if (parsed.origin !== window.location.origin) return '/';
+      if (parsed.origin !== window.location.origin) return '/dashboard';
       return `${parsed.pathname}${parsed.search}${parsed.hash}`;
     } catch {
-      return '/';
+      return '/dashboard';
     }
   };
 
@@ -75,24 +113,52 @@ const Login: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (values: API.LoginParams) => {
+  const handleSubmit = async (values: API.LoginParams & { rememberPassword?: boolean }) => {
     try {
-      const msg = await login({ ...values, type: 'account' });
-      if (msg.status === 'ok') {
+      const res = await login({ ...values, type: 'account' });
+      const msg = res.data;
+      if (res.code === 200 && msg?.token) {
+        localStorage.setItem('token', msg.token);
+        if (msg.refreshToken) {
+          localStorage.setItem('refreshToken', msg.refreshToken);
+        }
+        if (msg.user) {
+          localStorage.setItem('currentUser', JSON.stringify(msg.user));
+        }
+        const tenantId = values.tenantId;
+        if (tenantId !== undefined) {
+          localStorage.setItem('lastTenantId', String(tenantId));
+        }
+        if (values.rememberPassword) {
+          localStorage.setItem(rememberPasswordKey, 'true');
+          if (values.username) {
+            localStorage.setItem(usernameKey, values.username);
+          }
+          if (values.password) {
+            localStorage.setItem(passwordKey, values.password);
+          }
+        } else {
+          localStorage.removeItem(rememberPasswordKey);
+          localStorage.removeItem(usernameKey);
+          localStorage.removeItem(passwordKey);
+        }
         message.success(
           intl.formatMessage({ id: 'pages.login.success', defaultMessage: '登录成功！' }),
         );
-        await fetchUserInfo();
+        if (msg.user) {
+          startTransition(() => {
+            setInitialState((s) => ({ ...s, currentUser: msg.user }));
+          });
+        } else {
+          await fetchUserInfo();
+        }
         const urlParams = new URL(window.location.href).searchParams;
         window.location.href = getSafeRedirectUrl(urlParams.get('redirect'));
         return;
       }
-      setUserLoginState(msg);
+      setUserLoginState({ ...msg, status: 'error', type: 'account' });
     } catch (error) {
       console.log(error);
-      message.error(
-        intl.formatMessage({ id: 'pages.login.failure', defaultMessage: '登录失败，请重试！' }),
-      );
     }
   };
 
@@ -103,40 +169,43 @@ const Login: React.FC = () => {
       <Helmet>
         <title>
           {intl.formatMessage({ id: 'menu.login', defaultMessage: '登录页' })}
-          {Settings.title && ` - ${Settings.title}`}
+          {appName && ` - ${appName}`}
         </title>
       </Helmet>
       <Lang />
       <div style={{ flex: '1', padding: '32px 0' }}>
         <LoginForm
+          formRef={formRef}
           contentStyle={{ minWidth: 280, maxWidth: '75vw' }}
-          logo={<img alt="logo" src="/logo.svg" />}
-          title="@Baolongshen"
+          logo={appLogo || undefined}
+          title={appName}
           subTitle={intl.formatMessage({ id: 'pages.layouts.userLayout.title' })}
-          initialValues={{ autoLogin: true, tenantId: 0 }}
+          initialValues={{ autoLogin: true, tenantId: defaultTenantId, rememberPassword: false }}
           onFinish={async (values) => {
-            await handleSubmit(values as API.LoginParams);
+            await handleSubmit(values as API.LoginParams & { rememberPassword?: boolean });
           }}
         >
           {status === 'error' && loginType === 'account' && (
             <LoginMessage
               content={intl.formatMessage({
                 id: 'pages.login.accountLogin.errorMessage',
-                defaultMessage: '账户或密码错误(admin/ant.design)',
+                defaultMessage: '账户或密码错误(admin/123456)',
               })}
             />
           )}
 
-          <ProFormSelect
-            name="tenantId"
-            fieldProps={{ size: 'large' }}
-            placeholder="请选择租户"
-            options={tenantOptions.map((item) => ({
-              label: item.tenantName,
-              value: item.tenantId,
-            }))}
-            rules={[{ required: true, message: '请选择租户' }]}
-          />
+          {process.env.NODE_ENV === 'development' && (
+            <ProFormSelect
+              name="tenantId"
+              fieldProps={{ size: 'large' }}
+              placeholder="请选择租户"
+              options={tenantOptions.map((item) => ({
+                label: item.tenantName,
+                value: item.tenantId,
+              }))}
+              rules={[{ required: true, message: '请选择租户' }]}
+            />
+          )}
 
           <ProFormText
             name="username"
@@ -160,7 +229,7 @@ const Login: React.FC = () => {
             fieldProps={{ size: 'large', prefix: <LockOutlined /> }}
             placeholder={intl.formatMessage({
               id: 'pages.login.password.placeholder',
-              defaultMessage: '密码: ant.design',
+              defaultMessage: '密码: 123456',
             })}
             rules={[
               {
@@ -172,8 +241,11 @@ const Login: React.FC = () => {
             ]}
           />
 
-          <div style={{ marginBottom: 24 }}>
-            <a href="#" style={{ float: 'right' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+            <ProFormCheckbox name="rememberPassword" noStyle>
+              记住密码
+            </ProFormCheckbox>
+            <a href="#" onClick={(e) => e.preventDefault()}>
               <FormattedMessage id="pages.login.forgotPassword" defaultMessage="忘记密码" />
             </a>
           </div>

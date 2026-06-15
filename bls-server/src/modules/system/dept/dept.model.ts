@@ -1,7 +1,7 @@
 export interface Dept {
-  deptId: number;
-  tenantId: number;
-  parentId: number;
+  deptId: string;
+  tenantId: string;
+  parentId: string;
   deptName: string;
   sortNum: number;
   status: '0' | '1';
@@ -16,9 +16,8 @@ export interface DeptQuery {
 }
 
 export interface DeptInput {
-  deptId?: number;
-  tenantId?: number;
-  parentId?: number;
+  deptId?: string;
+  parentId?: string;
   deptName: string;
   sortNum?: number;
   status?: '0' | '1';

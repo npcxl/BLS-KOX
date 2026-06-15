@@ -1,6 +1,14 @@
 import mysql from 'mysql2/promise';
 import { env } from '../config/env';
 
+console.log('[db] config loaded', {
+  host: env.db.host,
+  port: env.db.port,
+  user: env.db.user,
+  database: env.db.database,
+  connectionLimit: env.db.connectionLimit,
+});
+
 export const pool = mysql.createPool({
   host: env.db.host,
   port: env.db.port,
@@ -16,7 +24,7 @@ export const pool = mysql.createPool({
 export type QueryParams = Record<string, unknown> | unknown[];
 
 export async function query<T>(sql: string, params?: QueryParams): Promise<T[]> {
-  const [rows] = await pool.query(sql, params);
+  const [rows] = await pool.query(sql, params as any);
   return rows as T[];
 }
 
@@ -26,7 +34,7 @@ export async function queryOne<T>(sql: string, params?: QueryParams): Promise<T 
 }
 
 export async function execute(sql: string, params?: QueryParams): Promise<mysql.ResultSetHeader> {
-  const [result] = await pool.execute(sql, params);
+  const [result] = await pool.execute(sql, params as any);
   return result as mysql.ResultSetHeader;
 }
 

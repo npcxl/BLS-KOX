@@ -18,7 +18,15 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
   children,
 }) => {
   const loginOut = async () => {
-    await outLogin();
+    try {
+      await outLogin();
+    } catch (e) {
+      console.log('outLogin error', e);
+    }
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('currentUser');
+
     const { search, pathname } = window.location;
     const urlParams = new URL(window.location.href).searchParams;
     const searchParams = new URLSearchParams({

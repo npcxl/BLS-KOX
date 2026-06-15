@@ -7,6 +7,8 @@ const controller = new UserController();
 export const userRouter = new Router({ prefix: '/system/user' });
 
 userRouter.get('/list', jwtAuth(), hasPerm('system:user:list'), controller.list);
+userRouter.get('/profile', jwtAuth(), controller.profile);
+userRouter.put('/profile', jwtAuth(), controller.updateProfile);
 userRouter.post('/add', jwtAuth(), hasPerm('system:user:add'), controller.add);
 userRouter.put('/edit', jwtAuth(), hasPerm('system:user:edit'), controller.edit);
 userRouter.delete('/remove', jwtAuth(), hasPerm('system:user:remove'), controller.remove);

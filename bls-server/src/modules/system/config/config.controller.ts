@@ -5,16 +5,16 @@ import { pageSuccess, success } from '../../../core/response';
 import { ConfigService } from './config.service';
 
 const configSchema = z.object({
+  configId: z.string().min(1).optional(),
   configKey: z.string().min(1),
   configValue: z.string().min(1),
   configName: z.string().min(1),
   configType: z.enum(['sys', 'theme', 'dict']),
-  tenantId: z.coerce.number().int().min(0).optional(),
-  remark: z.string().optional(),
+  remark: z.string().nullable().optional(),
   status: z.enum(['0', '1']).optional(),
 });
 
-const editConfigSchema = configSchema.extend({ configId: z.coerce.number().int().min(1) });
+const editConfigSchema = configSchema.extend({ configId: z.string().min(1) });
 
 export class ConfigController {
   constructor(private readonly service = new ConfigService()) {}
@@ -24,8 +24,20 @@ export class ConfigController {
     pageSuccess(ctx, result.rows, result.total);
   };
 
+  current = async (ctx: Context): Promise<void> => {
+    success(ctx, await this.service.current(), '查询成功');
+  };
+
+  publicTheme = async (ctx: Context): Promise<void> => {
+    success(ctx, await this.service.publicTheme(), '查询成功');
+  };
+
+  publicSystem = async (ctx: Context): Promise<void> => {
+    success(ctx, await this.service.publicSystem(), '查询成功');
+  };
+
   detail = async (ctx: Context): Promise<void> => {
-    const configId = z.coerce.number().int().min(1).parse(ctx.params.configId);
+    const configId = z.string().min(1).parse(ctx.params.configId);
     success(ctx, await this.service.detail(configId), '查询成功');
   };
 

@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@koa/cors": "latest",
-    "bcryptjs": "latest",
     "dotenv": "latest",
+    "ioredis": "^5.11.1",
     "jsonwebtoken": "latest",
     "koa": "latest",
     "koa-bodyparser": "latest",
@@ -24,7 +24,6 @@
     "zod": "latest"
   },
   "devDependencies": {
-    "@types/bcryptjs": "latest",
     "@types/jsonwebtoken": "latest",
     "@types/koa": "latest",
     "@types/koa__cors": "^5.0.1",

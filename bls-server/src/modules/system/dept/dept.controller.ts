@@ -1,23 +1,23 @@
 import { Context } from 'koa';
 import { z } from 'zod';
 import { ValidationError } from '../../../core/errors';
-import { success } from '../../../core/response';
+import { pageSuccess, success } from '../../../core/response';
 import { DeptService } from './dept.service';
 
 const deptSchema = z.object({
-  tenantId: z.coerce.number().optional(),
-  parentId: z.coerce.number().int().min(0).optional(),
+  deptId: z.string().min(1).optional(),
+  parentId: z.string().min(1).optional(),
   deptName: z.string().min(1, '部门名称不能为空'),
   sortNum: z.coerce.number().int().optional(),
   status: z.enum(['0', '1']).optional(),
 });
-const editDeptSchema = deptSchema.extend({ deptId: z.coerce.number().int().positive() });
-const idsSchema = z.object({ ids: z.union([z.array(z.coerce.number()), z.string(), z.number()]) });
+const editDeptSchema = deptSchema.extend({ deptId: z.string().min(1) });
+const idsSchema = z.object({ ids: z.union([z.array(z.string()), z.string(), z.number()]) });
 
-function toIds(value: unknown): number[] {
-  if (Array.isArray(value)) return value.map(Number).filter(Number.isFinite);
-  if (typeof value === 'string') return value.split(',').map(Number).filter(Number.isFinite);
-  if (typeof value === 'number') return [value];
+function toIds(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean);
+  if (typeof value === 'number') return [String(value)];
   return [];
 }
 

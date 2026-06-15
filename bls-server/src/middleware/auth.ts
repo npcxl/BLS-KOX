@@ -17,10 +17,17 @@ export function jwtAuth(options: { optional?: boolean } = {}) {
     }
 
     try {
+      if (authService.isTokenRevoked(rawToken)) {
+        throw new UnauthorizedError();
+      }
       const payload = verifyToken(rawToken);
-      ctx.state.user = await authService.profile(payload.userId);
+      ctx.state.user = await authService.profile(payload.userId, payload.tenantId);
       await next();
-    } catch {
+    } catch (error) {
+      console.error('[jwtAuth] auth failed:', error);
+      if (error instanceof UnauthorizedError) {
+        throw error;
+      }
       throw new UnauthorizedError();
     }
   };

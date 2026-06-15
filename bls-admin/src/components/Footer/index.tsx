@@ -1,6 +1,5 @@
-import { GithubOutlined } from '@ant-design/icons';
+import { useModel } from '@umijs/max';
 import packageJson from '@root/package.json';
-import { Divider } from 'antd';
 import { createStyles } from 'antd-style';
 import React from 'react';
 
@@ -17,7 +16,6 @@ const getRepoUrl = () => {
 };
 
 const REPO_URL = getRepoUrl();
-const COMMIT_HASH = process.env.COMMIT_HASH || '';
 
 const useStyles = createStyles(({ token, css }) => ({
   footer: css`
@@ -57,75 +55,30 @@ const useStyles = createStyles(({ token, css }) => ({
   label: css`
     color: ${token.colorTextQuaternary};
   `,
-  divider: css`
-    display: inline-block;
-    vertical-align: middle;
-  `,
 }));
 
 const Footer: React.FC = () => {
   const { styles } = useStyles();
+  const { initialState } = useModel('@@initialState');
   const year = new Date().getFullYear();
+  const appName = initialState?.systemMap?.['sys.app.name'] || 'title-default';
+  const sysVersion = initialState?.systemMap?.['sys.version'];
 
   return (
     <div className={styles.footer}>
-      <div className={styles.copyright}>@baolongshen-admin-template &copy; {year}</div>
+      <div className={styles.copyright}>@{appName} &copy; {year}</div>
       <div className={styles.meta}>
         <span className={styles.group}>
-          <span className={styles.label}>ver</span>
+          <span className={styles.label}>版本</span>
           <a
             className={styles.link}
             href={REPO_URL}
             target="_blank"
             rel="noopener noreferrer"
           >
-            {__APP_VERSION__}
-          </a>
-          {COMMIT_HASH && (
-            <a
-              className={styles.link}
-              href={`${REPO_URL}/commit/${COMMIT_HASH}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {COMMIT_HASH.slice(0, 7)}
-            </a>
-          )}
-        </span>
-        <Divider orientation="vertical" className={styles.divider} />
-        <span className={styles.group}>
-          <span className={styles.label}>Umi</span>
-          <a
-            className={styles.link}
-            href="https://umijs.org/"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {__UMI_VERSION__}
+            {sysVersion || packageJson.version}
           </a>
         </span>
-        <Divider orientation="vertical" className={styles.divider} />
-        <span className={styles.group}>
-          <span className={styles.label}>Utoo</span>
-          <a
-            className={styles.link}
-            href="https://utoo.land"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {__UTOO_VERSION__}
-          </a>
-        </span>
-        <Divider orientation="vertical" className={styles.divider} />
-        <a
-          className={styles.link}
-          href={REPO_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <GithubOutlined style={{ marginRight: 4 }} />
-          GitHub
-        </a>
       </div>
     </div>
   );

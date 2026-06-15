@@ -44,14 +44,90 @@ export default [
     ],
   },
   {
-    path: '/chatbot',
-    name: 'chatbot',
-    icon: 'robot',
-    component: './chatbot',
+    path: '/dashboard',
+    name: '仪表盘',
+    icon: 'dashboard',
+    component: './dashboard',
   },
   {
-    path: '/',
-    redirect: '/chatbot',
+    path: '/account',
+    routes: [
+      {
+        path: '/account/settings',
+        name: '个人设置',
+        component: './account/settings',
+      },
+      {
+        path: '/account',
+        redirect: '/account/settings',
+      },
+    ],
+  },
+  {
+    path: '/system',
+    name: '系统管理',
+    routes: [
+      {
+        path: '/system/dept',
+        name: '部门管理',
+        component: './system/dept',
+      },
+      {
+        path: '/system/user',
+        name: '用户管理',
+        component: './system/user',
+      },
+      {
+        path: '/system/role',
+        name: '角色管理',
+        component: './system/role',
+      },
+      {
+        path: '/system/menu',
+        name: '菜单管理',
+        component: './system/menu',
+      },
+      {
+        path: '/system/config',
+        name: '系统参数',
+        component: './system/config',
+      },
+      {
+        path: '/system/dict',
+        name: '字典管理',
+        component: './system/dict',
+      },
+      {
+        path: '/system/theme',
+        name: '主题配置',
+        component: './system/theme',
+      },
+      //重定到仪表盘
+      {
+        path: '/system',
+        redirect: '/dashboard',
+      },
+    ],
+  },
+  {
+    path: '/tenant',
+    name: '租户管理',
+    routes: [
+      {
+        path: '/tenant/list',
+        name: '租户列表',
+        component: './system/tenant',
+      },
+      {
+        path: '/tenant/package',
+        name: '租户套餐',
+        component: './system/package',
+      },
+      {
+        path: '/tenant',
+        redirect: '/tenant/list',
+      },
+    ],
   },
   {
     component: './exception/404',

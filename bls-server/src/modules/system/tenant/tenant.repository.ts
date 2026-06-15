@@ -1,11 +1,23 @@
-import { execute, query, queryOne } from '../../../core/database';
-import { eqCondition, joinConditions, likeCondition } from '../../../core/sql';
-import { PageParams } from '../../../shared/utils/pagination';
-import { CreateTenantInput, Tenant, TenantQuery, UpdateTenantInput } from './tenant.model';
+import { execute, query, queryOne, transaction } from "../../../core/database";
+import { eqCondition, joinConditions, likeCondition } from "../../../core/sql";
+import {
+  PLATFORM_TENANT_ID,
+  isPlatformTenantId,
+  normalizeTenantId,
+} from "../../../shared/constants/tenant";
+import { PageParams } from "../../../shared/utils/pagination";
+import { hashPassword } from "../../../shared/utils/password";
+import { generateSnowflakeId } from "../../../shared/utils/snowflake";
+import {
+  CreateTenantInput,
+  Tenant,
+  TenantQuery,
+  UpdateTenantInput,
+} from "./tenant.model";
 
 export class TenantRepository {
-  listEnabledOptions(): Promise<Pick<Tenant, 'tenantId' | 'tenantName'>[]> {
-    return query<Pick<Tenant, 'tenantId' | 'tenantName'>>(
+  listEnabledOptions(): Promise<Pick<Tenant, "tenantId" | "tenantName">[]> {
+    return query<Pick<Tenant, "tenantId" | "tenantName">>(
       `SELECT tenant_id AS tenantId, tenant_name AS tenantName
        FROM sys_tenant
        WHERE status = '0'
@@ -13,71 +25,187 @@ export class TenantRepository {
     );
   }
 
-  async list(filters: TenantQuery, page: PageParams): Promise<{ rows: Tenant[]; total: number }> {
+  findByDomain(domainName: string): Promise<Tenant | null> {
+    return queryOne<Tenant>(
+      `SELECT tenant_id AS tenantId, tenant_name AS tenantName, package_id AS packageId,
+              expire_time AS expireTime, domain_name AS domainName, contact_user AS contactUser,
+              contact_phone AS contactPhone, status, remark, create_time AS createTime, update_time AS updateTime
+       FROM sys_tenant
+       WHERE domain_name = :domainName
+       LIMIT 1`,
+      { domainName: domainName.toLowerCase() },
+    );
+  }
+
+  async list(
+    filters: TenantQuery,
+    page: PageParams,
+  ): Promise<{ rows: Tenant[]; total: number }> {
     const where = joinConditions([
-      likeCondition('tenant_name', 'tenantName', filters.tenantName),
-      eqCondition('status', 'status', filters.status),
+      likeCondition("tenant_name", "tenantName", filters.tenantName),
+      eqCondition("status", "status", filters.status),
     ]);
-    const params = { ...where.params, offset: page.offset, pageSize: page.pageSize };
+    const params = {
+      ...where.params,
+      offset: page.offset,
+      pageSize: page.pageSize,
+    };
     const rows = await query<Tenant>(
-      `SELECT tenant_id AS tenantId, tenant_name AS tenantName, contact_user AS contactUser,
+      `SELECT tenant_id AS tenantId, tenant_name AS tenantName, package_id AS packageId,
+              expire_time AS expireTime, domain_name AS domainName, contact_user AS contactUser,
               contact_phone AS contactPhone, status, remark, create_time AS createTime, update_time AS updateTime
        FROM sys_tenant
        ${where.sql}
-       ORDER BY tenant_id DESC
+       ORDER BY create_time DESC, tenant_id DESC
        LIMIT :offset, :pageSize`,
       params,
     );
-    const totalRow = await queryOne<{ total: number }>(`SELECT COUNT(*) AS total FROM sys_tenant ${where.sql}`, where.params);
+    const totalRow = await queryOne<{ total: number }>(
+      `SELECT COUNT(*) AS total FROM sys_tenant ${where.sql}`,
+      where.params,
+    );
     return { rows, total: totalRow?.total ?? 0 };
   }
 
-  findById(tenantId: number): Promise<Tenant | null> {
+  findById(tenantId: string): Promise<Tenant | null> {
     return queryOne<Tenant>(
-      `SELECT tenant_id AS tenantId, tenant_name AS tenantName, contact_user AS contactUser,
+      `SELECT tenant_id AS tenantId, tenant_name AS tenantName, package_id AS packageId,
+              expire_time AS expireTime, domain_name AS domainName, contact_user AS contactUser,
               contact_phone AS contactPhone, status, remark, create_time AS createTime, update_time AS updateTime
        FROM sys_tenant WHERE tenant_id = :tenantId`,
-      { tenantId },
+      { tenantId: normalizeTenantId(tenantId) },
     );
   }
 
-  async create(input: CreateTenantInput): Promise<number> {
-    const result = await execute(
-      `INSERT INTO sys_tenant (tenant_name, contact_user, contact_phone, status, remark)
-       VALUES (:tenantName, :contactUser, :contactPhone, :status, :remark)`,
-      {
-        tenantName: input.tenantName,
-        contactUser: input.contactUser ?? null,
-        contactPhone: input.contactPhone ?? null,
-        status: input.status ?? '0',
-        remark: input.remark ?? null,
-      },
-    );
-    return result.insertId;
+  async create(input: CreateTenantInput): Promise<string> {
+    const tenantId = normalizeTenantId(input.tenantId ?? generateSnowflakeId());
+    const rootDeptId = generateSnowflakeId();
+    const adminRoleId = generateSnowflakeId();
+    const adminUserId = generateSnowflakeId();
+    const themeId = generateSnowflakeId();
+    const defaultPassword = await hashPassword("123456");
+
+    await transaction(async (conn) => {
+      const packageId = input.packageId ?? "P100";
+      await conn.execute(
+        `INSERT INTO sys_tenant (tenant_id, tenant_name, package_id, expire_time, domain_name, contact_user, contact_phone, status, remark)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          tenantId,
+          input.tenantName,
+          packageId,
+          input.expireTime ?? null,
+          input.domainName?.toLowerCase() ?? null,
+          input.contactUser ?? null,
+          input.contactPhone ?? null,
+          input.status ?? "0",
+          input.remark ?? null,
+        ],
+      );
+      await conn.execute(
+        `INSERT INTO sys_dept (dept_id, tenant_id, parent_id, dept_name, sort_num, status, deleted)
+         VALUES (?, ?, ?, ?, ?, ?, 0)`,
+        [rootDeptId, tenantId, "000000", `${input.tenantName}总部`, 1, "0"],
+      );
+      await conn.execute(
+        `INSERT INTO sys_role (role_id, tenant_id, role_name, role_key, sort_num, status, remark, deleted)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+        [
+          adminRoleId,
+          tenantId,
+          "租户管理员",
+          "tenant_admin",
+          1,
+          "0",
+          "租户默认管理员角色",
+        ],
+      );
+      await conn.execute(
+        `INSERT INTO sys_user (user_id, tenant_id, username, password, nickname, real_name, dept_id, is_admin, status, remark, deleted)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+        [
+          adminUserId,
+          tenantId,
+          "admin",
+          defaultPassword,
+          "租户管理员",
+          "租户管理员",
+          rootDeptId,
+          "1",
+          "0",
+          "租户默认管理员",
+        ],
+      );
+      await conn.execute(
+        `INSERT INTO sys_user_role (user_id, role_id) VALUES (?, ?)`,
+        [adminUserId, adminRoleId],
+      );
+      await conn.execute(
+        `INSERT INTO sys_role_menu (role_id, menu_id)
+         SELECT ?, pm.menu_id
+         FROM sys_package_menu pm
+         INNER JOIN sys_menu m ON m.menu_id = pm.menu_id
+         WHERE pm.package_id = ? AND m.status = '0'`,
+        [adminRoleId, packageId],
+      );
+      await conn.execute(
+        `INSERT INTO sys_theme_config (theme_id, tenant_id, nav_theme, color_primary, layout, content_width,
+          fixed_header, fix_siderbar, color_weak, title, logo, iconfont_url, token_json, status, remark, deleted)
+         VALUES (?, ?, 'light', '#1677ff', 'mix', 'Fluid', 0, 1, 0, ?, NULL, '', JSON_OBJECT(), '0', '租户默认主题配置', 0)`,
+        [themeId, tenantId, input.tenantName],
+      );
+    });
+    return tenantId;
   }
 
   update(input: UpdateTenantInput): Promise<unknown> {
     return execute(
       `UPDATE sys_tenant
-       SET tenant_name = :tenantName, contact_user = :contactUser, contact_phone = :contactPhone,
-           status = :status, remark = :remark
+       SET tenant_name = :tenantName, package_id = :packageId, expire_time = :expireTime, domain_name = :domainName,
+           contact_user = :contactUser, contact_phone = :contactPhone, status = :status, remark = :remark
        WHERE tenant_id = :tenantId`,
       {
-        tenantId: input.tenantId,
+        tenantId: normalizeTenantId(input.tenantId),
         tenantName: input.tenantName,
+        packageId: input.packageId ?? "P100",
+        expireTime: input.expireTime ?? null,
+        domainName: input.domainName?.toLowerCase() ?? null,
         contactUser: input.contactUser ?? null,
         contactPhone: input.contactPhone ?? null,
-        status: input.status ?? '0',
+        status: input.status ?? "0",
         remark: input.remark ?? null,
       },
     );
   }
 
-  remove(ids: number[]): Promise<unknown> {
-    return execute(`DELETE FROM sys_tenant WHERE tenant_id IN (${ids.map(() => '?').join(',')}) AND tenant_id <> 0`, ids);
+  remove(ids: string[]): Promise<unknown> {
+    const normalizedIds = ids
+      .map(normalizeTenantId)
+      .filter((id) => !isPlatformTenantId(id));
+    if (normalizedIds.length === 0) return Promise.resolve(undefined);
+    const idParams = Object.fromEntries(
+      normalizedIds.map((id, index) => [`id${index}`, id]),
+    );
+    const idPlaceholders = normalizedIds
+      .map((_, index) => `:id${index}`)
+      .join(", ");
+    return execute(
+      `DELETE FROM sys_tenant WHERE tenant_id IN (${idPlaceholders}) AND tenant_id <> :platformTenantId`,
+      {
+        ...idParams,
+        platformTenantId: PLATFORM_TENANT_ID,
+      },
+    );
   }
 
-  changeStatus(tenantId: number, status: '0' | '1'): Promise<unknown> {
-    return execute('UPDATE sys_tenant SET status = :status WHERE tenant_id = :tenantId AND tenant_id <> 0', { tenantId, status });
+  changeStatus(tenantId: string, status: "0" | "1"): Promise<unknown> {
+    return execute(
+      "UPDATE sys_tenant SET status = :status WHERE tenant_id = :tenantId AND tenant_id <> :platformTenantId",
+      {
+        status,
+        tenantId: normalizeTenantId(tenantId),
+        platformTenantId: PLATFORM_TENANT_ID,
+      },
+    );
   }
 }

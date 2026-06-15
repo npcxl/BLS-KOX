@@ -7,20 +7,20 @@ import { UserService } from './user.service';
 const userSchema = z.object({
   username: z.string().min(1),
   nickname: z.string().min(1),
-  password: z.string().optional(),
-  tenantId: z.coerce.number().optional(),
+  password: z.string().nullable().optional(),
+  deptId: z.union([z.string(), z.null()]).optional(),
   isAdmin: z.enum(['0', '1']).optional(),
   status: z.enum(['0', '1']).optional(),
-  remark: z.string().optional(),
-  roleIds: z.array(z.coerce.number()).optional(),
+  remark: z.union([z.string(), z.null()]).optional(),
+  roleIds: z.union([z.array(z.string()), z.string(), z.null()]).optional(),
 });
-const editUserSchema = userSchema.extend({ userId: z.coerce.number().int().positive() });
-const idsSchema = z.object({ ids: z.union([z.array(z.coerce.number()), z.string(), z.number()]) });
+const editUserSchema = userSchema.extend({ userId: z.string().min(1) });
+const idsSchema = z.object({ ids: z.union([z.array(z.string()), z.string(), z.number()]) });
 
-function toIds(value: unknown): number[] {
-  if (Array.isArray(value)) return value.map(Number).filter(Number.isFinite);
-  if (typeof value === 'string') return value.split(',').map(Number).filter(Number.isFinite);
-  if (typeof value === 'number') return [value];
+function toIds(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean);
+  if (typeof value === 'number') return [String(value)];
   return [];
 }
 
@@ -32,17 +32,33 @@ export class UserController {
     pageSuccess(ctx, result.rows, result.total);
   };
 
+  profile = async (ctx: Context) => {
+    const user = ctx.state.user;
+    if (!user) throw new ValidationError('未登录或登录已过期');
+    const result = await this.service.getProfile(String(user.userId));
+    success(ctx, result, '查询成功');
+  };
+
+  updateProfile = async (ctx: Context) => {
+    const user = ctx.state.user;
+    if (!user) throw new ValidationError('未登录或登录已过期');
+    const parsed = userSchema.partial().safeParse(ctx.request.body);
+    if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
+    await this.service.updateProfile(String(user.userId), parsed.data as any);
+    success(ctx, null, '修改成功');
+  };
+
   add = async (ctx: Context) => {
     const parsed = userSchema.safeParse(ctx.request.body);
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
-    const userId = await this.service.add(parsed.data);
+    const userId = await this.service.add(parsed.data as any);
     success(ctx, { userId }, '新增成功');
   };
 
   edit = async (ctx: Context) => {
     const parsed = editUserSchema.safeParse(ctx.request.body);
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
-    await this.service.edit(parsed.data);
+    await this.service.edit(parsed.data as any);
     success(ctx, null, '修改成功');
   };
 

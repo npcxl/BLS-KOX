@@ -5,21 +5,22 @@ import { success } from '../../../core/response';
 import { MenuService } from './menu.service';
 
 const menuSchema = z.object({
-  parentId: z.coerce.number().int().min(0),
+  parentId: z.string().min(1),
   menuName: z.string().min(1),
-  path: z.string().optional(),
-  component: z.string().optional(),
-  perms: z.string().optional(),
+  icon: z.string().nullable().optional(),
+  path: z.string().nullable().optional(),
+  component: z.string().nullable().optional(),
+  perms: z.string().nullable().optional(),
   menuType: z.enum(['0', '1', '2']),
   sortNum: z.coerce.number().optional(),
   status: z.enum(['0', '1']).optional(),
 });
-const editMenuSchema = menuSchema.extend({ menuId: z.coerce.number().int().positive() });
+const editMenuSchema = menuSchema.extend({ menuId: z.string().min(1) });
 
-function toIds(value: unknown): number[] {
-  if (Array.isArray(value)) return value.map(Number).filter(Number.isFinite);
-  if (typeof value === 'string') return value.split(',').map(Number).filter(Number.isFinite);
-  if (typeof value === 'number') return [value];
+function toIds(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean);
+  if (typeof value === 'number') return [String(value)];
   return [];
 }
 
@@ -28,6 +29,10 @@ export class MenuController {
 
   list = async (ctx: Context) => {
     success(ctx, await this.service.list(), '查询成功');
+  };
+
+  packageTree = async (ctx: Context) => {
+    success(ctx, await this.service.packageTree(ctx.state.user.tenantId), '查询成功');
   };
 
   add = async (ctx: Context) => {
@@ -45,7 +50,8 @@ export class MenuController {
   };
 
   remove = async (ctx: Context) => {
-    await this.service.remove(toIds(ctx.query.ids ?? ctx.request.body?.ids));
+    const bodyIds = (ctx.request.body as { ids?: unknown } | undefined)?.ids;
+    await this.service.remove(toIds(ctx.query.ids ?? bodyIds));
     success(ctx, null, '删除成功');
   };
 }

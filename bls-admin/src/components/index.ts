@@ -6,7 +6,7 @@
  * 布局组件
  */
 import Footer from './Footer';
-import { LangDropdown, VersionDropdown } from './RightContent';
+import { AppTitleButton, DocLink, LangDropdown, VersionDropdown } from './RightContent';
 import { AvatarDropdown } from './RightContent/AvatarDropdown';
 
 /**
@@ -19,4 +19,4 @@ export { default as OfflineBanner } from './OfflineBanner';
 export { default as StandardFormRow } from './StandardFormRow';
 export { default as TagSelect } from './TagSelect';
 
-export { AvatarDropdown, DocLink, Footer, LangDropdown, VersionDropdown };
+export { AppTitleButton, AvatarDropdown, DocLink, Footer, LangDropdown, VersionDropdown };

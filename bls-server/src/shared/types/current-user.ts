@@ -1,9 +1,19 @@
+export interface TenantInfo {
+  tenantId: string;
+  tenantName: string;
+  packageId: string | null;
+  expireTime: string | null;
+  domainName: string | null;
+  status: '0' | '1';
+}
+
 export interface CurrentUser {
-  userId: number;
+  userId: string;
   username: string;
   nickname: string;
   avatar: string | null;
-  tenantId: number;
+  tenantId: string;
+  tenantName?: string;
   isAdmin: '0' | '1';
   roles: string[];
   perms: string[];
@@ -11,19 +21,20 @@ export interface CurrentUser {
 }
 
 export interface JwtPayload {
-  userId: number;
+  userId: string;
   username: string;
-  tenantId: number;
+  tenantId: string;
 }
 
 export interface MenuTreeItem {
-  menuId: number;
-  parentId: number;
+  menuId: string;
+  parentId: string;
   menuName: string;
+  icon: string | null;
   path: string | null;
   component: string | null;
   perms: string | null;
   menuType: string;
-  sortNum: number;
+  sortNum: number | string;
   children?: MenuTreeItem[];
 }

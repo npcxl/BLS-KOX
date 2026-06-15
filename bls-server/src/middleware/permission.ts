@@ -5,7 +5,7 @@ export function hasPerm(perm: string) {
   return async (ctx: Context, next: Next): Promise<void> => {
     const user = ctx.state.user;
     if (!user) throw new UnauthorizedError();
-    if (user.tenantId === 0 || user.perms.includes('*')) {
+    if (user.tenantId === "000000" || user.perms.includes('*')) {
       await next();
       return;
     }

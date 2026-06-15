@@ -1,12 +1,12 @@
 export interface SysConfig {
-  configId: number;
+  configId: string;
   configKey: string;
   configValue: string;
   configName: string;
   configType: 'sys' | 'theme' | 'dict';
   remark: string | null;
   status: '0' | '1';
-  tenantId: number;
+  tenantId: string;
   createTime: string;
   updateTime: string | null;
 }
@@ -15,21 +15,21 @@ export interface ConfigQuery {
   configKey?: string;
   configName?: string;
   configType?: string;
-  tenantId?: number | string;
   pageNum?: number | string;
   pageSize?: number | string;
 }
 
 export interface CreateConfigInput {
+  configId?: string;
   configKey: string;
   configValue: string;
   configName: string;
   configType: 'sys' | 'theme' | 'dict';
-  tenantId?: number;
-  remark?: string;
+  remark?: string | null;
   status?: '0' | '1';
+  tenantId?: string;
 }
 
 export interface UpdateConfigInput extends CreateConfigInput {
-  configId: number;
+  configId: string;
 }

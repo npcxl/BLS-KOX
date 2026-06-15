@@ -1,6 +1,9 @@
 export interface Tenant {
-  tenantId: number;
+  tenantId: string;
   tenantName: string;
+  packageId: string | null;
+  expireTime: string | null;
+  domainName: string | null;
   contactUser: string | null;
   contactPhone: string | null;
   status: '0' | '1';
@@ -17,13 +20,17 @@ export interface TenantQuery {
 }
 
 export interface CreateTenantInput {
+  tenantId?: string;
   tenantName: string;
-  contactUser?: string;
-  contactPhone?: string;
+  packageId?: string | null;
+  expireTime?: string | null;
+  domainName?: string | null;
+  contactUser?: string | null;
+  contactPhone?: string | null;
   status?: '0' | '1';
-  remark?: string;
+  remark?: string | null;
 }
 
 export interface UpdateTenantInput extends CreateTenantInput {
-  tenantId: number;
+  tenantId: string;
 }

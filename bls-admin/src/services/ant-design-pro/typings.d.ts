@@ -8,31 +8,39 @@ declare namespace API {
     data?: T;
   };
 
+  type MenuTreeItem = {
+    menuId: string;
+    parentId: string;
+    menuName: string;
+    icon?: string | null;
+    path?: string | null;
+    component?: string | null;
+    perms?: string | null;
+    menuType: '0' | '1' | '2' | string;
+    sortNum?: number | string;
+    children?: MenuTreeItem[];
+  };
+
   type CurrentUser = {
+    userId: string;
+    username: string;
+    nickname: string;
+    avatar?: string | null;
+    tenantId: string;
+    isAdmin: '0' | '1';
+    roles: string[];
+    perms: string[];
+    menus: MenuTreeItem[];
     name?: string;
-    avatar?: string;
     userid?: string;
-    email?: string;
-    signature?: string;
-    title?: string;
-    group?: string;
-    tags?: { key?: string; label?: string }[];
-    notifyCount?: number;
-    unreadCount?: number;
-    country?: string;
     access?: string;
-    geographic?: {
-      province?: { label?: string; key?: string };
-      city?: { label?: string; key?: string };
-    };
-    address?: string;
-    phone?: string;
   };
 
   type LoginResult = {
     code?: number;
     message?: string;
     token?: string;
+    refreshToken?: string;
     user?: CurrentUser;
     status?: string;
     type?: string;
@@ -76,12 +84,34 @@ declare namespace API {
     password?: string;
     autoLogin?: boolean;
     type?: string;
-    tenantId?: number;
+    tenantId?: string;
   };
 
   type TenantOption = {
-    tenantId: number;
+    tenantId: string;
     tenantName: string;
+  };
+
+  type SysConfig = {
+    configId?: string;
+    themeId?: string;
+    tenantId?: string;
+    configKey?: string;
+    configValue?: string;
+    configName?: string;
+    configType?: 'sys' | 'theme' | 'dict';
+    status?: '0' | '1';
+    remark?: string;
+    navTheme?: 'light' | 'realDark';
+    colorPrimary?: string;
+    layout?: 'mix' | 'top' | 'side';
+    contentWidth?: 'Fluid' | 'Fixed';
+    fixedHeader?: number | boolean;
+    fixSiderbar?: number | boolean;
+    colorWeak?: number | boolean;
+    title?: string;
+    logo?: string | null;
+    iconfontUrl?: string | null;
   };
 
   type ErrorResponse = {

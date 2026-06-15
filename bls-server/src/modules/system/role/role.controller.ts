@@ -9,15 +9,16 @@ const roleSchema = z.object({
   roleKey: z.string().min(1),
   sortNum: z.coerce.number().optional(),
   status: z.enum(['0', '1']).optional(),
-  remark: z.string().optional(),
-  menuIds: z.array(z.coerce.number()).optional(),
+  remark: z.string().nullable().optional(),
+  menuIds: z.array(z.string()).nullable().optional(),
 });
-const editRoleSchema = roleSchema.extend({ roleId: z.coerce.number().int().positive() });
+const editRoleSchema = roleSchema.extend({ roleId: z.string().min(1) });
+const assignMenuSchema = z.object({ menuIds: z.array(z.string()).default([]) });
 
-function toIds(value: unknown): number[] {
-  if (Array.isArray(value)) return value.map(Number).filter(Number.isFinite);
-  if (typeof value === 'string') return value.split(',').map(Number).filter(Number.isFinite);
-  if (typeof value === 'number') return [value];
+function toIds(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean);
+  if (typeof value === 'number') return [String(value)];
   return [];
 }
 
@@ -39,12 +40,23 @@ export class RoleController {
   edit = async (ctx: Context) => {
     const parsed = editRoleSchema.safeParse(ctx.request.body);
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
-    await this.service.edit(parsed.data);
+    await this.service.edit(parsed.data as any);
     success(ctx, null, '修改成功');
   };
 
   remove = async (ctx: Context) => {
     await this.service.remove(toIds(ctx.query.ids ?? ctx.request.body?.ids));
     success(ctx, null, '删除成功');
+  };
+
+  menuIds = async (ctx: Context) => {
+    success(ctx, await this.service.menuIds(String(ctx.params.roleId)), '查询成功');
+  };
+
+  assignMenus = async (ctx: Context) => {
+    const parsed = assignMenuSchema.safeParse(ctx.request.body);
+    if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
+    await this.service.assignMenus(String(ctx.params.roleId), parsed.data.menuIds);
+    success(ctx, null, '分配成功');
   };
 }

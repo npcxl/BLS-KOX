@@ -6,11 +6,11 @@ export interface RoleQuery {
 }
 
 export interface RoleInput {
-  roleId?: number;
+  roleId?: string;
   roleName: string;
   roleKey: string;
   sortNum?: number;
   status?: '0' | '1';
-  remark?: string;
-  menuIds?: number[];
+  remark?: string | null;
+  menuIds?: string[] | null;
 }
