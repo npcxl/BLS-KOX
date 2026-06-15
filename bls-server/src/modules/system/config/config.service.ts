@@ -1,12 +1,16 @@
-import { NotFoundError, ValidationError } from "../../../core/errors";
-import { getCurrentTenantId } from "../../../middleware/tenant";
-import { getPageParams } from "../../../shared/utils/pagination";
+import { NotFoundError, ValidationError } from '../../../core/errors';
+import { getCurrentTenantId } from '../../../middleware/tenant';
+import { getPageParams } from '../../../shared/utils/pagination';
 import {
   ConfigQuery,
   CreateConfigInput,
   UpdateConfigInput,
-} from "./config.model";
-import { ConfigRepository } from "./config.repository";
+} from './config.model';
+import { ConfigRepository } from './config.repository';
+
+export const SYS_CONFIG_KEYS = {
+  LOGIN_MULTI_ENABLE: 'sys.auth.multiLogin',
+} as const;
 
 export class ConfigService {
   constructor(private readonly repository = new ConfigRepository()) {}
@@ -15,24 +19,35 @@ export class ConfigService {
     return this.repository.list(query, getPageParams(query));
   }
 
+  async getBooleanConfig(key: string, defaultValue = false): Promise<boolean> {
+    const currentTenantId = getCurrentTenantId();
+    const config = await this.repository.findByKey(currentTenantId ?? undefined, key);
+    if (!config?.configValue) return defaultValue;
+    const value = String(config.configValue).trim().toLowerCase();
+    return value === '1' || value === 'true' || value === 'yes' || value === 'on';
+  }
+
+  async isMultiLoginEnabled(): Promise<boolean> {
+    return this.getBooleanConfig(SYS_CONFIG_KEYS.LOGIN_MULTI_ENABLE, false);
+  }
+
   async publicTheme() {
     const currentTenantId = getCurrentTenantId();
     return this.repository.findByKey(
       currentTenantId ?? undefined,
-      "theme.default",
+      'theme.default',
     );
   }
 
   private async fetchSystemConfigs() {
     const keys = [
-      "sys.user.defaultPassword",
-      "sys.app.name",
-      "sys.demo.enabled",
-      "sys.upload.maxSize",
-      "sys.version",
-      "sys.app.logo",
-      "sys.user.defaultAvatar",
-      "sys.login.multiDevice",
+      'sys.user.defaultPassword',
+      'sys.app.name',
+      'sys.demo.enabled',
+      'sys.upload.maxSize',
+      'sys.version',
+      'sys.app.logo',
+      'sys.user.defaultAvatar'
     ];
     const currentTenantId = getCurrentTenantId();
     const items = await Promise.all(
@@ -55,21 +70,21 @@ export class ConfigService {
 
   async detail(configId: string) {
     const config = await this.repository.findById(configId);
-    if (!config) throw new NotFoundError("配置不存在");
+    if (!config) throw new NotFoundError('配置不存在');
     return config;
   }
 
   async add(input: CreateConfigInput): Promise<string> {
     const tenantId = getCurrentTenantId();
-    if (!tenantId) throw new ValidationError("缺少 tenantId，无法创建配置");
+    if (!tenantId) throw new ValidationError('缺少 tenantId，无法创建配置');
     const exists = await this.repository.findByKey(tenantId, input.configKey);
-    if (exists) throw new ValidationError("配置键已存在");
+    if (exists) throw new ValidationError('配置键已存在');
     return this.repository.create(input);
   }
 
   async edit(input: UpdateConfigInput): Promise<void> {
     const old = await this.repository.findById(input.configId);
-    if (!old) throw new NotFoundError("配置不存在");
+    if (!old) throw new NotFoundError('配置不存在');
     await this.repository.update(input);
   }
 }

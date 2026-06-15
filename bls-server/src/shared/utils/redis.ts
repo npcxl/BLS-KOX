@@ -3,33 +3,31 @@ import { env } from '../../config/env';
 
 let redisClient: Redis | null = null;
 
-export function getRedisClient() {
+export function getRedisClient(): Redis | null {
   if (!env.redis.enabled) return null;
   if (!redisClient) {
     redisClient = new Redis({
       host: env.redis.host,
       port: env.redis.port,
       password: env.redis.password || undefined,
-      lazyConnect: true,
       keyPrefix: env.redis.keyPrefix,
+      lazyConnect: true,
       maxRetriesPerRequest: 1,
     });
   }
   return redisClient;
 }
 
-export async function connectRedis() {
+export async function connectRedis(): Promise<void> {
   const client = getRedisClient();
-  if (!client) return null;
-  if (client.status === 'ready') return client;
-  if (client.status === 'connecting' || client.status === 'connect') return client;
-  await client.connect();
-  return client;
+  if (!client) return;
+  if (client.status === 'wait' || client.status === 'end') {
+    await client.connect();
+  }
 }
 
-export async function closeRedis() {
-  if (redisClient) {
-    await redisClient.quit();
-    redisClient = null;
-  }
+export async function closeRedis(): Promise<void> {
+  if (!redisClient) return;
+  await redisClient.quit();
+  redisClient = null;
 }

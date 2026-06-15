@@ -1,43 +1,45 @@
 import { getRedisClient } from '../../shared/utils/redis';
-import { JwtPayload } from '../../shared/types/current-user';
+import { TokenPayload } from '../../shared/utils/jwt';
 
-const ACCESS_TTL_SECONDS = 60 * 15;
-const REFRESH_TTL_SECONDS = 60 * 60 * 24 * 7;
+const SESSION_PREFIX = 'auth:session:';
+const USER_SESSIONS_PREFIX = 'auth:user-sessions:';
+const REFRESH_PREFIX = 'auth:refresh:';
 
-function accessKey(jti: string) {
-  return `auth:access:${jti}`;
+function sessionKey(jti: string) {
+  return `${SESSION_PREFIX}${jti}`;
+}
+
+function userSessionsKey(userId: string) {
+  return `${USER_SESSIONS_PREFIX}${userId}`;
 }
 
 function refreshKey(jti: string) {
-  return `auth:refresh:${jti}`;
+  return `${REFRESH_PREFIX}${jti}`;
 }
 
-export async function storeSession(payload: JwtPayload & { jti: string }, refreshJti: string) {
-  const redis = getRedisClient();
-  if (!redis) return;
-  await redis.set(accessKey(payload.jti), JSON.stringify(payload), 'EX', ACCESS_TTL_SECONDS);
-  await redis.set(refreshKey(refreshJti), JSON.stringify(payload), 'EX', REFRESH_TTL_SECONDS);
+export async function storeSession(accessPayload: TokenPayload, refreshJti: string): Promise<void> {
+  const client = getRedisClient();
+  if (!client) return;
+
+  const accessTtl = Math.max(accessPayload.exp ? accessPayload.exp - Math.floor(Date.now() / 1000) : 0, 1);
+  await client.set(sessionKey(accessPayload.jti), JSON.stringify({ userId: accessPayload.userId, refreshJti }), 'EX', accessTtl);
+  await client.sadd(userSessionsKey(accessPayload.userId), accessPayload.jti);
+  await client.set(refreshKey(refreshJti), accessPayload.jti, 'EX', 7 * 24 * 60 * 60);
 }
 
-export async function revokeSession(accessJti: string, refreshJti?: string) {
-  const redis = getRedisClient();
-  if (!redis) return;
-  await redis.del(accessKey(accessJti));
-  if (refreshJti) await redis.del(refreshKey(refreshJti));
+export async function revokeSession(accessJti?: string, refreshJti?: string): Promise<void> {
+  const client = getRedisClient();
+  if (!client) return;
+  if (accessJti) await client.del(sessionKey(accessJti));
+  if (refreshJti) await client.del(refreshKey(refreshJti));
 }
 
-export async function revokeAllUserSessions(userId: string) {
-  const redis = getRedisClient();
-  if (!redis) return;
-  const keys = await redis.keys(`auth:access:*`);
-  const matched = [] as string[];
-  for (const key of keys) {
-    const raw = await redis.get(key);
-    if (!raw) continue;
-    try {
-      const payload = JSON.parse(raw) as JwtPayload;
-      if (payload.userId === userId) matched.push(key);
-    } catch {}
+export async function revokeAllUserSessions(userId: string): Promise<void> {
+  const client = getRedisClient();
+  if (!client) return;
+  const jtis = await client.smembers(userSessionsKey(userId));
+  if (jtis.length > 0) {
+    await client.del(jtis.map((jti) => sessionKey(jti)));
   }
-  if (matched.length) await redis.del(...matched);
+  await client.del(userSessionsKey(userId));
 }
