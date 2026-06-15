@@ -5,10 +5,8 @@ import { signToken, signRefreshToken, verifyRefreshToken, verifyToken } from '..
 import { buildMenuTree } from '../../shared/utils/menu-tree';
 import { verifyPassword } from '../../shared/utils/password';
 import { AuthRepository } from './auth.repository';
-import { revokeSession, revokeAllUserSessions, storeSession } from './auth.session';
-
-const revokedTokens = new Set<string>();
-const revokedRefreshTokens = new Set<string>();
+import { revokeSession, revokeUserSessions, saveSession } from './auth.session';
+import { ConfigService } from '../system/config/config.service';
 
 export interface LoginResult {
   code: number;
@@ -18,27 +16,18 @@ export interface LoginResult {
 }
 
 export class AuthService {
-  constructor(private readonly repository = new AuthRepository()) {}
+  constructor(
+    private readonly repository = new AuthRepository(),
+    private readonly configService = new ConfigService(),
+  ) {}
 
   async loginByDomain(domainName: string, username: string, password: string): Promise<LoginResult> {
     const tenant = await this.repository.findTenantByDomain(domainName);
     if (!tenant) throw new UnauthorizedError('当前域名未绑定租户');
-    this.assertTenantAvailable(tenant.tenantId, tenant.status, tenant.expireTime);
-    const user = await this.repository.findUserByTenantAndUsername(tenant.tenantId, username);
-    if (!user || user.status !== '0') throw new UnauthorizedError('用户名或密码错误');
-    const passwordMatched = await verifyPassword(password, user.password);
-    if (!passwordMatched) throw new UnauthorizedError('用户名或密码错误');
-    const currentUser = await this.buildCurrentUser(user.userId, tenant);
-    const payload: JwtPayload = { userId: user.userId, username: user.username, tenantId: user.tenantId };
-    const token = signToken(payload);
-    const refreshToken = signRefreshToken(payload);
-    const accessPayload = verifyToken(token.replace(/^Bearer\s+/i, ''));
-    const refreshPayload = verifyRefreshToken(refreshToken);
-    await storeSession(accessPayload, refreshPayload.jti);
-    return { code: 200, token, refreshToken, user: currentUser };
+    return this.loginByTenant(tenant.tenantId, username, password);
   }
 
-  async login(tenantId: string, username: string, password: string): Promise<LoginResult> {
+  async loginByTenant(tenantId: string, username: string, password: string): Promise<LoginResult> {
     const tenant = await this.repository.findTenantById(tenantId);
     if (!tenant) throw new UnauthorizedError('租户不存在');
     this.assertTenantAvailable(tenant.tenantId, tenant.status, tenant.expireTime);
@@ -47,13 +36,33 @@ export class AuthService {
     if (!user || user.status !== '0') throw new UnauthorizedError('租户、用户名或密码错误');
     const passwordMatched = await verifyPassword(password, user.password);
     if (!passwordMatched) throw new UnauthorizedError('用户名或密码错误');
+
     const currentUser = await this.buildCurrentUser(user.userId, tenant);
-    const payload: JwtPayload = { userId: user.userId, username: user.username, tenantId: user.tenantId };
+    return this.issueSession(user.userId, user.username, user.tenantId, currentUser);
+  }
+
+  async login(tenantId: string, username: string, password: string): Promise<LoginResult> {
+    return this.loginByTenant(tenantId, username, password);
+  }
+
+  private async issueSession(userId: string, username: string, tenantId: string, currentUser: CurrentUser): Promise<LoginResult> {
+    const allowMulti = await this.configService.isMultiLoginEnabled();
+    if (!allowMulti) {
+      await revokeUserSessions(userId);
+    }
+
+    const payload: JwtPayload = { userId, username, tenantId };
     const token = signToken(payload);
     const refreshToken = signRefreshToken(payload);
     const accessPayload = verifyToken(token.replace(/^Bearer\s+/i, ''));
     const refreshPayload = verifyRefreshToken(refreshToken);
-    await storeSession(accessPayload, refreshPayload.jti);
+    await saveSession({
+      access: accessPayload,
+      refreshToken,
+      refreshJti: refreshPayload.jti,
+      refreshTtlSeconds: refreshPayload.exp ? refreshPayload.exp - Math.floor(Date.now() / 1000) : 7 * 24 * 60 * 60,
+    });
+
     return { code: 200, token, refreshToken, user: currentUser };
   }
 
@@ -66,41 +75,23 @@ export class AuthService {
 
   async logout(token: string, refreshToken?: string): Promise<void> {
     const access = token.replace(/^Bearer\s+/i, '');
-    revokedTokens.add(access);
-    if (refreshToken) revokedRefreshTokens.add(refreshToken);
     try {
       const accessPayload = verifyToken(access);
       const refreshPayload = refreshToken ? verifyRefreshToken(refreshToken) : undefined;
-      await revokeSession(accessPayload.jti, refreshPayload?.jti);
-      await revokeAllUserSessions(accessPayload.userId);
+      await revokeSession({ accessJti: accessPayload.jti, refreshJti: refreshPayload?.jti });
+      await revokeUserSessions(accessPayload.userId);
     } catch {}
   }
 
-  isTokenRevoked(token: string): boolean {
-    return revokedTokens.has(token);
-  }
-
-  isRefreshTokenRevoked(token: string): boolean {
-    return revokedRefreshTokens.has(token);
-  }
-
   async refresh(refreshToken: string): Promise<{ code: number; token: string; refreshToken: string }> {
-    if (this.isRefreshTokenRevoked(refreshToken)) throw new UnauthorizedError('登录已过期，请重新登录');
     const payload = verifyRefreshToken(refreshToken);
     const tenant = await this.repository.findTenantById(payload.tenantId);
     if (!tenant) throw new UnauthorizedError('租户不存在');
     this.assertTenantAvailable(tenant.tenantId, tenant.status, tenant.expireTime);
-    const nextPayload: JwtPayload = { userId: payload.userId, username: payload.username, tenantId: payload.tenantId };
-    const token = signToken(nextPayload);
-    const nextRefreshToken = signRefreshToken(nextPayload);
-    const accessPayload = verifyToken(token.replace(/^Bearer\s+/i, ''));
-    const refreshPayload = verifyRefreshToken(nextRefreshToken);
-    await storeSession(accessPayload, refreshPayload.jti);
-    return {
-      code: 200,
-      token,
-      refreshToken: nextRefreshToken,
-    };
+
+    const currentUser = await this.buildCurrentUser(payload.userId, tenant);
+    const result = await this.issueSession(payload.userId, payload.username, payload.tenantId, currentUser);
+    return { code: 200, token: result.token, refreshToken: result.refreshToken };
   }
 
   async buildCurrentUser(userId: string, tenant: Pick<TenantInfo, 'tenantId' | 'tenantName'>): Promise<CurrentUser> {

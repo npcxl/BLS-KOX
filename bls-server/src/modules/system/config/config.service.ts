@@ -8,9 +8,7 @@ import {
 } from './config.model';
 import { ConfigRepository } from './config.repository';
 
-export const SYS_CONFIG_KEYS = {
-  LOGIN_MULTI_ENABLE: 'sys.auth.multiLogin',
-} as const;
+const MULTI_LOGIN_KEY = 'sys.auth.multiLogin';
 
 export class ConfigService {
   constructor(private readonly repository = new ConfigRepository()) {}
@@ -19,16 +17,15 @@ export class ConfigService {
     return this.repository.list(query, getPageParams(query));
   }
 
-  async getBooleanConfig(key: string, defaultValue = false): Promise<boolean> {
+  async getSilentBooleanConfig(configKey: string, defaultValue = true): Promise<boolean> {
     const currentTenantId = getCurrentTenantId();
-    const config = await this.repository.findByKey(currentTenantId ?? undefined, key);
+    const config = await this.repository.findByKey(currentTenantId ?? undefined, configKey);
     if (!config?.configValue) return defaultValue;
-    const value = String(config.configValue).trim().toLowerCase();
-    return value === '1' || value === 'true' || value === 'yes' || value === 'on';
+    return config.configValue === '1' || config.configValue === 'true';
   }
 
   async isMultiLoginEnabled(): Promise<boolean> {
-    return this.getBooleanConfig(SYS_CONFIG_KEYS.LOGIN_MULTI_ENABLE, false);
+    return this.getSilentBooleanConfig(MULTI_LOGIN_KEY, true);
   }
 
   async publicTheme() {
@@ -47,7 +44,7 @@ export class ConfigService {
       'sys.upload.maxSize',
       'sys.version',
       'sys.app.logo',
-      'sys.user.defaultAvatar'
+      'sys.user.defaultAvatar',
     ];
     const currentTenantId = getCurrentTenantId();
     const items = await Promise.all(

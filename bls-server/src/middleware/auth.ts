@@ -1,6 +1,7 @@
 import { Context, Next } from 'koa';
 import { UnauthorizedError } from '../core/errors';
 import { AuthService } from '../modules/auth/auth.service';
+import { getStoredSession } from '../modules/auth/auth.session';
 import { parseBearerToken, verifyToken } from '../shared/utils/jwt';
 
 const authService = new AuthService();
@@ -17,10 +18,11 @@ export function jwtAuth(options: { optional?: boolean } = {}) {
     }
 
     try {
-      if (authService.isTokenRevoked(rawToken)) {
+      const payload = verifyToken(rawToken);
+      const session = await getStoredSession(payload.jti);
+      if (!session || session.userId !== payload.userId) {
         throw new UnauthorizedError();
       }
-      const payload = verifyToken(rawToken);
       ctx.state.user = await authService.profile(payload.userId, payload.tenantId);
       await next();
     } catch (error) {
