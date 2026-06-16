@@ -8,14 +8,18 @@ import {
   UrlParams,
 } from "./StorageProvider";
 
+function isEnabled(value: string | number | null | undefined): boolean {
+  return value === "1" || value === 1;
+}
+
 function getMinioClient(config: StorageConfig): Client {
   return new Client({
     endPoint: config.endpoint ?? "",
-    port: config.port ?? (config.useSsl === "1" ? 443 : 80),
-    useSSL: config.useSsl === "1",
+    port: config.port ?? (isEnabled(config.useSsl) ? 443 : 80),
+    useSSL: isEnabled(config.useSsl),
     accessKey: config.accessKey ?? undefined,
     secretKey: config.secretKey ?? undefined,
-    pathStyle: config.pathStyle === "1",
+    pathStyle: isEnabled(config.pathStyle),
   });
 }
 

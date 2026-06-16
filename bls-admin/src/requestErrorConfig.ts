@@ -1,6 +1,6 @@
 ﻿import type { RequestOptions } from '@@/plugin-request/request';
 import type { RequestConfig } from '@umijs/max';
-import { getIntl } from '@umijs/max';
+import { getIntl, request as umiRequest } from '@umijs/max';
 import { message, notification } from 'antd';
 import { refreshToken as requestRefreshToken, outLogin } from '@/services/ant-design-pro/api';
 
@@ -22,6 +22,14 @@ interface ResponseStructure {
 }
 
 let refreshingPromise: Promise<string | null> | null = null;
+
+function isRefreshableRequest(url?: string): boolean {
+  return !!url && !url.includes('/auth/login') && !url.includes('/auth/refresh');
+}
+
+function isRetriedRequest(config: any): boolean {
+  return Boolean(config?._retryAfterRefresh);
+}
 
 async function refreshAccessToken() {
   const rt = localStorage.getItem('refreshToken');
@@ -68,8 +76,23 @@ export const errorConfig: RequestConfig = {
     errorHandler: async (error: any, opts: any) => {
       if (opts?.skipErrorHandler) throw error;
       if (error?.response?.status === 401) {
+        const originalConfig = error?.config;
+        if (isRetriedRequest(originalConfig)) {
+          await logoutAndRedirect();
+          return;
+        }
         const token = await refreshAccessToken();
-        if (token) return;
+        if (token) {
+          if (originalConfig?.url && isRefreshableRequest(originalConfig.url)) {
+            originalConfig._retryAfterRefresh = true;
+            originalConfig.headers = {
+              ...originalConfig.headers,
+              Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
+            };
+            return umiRequest(originalConfig);
+          }
+          return;
+        }
         await logoutAndRedirect();
         return;
       }

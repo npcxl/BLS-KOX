@@ -126,6 +126,24 @@ export default function CrudTablePage<T extends Record<string, any>>({
         return;
       }
 
+      if (valueType === 'textarea' && typeof value === 'string' && /json$/i.test(dataIndex)) {
+        try {
+          initialValues[dataIndex] = JSON.stringify(JSON.parse(value), null, 2);
+        } catch {
+          initialValues[dataIndex] = value;
+        }
+        return;
+      }
+
+      if (valueType === 'textarea' && value && typeof value === 'object' && /json$/i.test(dataIndex)) {
+        try {
+          initialValues[dataIndex] = JSON.stringify(value, null, 2);
+        } catch {
+          initialValues[dataIndex] = String(value);
+        }
+        return;
+      }
+
       if (isMultiple && typeof value === 'string') {
         initialValues[dataIndex] = value
           .split(',')

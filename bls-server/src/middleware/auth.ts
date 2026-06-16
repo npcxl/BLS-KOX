@@ -4,6 +4,15 @@ import { AuthService } from '../modules/auth/auth.service';
 import { getStoredSession } from '../modules/auth/auth.session';
 import { parseBearerToken, verifyToken } from '../shared/utils/jwt';
 
+function isJwtExpiredError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    (error as { name?: string }).name === 'TokenExpiredError'
+  );
+}
+
 const authService = new AuthService();
 
 export function jwtAuth(options: { optional?: boolean } = {}) {
@@ -26,6 +35,9 @@ export function jwtAuth(options: { optional?: boolean } = {}) {
       ctx.state.user = await authService.profile(payload.userId, payload.tenantId);
     } catch (error) {
       console.error('[jwtAuth] auth failed:', error);
+      if (isJwtExpiredError(error)) {
+        throw new UnauthorizedError('登录已过期');
+      }
       throw error;
     }
 

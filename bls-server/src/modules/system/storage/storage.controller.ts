@@ -47,6 +47,7 @@ export class StorageController {
 
   downloadFile = async (ctx: Context) => {
     const result = await this.service.getFileUrl(ctx.params.fileId);
+    ctx.status = 302;
     ctx.redirect(result.url);
   };
 }
