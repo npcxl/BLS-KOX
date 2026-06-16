@@ -20,6 +20,7 @@ export type CrudTablePageProps<T extends Record<string, any>> = {
   pagination?: false | { defaultPageSize?: number; showSizeChanger?: boolean };
   expandable?: Record<string, any>;
   extraActions?: (record: T) => ReactNode[];
+  toolbarExtra?: ReactNode[];
   beforeSubmit?: (values: Partial<T>, current?: T) => Partial<T>;
   onSaved?: (mode: 'create' | 'edit', values: Partial<T>, current?: T) => void | Promise<void>;
   embedded?: boolean;
@@ -68,6 +69,7 @@ export default function CrudTablePage<T extends Record<string, any>>({
   pagination = { defaultPageSize: 10, showSizeChanger: true },
   expandable,
   extraActions,
+  toolbarExtra,
   beforeSubmit,
   onSaved,
   embedded = false,
@@ -84,7 +86,6 @@ export default function CrudTablePage<T extends Record<string, any>>({
   const canChangeStatus = permissions?.status ? permission.can(permissions.status) : true;
   const canImport = permissions?.import ? permission.can(permissions.import) : true;
   const canExport = permissions?.export ? permission.can(permissions.export) : true;
-
   const statusColumnDef = columns.find((col) => col.dataIndex === statusKey);
   const statusValueEnum = statusColumnDef?.valueEnum as Record<string, any> | undefined;
 
@@ -117,7 +118,13 @@ export default function CrudTablePage<T extends Record<string, any>>({
 
       const value = initialValues[dataIndex];
       const fieldProps = column.fieldProps as Record<string, any> | undefined;
+      const valueType = column.valueType as string | undefined;
       const isMultiple = fieldProps?.mode === 'multiple';
+
+      if (valueType === 'switch') {
+        initialValues[dataIndex] = value === 1 || value === '1' || value === true;
+        return;
+      }
 
       if (isMultiple && typeof value === 'string') {
         initialValues[dataIndex] = value
@@ -131,8 +138,6 @@ export default function CrudTablePage<T extends Record<string, any>>({
       }
 
       if (!isMultiple && value !== undefined && value !== null) {
-        const valueType = column.valueType as string | undefined;
-
         if (valueType === 'treeSelect' || valueType === 'select') {
           initialValues[dataIndex] = String(value);
         }
@@ -145,19 +150,10 @@ export default function CrudTablePage<T extends Record<string, any>>({
   const actionColumn: ProColumns<T> = {
     title: '操作',
     valueType: 'option',
-    width: 220,
+    width: 260,
     render: (_, record) => (
       <Space size="small" wrap>
-        {canEdit && (
-          <a
-            onClick={() => {
-              console.log('[CrudTablePage] edit click', record);
-              crud.openEdit(record);
-            }}
-          >
-            编辑
-          </a>
-        )}
+        {canEdit && <a onClick={() => crud.openEdit(record)}>编辑</a>}
 
         {canChangeStatus && record[statusKey] !== undefined && resource.status !== false && (
           <a onClick={() => crud.changeStatus(record, record[statusKey] === '0' ? '1' : '0')}>
@@ -205,16 +201,9 @@ export default function CrudTablePage<T extends Record<string, any>>({
         pagination={pagination}
         expandable={expandable}
         toolBarRender={() => [
-          canImport ? (
-            <Button key="import" onClick={() => undefined}>
-              导入
-            </Button>
-          ) : null,
-          canExport ? (
-            <Button key="export" onClick={() => undefined}>
-              导出
-            </Button>
-          ) : null,
+          ...(canImport ? [<Button key="import">导入</Button>] : []),
+          ...(canExport ? [<Button key="export">导出</Button>] : []),
+          ...((toolbarExtra ?? []) as any[]),
           canCreate ? (
             <Button key="create" type="primary" icon={<PlusOutlined />} onClick={crud.openCreate}>
               {createButtonText}

@@ -88,3 +88,24 @@ export interface FileRecord {
   updateBy: string | null;
   updateTime: string | null;
 }
+
+export interface UploadFileInput {
+  originalName: string;
+  fileName: string;
+  mimeType?: string | null;
+  buffer: Buffer;
+  accessType: 'public' | 'private';
+  moduleName?: string | null;
+  storageId?: string;
+}
+
+export interface UploadRequestBody {
+  accessType?: 'public' | 'private';
+  moduleName?: string;
+  storageId?: string;
+}
+
+export interface FileUrlResult {
+  fileId: string;
+  url: string;
+}

@@ -6,8 +6,8 @@ Language : [🇺🇸](./README.md) | 🇨🇳
 
 开箱即用的中台前端/设计解决方案。
 
-[![CI](https://github.com/ant-design/ant-design-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/ant-design/ant-design-pro/actions/workflows/ci.yml)
-[![GitHub release](https://img.shields.io/github/v/release/ant-design/ant-design-pro.svg)](https://github.com/ant-design/ant-design-pro/releases)
+[![CI](https://gitee.com/leheya/bls/actions/workflows/ci.yml/badge.svg)](https://gitee.com/leheya/bls/actions/workflows/ci.yml)
+[![GitHub release](https://img.shields.io/github/v/release/ant-design/ant-design-pro.svg)](https://gitee.com/leheya/bls/releases)
 [![Build With Utoo](https://img.shields.io/badge/build%20with-utoo-028fe4.svg)](https://utoo.land)
 [![Build With Umi](https://img.shields.io/badge/build%20with-umi-028fe4.svg)](https://umijs.org/)
 [![Checked with Biome](https://img.shields.io/badge/Checked_with-Biome-60a5fa?style=flat&logo=biome)](https://biomejs.dev)
@@ -19,9 +19,9 @@ Language : [🇺🇸](./README.md) | 🇨🇳
 
 - 预览：https://preview.pro.ant.design
 - 使用文档：[docs/cheatsheet.zh-CN.md](./docs/cheatsheet.zh-CN.md)
-- 更新日志: https://github.com/ant-design/ant-design-pro/releases
+- 更新日志: https://gitee.com/leheya/bls/releases
 - 常见问题：[docs/cheatsheet.zh-CN.md#faq](./docs/cheatsheet.zh-CN.md#faq)
-- **v6 正式发布！** — [查看 v6 更新内容](https://github.com/ant-design/ant-design-pro/releases/tag/v6.0.0)
+- **v6 正式发布！** — [查看 v6 更新内容](https://gitee.com/leheya/bls/releases/tag/v6.0.0)
 
 ## 特性
 
@@ -82,7 +82,7 @@ Language : [🇺🇸](./README.md) | 🇨🇳
 克隆或下载本项目到本地：
 
 ```bash
-git clone --depth=1 https://github.com/ant-design/ant-design-pro.git myapp
+git clone --depth=1 https://gitee.com/leheya/bls.git myapp
 cd myapp
 ```
 

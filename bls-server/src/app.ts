@@ -3,6 +3,7 @@ import Koa from 'koa';
 import cors from '@koa/cors';
 import helmet from 'koa-helmet';
 import bodyParser from 'koa-bodyparser';
+import koaBody from 'koa-body';
 import { env } from './config/env';
 import { createRouter } from './core/router';
 import { errorHandler } from './middleware/error-handler';
@@ -22,6 +23,7 @@ export function createApp(): Koa {
   app.use(errorHandler);
   app.use(helmet());
   app.use(cors({ origin: env.corsOrigin, credentials: true }));
+  app.use(koaBody({ multipart: true, formidable: { multiples: false } }));
   app.use(bodyParser({ enableTypes: ['json', 'form'] }));
   app.use(tenantMiddleware);
   app.use(router.routes());

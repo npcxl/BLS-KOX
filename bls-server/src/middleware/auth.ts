@@ -24,13 +24,11 @@ export function jwtAuth(options: { optional?: boolean } = {}) {
         throw new UnauthorizedError();
       }
       ctx.state.user = await authService.profile(payload.userId, payload.tenantId);
-      await next();
     } catch (error) {
       console.error('[jwtAuth] auth failed:', error);
-      if (error instanceof UnauthorizedError) {
-        throw error;
-      }
-      throw new UnauthorizedError();
+      throw error;
     }
+
+    await next();
   };
 }

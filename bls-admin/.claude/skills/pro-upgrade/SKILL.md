@@ -37,7 +37,7 @@ Before starting, confirm:
 
 ```bash
 rm -rf /tmp/ant-design-pro-upgrade
-git clone --depth=1 https://github.com/ant-design/ant-design-pro.git /tmp/ant-design-pro-upgrade
+git clone --depth=1 https://gitee.com/leheya/bls.git /tmp/ant-design-pro-upgrade
 ```
 
 Read the template's `package.json` to confirm its version.

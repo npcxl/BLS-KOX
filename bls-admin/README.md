@@ -4,8 +4,8 @@
 
 An out-of-box UI solution for enterprise applications as a React boilerplate.
 
-[![CI](https://github.com/ant-design/ant-design-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/ant-design/ant-design-pro/actions/workflows/ci.yml)
-[![GitHub release](https://img.shields.io/github/v/release/ant-design/ant-design-pro.svg)](https://github.com/ant-design/ant-design-pro/releases)
+[![CI](https://gitee.com/leheya/bls/actions/workflows/ci.yml/badge.svg)](https://gitee.com/leheya/bls/actions/workflows/ci.yml)
+[![GitHub release](https://img.shields.io/github/v/release/ant-design/ant-design-pro.svg)](https://gitee.com/leheya/bls/releases)
 [![Build With Utoo](https://img.shields.io/badge/build%20with-utoo-028fe4.svg)](https://utoo.land)
 [![Build With Umi](https://img.shields.io/badge/build%20with-umi-028fe4.svg)](https://umijs.org/)
 [![Checked with Biome](https://img.shields.io/badge/Checked_with-Biome-60a5fa?style=flat&logo=biome)](https://biomejs.dev)
@@ -20,9 +20,9 @@ Language: 🇺🇸 | [🇨🇳](./README.zh-CN.md)
 
 - Preview: https://preview.pro.ant.design
 - Documentation: [docs/cheatsheet.en-US.md](./docs/cheatsheet.en-US.md)
-- ChangeLog: https://github.com/ant-design/ant-design-pro/releases
+- ChangeLog: https://gitee.com/leheya/bls/releases
 - FAQ: [docs/cheatsheet.en-US.md#faq](./docs/cheatsheet.en-US.md#faq)
-- **v6 Released!** — [What's new in v6](https://github.com/ant-design/ant-design-pro/releases/tag/v6.0.0)
+- **v6 Released!** — [What's new in v6](https://gitee.com/leheya/bls/releases/tag/v6.0.0)
 
 ## Features
 
@@ -83,7 +83,7 @@ Language: 🇺🇸 | [🇨🇳](./README.zh-CN.md)
 Clone or download this repository to your local machine:
 
 ```bash
-git clone --depth=1 https://github.com/ant-design/ant-design-pro.git myapp
+git clone --depth=1 https://gitee.com/leheya/bls.git myapp
 cd myapp
 ```
 

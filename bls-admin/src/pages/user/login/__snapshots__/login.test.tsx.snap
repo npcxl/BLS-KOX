@@ -484,7 +484,7 @@ exports[`Login Page should login success 1`] = `
             </span>
             <a
               class="acss-1opaod3"
-              href="https://github.com/ant-design/ant-design-pro"
+              href="https://gitee.com/leheya/bls"
               rel="noopener noreferrer"
               target="_blank"
             >
@@ -539,7 +539,7 @@ exports[`Login Page should login success 1`] = `
           />
           <a
             class="acss-1opaod3"
-            href="https://github.com/ant-design/ant-design-pro"
+            href="https://gitee.com/leheya/bls"
             rel="noopener noreferrer"
             target="_blank"
           >
@@ -1055,7 +1055,7 @@ exports[`Login Page should show login form 1`] = `
             </span>
             <a
               class="acss-1opaod3"
-              href="https://github.com/ant-design/ant-design-pro"
+              href="https://gitee.com/leheya/bls"
               rel="noopener noreferrer"
               target="_blank"
             >
@@ -1110,7 +1110,7 @@ exports[`Login Page should show login form 1`] = `
           />
           <a
             class="acss-1opaod3"
-            href="https://github.com/ant-design/ant-design-pro"
+            href="https://gitee.com/leheya/bls"
             rel="noopener noreferrer"
             target="_blank"
           >

@@ -16,10 +16,12 @@
     "ioredis": "^5.11.1",
     "jsonwebtoken": "latest",
     "koa": "latest",
+    "koa-body": "^8.0.0",
     "koa-bodyparser": "latest",
     "koa-compose": "latest",
     "koa-helmet": "latest",
     "koa-router": "latest",
+    "minio": "^8.0.7",
     "mysql2": "latest",
     "zod": "latest"
   },
