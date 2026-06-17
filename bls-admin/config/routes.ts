@@ -102,7 +102,22 @@ export default [
         name: "主题配置",
         component: "./system/theme",
       },
-
+      {
+        path: "/system/log",
+        name: "日志中心",
+        routes: [
+          {
+            path: "/system/log/audit",
+            name: "操作审计",
+            component: "./system/log/audit",
+          },
+          {
+            path: "/system/log/login",
+            name: "登录日志",
+            component: "./system/log/login",
+          },
+        ],
+      },
     ],
   },
   {

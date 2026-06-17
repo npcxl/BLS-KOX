@@ -11,7 +11,15 @@ export interface CurrentUser {
   userId: string;
   username: string;
   nickname: string;
+  realName?: string | null;
   avatar: string | null;
+  gender?: '0' | '1' | '2' | null;
+  email?: string | null;
+  phone?: string | null;
+  deptId?: string | null;
+  deptName?: string | null;
+  status?: '0' | '1' | null;
+  remark?: string | null;
   tenantId: string;
   tenantName?: string;
   isAdmin: '0' | '1';

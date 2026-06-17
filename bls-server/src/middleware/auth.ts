@@ -1,5 +1,5 @@
 import { Context, Next } from 'koa';
-import { UnauthorizedError } from '../core/errors';
+import { SessionInvalidError, UnauthorizedError } from '../core/errors';
 import { AuthService } from '../modules/auth/auth.service';
 import { getStoredSession } from '../modules/auth/auth.session';
 import { parseBearerToken, verifyToken } from '../shared/utils/jwt';
@@ -29,8 +29,10 @@ export function jwtAuth(options: { optional?: boolean } = {}) {
     try {
       const payload = verifyToken(rawToken);
       const session = await getStoredSession(payload.jti);
+      console.log('[jwtAuth] token jti=%s userId=%s tenantId=%s sessionExists=%s', payload.jti, payload.userId, payload.tenantId, Boolean(session));
       if (!session || session.userId !== payload.userId) {
-        throw new UnauthorizedError();
+        console.warn('[jwtAuth] session mismatch or missing jti=%s', payload.jti);
+        throw new SessionInvalidError();
       }
       ctx.state.user = await authService.profile(payload.userId, payload.tenantId);
     } catch (error) {

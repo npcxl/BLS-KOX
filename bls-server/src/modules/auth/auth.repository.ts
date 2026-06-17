@@ -6,10 +6,17 @@ export interface UserRecord {
   username: string;
   password: string;
   nickname: string;
+  realName: string | null;
   avatar: string | null;
+  gender: "0" | "1" | "2" | null;
+  email: string | null;
+  phone: string | null;
+  deptId: string | null;
+  deptName: string | null;
   tenantId: string;
   isAdmin: "0" | "1";
   status: "0" | "1";
+  remark: string | null;
 }
 
 export interface LoginTenantRecord extends TenantInfo {}
@@ -42,9 +49,12 @@ export class AuthRepository {
     username: string,
   ): Promise<UserRecord | null> {
     return queryOne<UserRecord>(
-      `SELECT user_id AS userId, username, password, nickname, avatar, tenant_id AS tenantId, is_admin AS isAdmin, status
-       FROM sys_user
-       WHERE tenant_id = :tenantId AND username = :username AND deleted = 0
+      `SELECT u.user_id AS userId, u.username, u.password, u.nickname, u.real_name AS realName, u.avatar,
+              u.gender, u.email, u.phone, u.dept_id AS deptId, d.dept_name AS deptName, u.is_admin AS isAdmin, u.status, u.remark,
+              u.tenant_id AS tenantId
+       FROM sys_user u
+       LEFT JOIN sys_dept d ON d.dept_id = u.dept_id AND d.deleted = 0
+       WHERE u.tenant_id = :tenantId AND u.username = :username AND u.deleted = 0
        LIMIT 1`,
       { tenantId, username },
     );
@@ -52,9 +62,12 @@ export class AuthRepository {
 
   findUserById(userId: string, tenantId: string): Promise<UserRecord | null> {
     return queryOne<UserRecord>(
-      `SELECT user_id AS userId, username, password, nickname, avatar, tenant_id AS tenantId, is_admin AS isAdmin, status
-       FROM sys_user
-       WHERE user_id = :userId AND tenant_id = :tenantId AND deleted = 0
+      `SELECT u.user_id AS userId, u.username, u.password, u.nickname, u.real_name AS realName, u.avatar,
+              u.gender, u.email, u.phone, u.dept_id AS deptId, d.dept_name AS deptName, u.is_admin AS isAdmin, u.status, u.remark,
+              u.tenant_id AS tenantId
+       FROM sys_user u
+       LEFT JOIN sys_dept d ON d.dept_id = u.dept_id AND d.deleted = 0
+       WHERE u.user_id = :userId AND u.tenant_id = :tenantId AND u.deleted = 0
        LIMIT 1`,
       { userId, tenantId },
     );

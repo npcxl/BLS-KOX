@@ -1,4 +1,5 @@
 import { UnauthorizedError } from '../../core/errors';
+import { writeLoginLog } from '../../core/audit';
 import { PLATFORM_TENANT_ID } from '../../shared/constants/tenant';
 import { CurrentUser, TenantInfo, JwtPayload } from '../../shared/types/current-user';
 import { signToken, signRefreshToken, verifyRefreshToken, verifyToken } from '../../shared/utils/jwt';
@@ -27,18 +28,45 @@ export class AuthService {
     return this.loginByTenant(tenant.tenantId, username, password);
   }
 
-  async loginByTenant(tenantId: string, username: string, password: string): Promise<LoginResult> {
+  async loginByTenant(tenantId: string, username: string, password: string, meta?: { loginIp?: string | null; userAgent?: string | null; requestId?: string | null; loginType?: string | null }): Promise<LoginResult> {
     const tenant = await this.repository.findTenantById(tenantId);
-    if (!tenant) throw new UnauthorizedError('租户不存在');
+    if (!tenant) {
+      await this.writeLoginLogSafe({ tenantId, username, loginStatus: '0', failReason: '租户不存在', meta }).catch(() => undefined);
+      throw new UnauthorizedError('租户不存在');
+    }
     this.assertTenantAvailable(tenant.tenantId, tenant.status, tenant.expireTime);
 
     const user = await this.repository.findUserByTenantAndUsername(tenant.tenantId, username);
-    if (!user || user.status !== '0') throw new UnauthorizedError('租户、用户名或密码错误');
+    if (!user || user.status !== '0') {
+      await this.writeLoginLogSafe({ tenantId: tenant.tenantId, username, loginStatus: '0', failReason: '租户、用户名或密码错误', meta }).catch(() => undefined);
+      throw new UnauthorizedError('租户、用户名或密码错误');
+    }
     const passwordMatched = await verifyPassword(password, user.password);
-    if (!passwordMatched) throw new UnauthorizedError('用户名或密码错误');
+    if (!passwordMatched) {
+      await this.writeLoginLogSafe({ tenantId: tenant.tenantId, username, userId: user.userId, loginStatus: '0', failReason: '用户名或密码错误', meta }).catch(() => undefined);
+      throw new UnauthorizedError('用户名或密码错误');
+    }
 
     const currentUser = await this.buildCurrentUser(user.userId, tenant);
-    return this.issueSession(user.userId, user.username, user.tenantId, currentUser);
+    const result = await this.issueSession(user.userId, user.username, user.tenantId, currentUser);
+    await this.writeLoginLogSafe({ tenantId: tenant.tenantId, username, userId: user.userId, loginStatus: '1', meta }).catch(() => undefined);
+    return result;
+  }
+
+  private async writeLoginLogSafe(input: { tenantId: string; username: string; userId?: string | null; loginStatus: '0' | '1'; failReason?: string | null; meta?: { loginIp?: string | null; userAgent?: string | null; requestId?: string | null; loginType?: string | null } }) {
+    await writeLoginLog({
+      actor: {
+        tenantId: input.tenantId,
+        userId: input.userId ?? null,
+        username: input.username,
+        clientIp: input.meta?.loginIp ?? null,
+        userAgent: input.meta?.userAgent ?? null,
+        requestId: input.meta?.requestId ?? null,
+      },
+      loginType: input.meta?.loginType ?? 'password',
+      loginStatus: input.loginStatus,
+      failReason: input.failReason ?? null,
+    });
   }
 
   async login(tenantId: string, username: string, password: string): Promise<LoginResult> {
@@ -47,7 +75,9 @@ export class AuthService {
 
   private async issueSession(userId: string, username: string, tenantId: string, currentUser: CurrentUser): Promise<LoginResult> {
     const allowMulti = await this.configService.isMultiLoginEnabled();
+    process.stdout.write(`[auth.issueSession] userId=${userId} tenantId=${tenantId} allowMulti=${allowMulti}\n`);
     if (!allowMulti) {
+      process.stdout.write(`[auth.issueSession] revoking existing sessions for userId=${userId}\n`);
       await revokeUserSessions(userId);
     }
 
@@ -56,12 +86,14 @@ export class AuthService {
     const refreshToken = signRefreshToken(payload);
     const accessPayload = verifyToken(token.replace(/^Bearer\s+/i, ''));
     const refreshPayload = verifyRefreshToken(refreshToken);
+    process.stdout.write(`[auth.issueSession] accessJti=${accessPayload.jti} refreshJti=${refreshPayload.jti} refreshExp=${refreshPayload.exp ?? 'none'}\n`);
     await saveSession({
       access: accessPayload,
       refreshToken,
       refreshJti: refreshPayload.jti,
       refreshTtlSeconds: refreshPayload.exp ? refreshPayload.exp - Math.floor(Date.now() / 1000) : 7 * 24 * 60 * 60,
     });
+    process.stdout.write(`[auth.issueSession] session saved for accessJti=${accessPayload.jti}\n`);
 
     return { code: 200, token, refreshToken, user: currentUser };
   }
@@ -110,7 +142,15 @@ export class AuthService {
       userId: user.userId,
       username: user.username,
       nickname: user.nickname,
+      realName: user.realName ?? null,
       avatar: user.avatar,
+      gender: user.gender ?? null,
+      email: user.email ?? null,
+      phone: user.phone ?? null,
+      deptId: user.deptId ?? null,
+      deptName: user.deptName ?? null,
+      status: user.status,
+      remark: user.remark ?? null,
       tenantId: user.tenantId,
       tenantName: tenant.tenantName,
       isAdmin: user.isAdmin,

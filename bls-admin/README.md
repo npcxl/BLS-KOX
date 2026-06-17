@@ -1,164 +1,113 @@
-<h1 align="center">Ant Design Pro</h1>
+# BLS Admin
 
-<div align="center">
+`bls-admin` 是 BLS 多租户系统的后台管理前端项目，基于 **Ant Design Pro** 构建。它面向平台运营、租户管理员和系统维护人员，提供统一、规范、可扩展的管理控制台，用于完成租户、用户、角色、菜单、字典、配置、日志、存储等核心业务的日常管理。
 
-An out-of-box UI solution for enterprise applications as a React boilerplate.
+项目以 Ant Design Pro 的企业级后台模板能力为基础，结合 BLS 的多租户业务场景进行二次开发和功能扩展，在保证后台系统一致性与可维护性的同时，也兼顾了页面开发效率、交互体验和权限管理能力。
 
-[![CI](https://gitee.com/leheya/bls/actions/workflows/ci.yml/badge.svg)](https://gitee.com/leheya/bls/actions/workflows/ci.yml)
-[![GitHub release](https://img.shields.io/github/v/release/ant-design/ant-design-pro.svg)](https://gitee.com/leheya/bls/releases)
-[![Build With Utoo](https://img.shields.io/badge/build%20with-utoo-028fe4.svg)](https://utoo.land)
-[![Build With Umi](https://img.shields.io/badge/build%20with-umi-028fe4.svg)](https://umijs.org/)
-[![Checked with Biome](https://img.shields.io/badge/Checked_with-Biome-60a5fa?style=flat&logo=biome)](https://biomejs.dev)
-[![Ant Design](https://badgen.net/badge/icon/Ant%20Design?icon=https://gw.alipayobjects.com/zos/antfincdn/Pp4WPgVDB3/KDpgvguMpGfqaHPjicRK.svg&label)](https://ant.design/)
+## 项目定位
 
-Language: 🇺🇸 | [🇨🇳](./README.zh-CN.md)
+BLS Admin 主要承担 BLS 平台的后台管理职责，负责承载系统的核心运维与业务管理能力。项目整体采用 Ant Design Pro 的设计语言与工程组织方式，前端页面结构清晰，适合持续迭代和团队协作开发。
 
-<img width="1718" height="1191" alt="light theme preview" src="https://github.com/user-attachments/assets/74ad0b4a-e086-4955-8edd-9f2cff31aee8" />
-<img width="1718" height="1191" alt="dark theme preview" src="https://github.com/user-attachments/assets/d4bcb7c1-42c7-4c0f-b130-1193a931f9f7" />
+系统核心特点是 **多租户隔离**：同一套前端界面服务于多个租户，不同租户在数据、权限、菜单和资源范围上进行隔离管理。平台侧负责全局治理，租户侧负责各自业务域内的配置与维护。
 
-</div>
+## 技术基础
 
-- Preview: https://preview.pro.ant.design
-- Documentation: [docs/cheatsheet.en-US.md](./docs/cheatsheet.en-US.md)
-- ChangeLog: https://gitee.com/leheya/bls/releases
-- FAQ: [docs/cheatsheet.en-US.md#faq](./docs/cheatsheet.en-US.md#faq)
-- **v6 Released!** — [What's new in v6](https://gitee.com/leheya/bls/releases/tag/v6.0.0)
+- **框架基础**：基于 Ant Design Pro
+- **UI 组件体系**：使用 Ant Design 组件库
+- **页面组织方式**：遵循后台管理系统常见的布局、菜单、路由和权限分层
+- **请求处理**：统一封装接口调用与错误处理逻辑
+- **业务扩展**：在通用后台模板基础上接入 BLS 自有业务模块
+- **租户模型**：围绕多租户场景设计页面权限、数据范围和业务隔离能力
 
-## Features
+## 目录结构
 
-- :bulb: **TypeScript**: A language for application-scale JavaScript
-- :scroll: **Blocks**: Build page with block template
-- :gem: **Neat Design**: Built on [Ant Design 6](https://ant.design/) specification
-- :triangular_ruler: **Common Templates**: Typical templates for enterprise applications
-- :rocket: **State of The Art Development**: Newest development stack of React 19/[Umi Max 4](https://umijs.org/)/[antd 6](https://ant.design/)/[utoopack](https://utoo.land)
-- :iphone: **Responsive**: Designed for variable screen sizes
-- :art: **Theming**: Customizable theme with [Tailwind CSS v4](https://tailwindcss.com/) + [antd-style](https://github.com/ant-design/antd-style)
-- :globe_with_meridians: **International**: Built-in i18n solution
-- :gear: **Best Practices**: Solid workflow to make your code healthy
-- :1234: **Mock development**: Easy to use mock development solution
-- :robot: **AI Assistant**: Built-in AI chatbot page powered by [Ant Design X](https://x.ant.design/)
-- :white_check_mark: **UI Test**: Fly safely with unit and e2e tests
+当前 `src/pages/system` 下的页面目录结构如下：
 
-## Templates
+- `system/config`：系统配置
+- `system/dept`：部门管理
+- `system/dict`：字典管理
+- `system/file-config/files`：文件管理
+- `system/file-config/storage`：存储配置管理
+- `system/log`：日志中心
+- `system/menu`：菜单管理
+- `system/role`：角色管理
+- `system/tenant-package/package`：租户套餐管理
+- `system/tenant-package/tenant`：租户管理
+- `system/theme`：主题配置
+- `system/user`：用户管理
 
-```
-- Welcome
-- Dashboard
-  - Analysis
-  - Monitor
-  - Workplace
-- Form
-  - Basic Form
-  - Step Form
-  - Advanced Form
-- List
-  - Search List (Articles/Projects/Applications)
-  - Table List
-  - Basic List
-  - Card List
-- Profile
-  - Basic Profile
-  - Advanced Profile
-- Result
-  - Success
-  - Fail
-- Exception
-  - 403
-  - 404
-  - 500
-- Account
-  - Account Center
-  - Account Settings
-- AI Assistant
-- User
-  - Login
-  - Register
-  - Register Result
-```
+以上目录是当前项目中已经落地的业务页面结构，后续新增模块也应保持同一组织方式，避免目录命名和职责划分混乱。
 
-## Usage
+## 主要能力
 
-### Get Started
+### 1. 租户与基础管理
 
-Clone or download this repository to your local machine:
+提供多租户系统所需的基础治理能力，覆盖后台常见的核心维护场景，包括：
 
-```bash
-git clone --depth=1 https://gitee.com/leheya/bls.git myapp
-cd myapp
-```
+- 租户管理
+- 租户套餐管理
+- 用户管理
+- 部门管理
+- 角色管理
+- 菜单管理
+- 系统配置管理
+- 字典管理
+- 主题配置
 
-### Installation
+### 2. 日志与审计
 
-```bash
-npm install
-```
+支持后台运行过程中的行为追踪与问题排查，便于管理员快速定位异常与操作来源：
 
-### Development
+- 登录日志
+- 操作日志
+- 上传日志
+- 审计记录
 
-```bash
-# Start development server (full version by default)
-npm start
-```
+### 3. 文件与存储管理
 
-### Simplify to Simple Version
+面向平台资源管理场景，提供文件与存储配置相关的查看、维护和管理能力，便于统一管理上传文件、存储源及其元数据。
 
-This project includes all blocks by default. If you need a minimal version, run:
+### 4. 统一权限控制
 
-```bash
-npm run simple
-```
+结合后台管理系统的权限模型，对菜单、按钮、页面与接口访问进行统一控制，确保不同角色、不同租户只能访问其授权范围内的功能。
 
-This will:
-- Remove extra page directories (dashboard, form, list/*, profile, result, exception, account, etc.)
-- Remove extra mock files
-- Replace routes with simple version
-- Remove extra dependencies from package.json
+### 5. 统一请求与错误处理
 
-**Note**: This operation is irreversible and will permanently delete files.
+前端通过统一的请求封装和错误处理机制，提升接口交互的一致性，减少重复代码，并让页面层更专注于业务逻辑和展示逻辑。
 
-### Build
+## 开发特点
 
-```bash
-npm run build
-```
+作为一个基于 Ant Design Pro 的多租户后台项目，本仓库通常具备以下特点：
 
-## AI Skills (Claude Code)
+- 页面布局统一，适合标准后台管理场景
+- 组件复用度高，便于快速开发业务页面
+- 路由和权限体系较完整，利于做菜单级与页面级控制
+- 表格、表单、弹窗、抽屉等后台常用交互模式支持良好
+- 需要同时兼顾平台侧与租户侧的管理视角
+- 适合中后台系统长期维护和多人协作
 
-This project ships with two built-in [Claude Code Skills](https://docs.anthropic.com/en/docs/claude-code/skills) in `.claude/skills/`:
+## 使用建议
 
-| Skill | Trigger | Description |
-|---|---|---|
-| `/pro-upgrade` | "upgrade pro", "update to latest" | Auto-upgrade to the latest Ant Design Pro version. Diffs the latest template, merges framework changes while preserving your business code. |
-| `/antd` | antd-related code or questions | Query antd component APIs, props, tokens, demos; lint for deprecated usage; migrate between versions — all via `@ant-design/cli`. |
+如果你正在维护 BLS 平台的后台能力，建议按照以下方式理解和扩展这个项目：
 
-**Usage in Claude Code:**
+1. 先熟悉 Ant Design Pro 的页面结构和布局方式
+2. 再结合 BLS 的多租户业务模型划分模块
+3. 页面开发优先复用已有的表格、表单和布局模式
+4. 接口请求、错误提示和权限判断尽量统一处理
+5. 新增功能时保持与现有后台风格一致，降低维护成本
+6. 涉及租户维度的数据与权限时，优先考虑隔离边界和上下文传递
 
-```bash
-# Upgrade the project to latest Pro version
-/pro-upgrade
+## 适用场景
 
-# Query antd component info, debug issues, run lint, etc.
-/antd
-```
+BLS Admin 适合作为以下场景的后台入口：
 
-> 💡 If your project was cloned from this repo, these skills are already included — no installation needed. To get the latest skill definitions, pull the updates from the template or run `npx skills add ant-design/ant-design-pro` to refresh them.
+- 平台运营管理
+- 租户管理与租户配置维护
+- 业务数据查询与管理
+- 权限与组织结构管理
+- 日志审计与问题排查
+- 文件与存储资源治理
 
-## Browsers support
+## 说明
 
-Modern browsers.
-
-| [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/edge/edge_48x48.png" alt="Edge" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)</br>Edge | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/firefox/firefox_48x48.png" alt="Firefox" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)</br>Firefox | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/chrome/chrome_48x48.png" alt="Chrome" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)</br>Chrome | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/safari/safari_48x48.png" alt="Safari" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)</br>Safari |
-| --- | --- | --- | --- |
-| Edge | last 2 versions | last 2 versions | last 2 versions |
-
-## Contributing
-
-Any type of contribution is welcome, here are some examples of how you may contribute to this project:
-
-- Use Ant Design Pro in your daily work.
-- Submit [issues](http://github.com/ant-design/ant-design-pro/issues) to report bugs or ask questions.
-- Propose [pull requests](http://github.com/ant-design/ant-design-pro/pulls) to improve our code.
-
-<a href="https://openomy.app/github/ant-design/ant-design-pro" target="_blank" style="display: block; width: 100%;" align="center">
-  <img src="https://openomy.app/svg?repo=ant-design/ant-design-pro&chart=bubble&latestMonth=3" target="_blank" alt="Contribution Leaderboard" style="display: block; width: 100%;" />
-</a>
+该项目不是纯展示型前端，而是一个面向企业后台管理的业务系统。基于 Ant Design Pro 的规范化能力，项目在视觉风格、交互逻辑和工程组织上都更适合持续迭代和规模化维护。

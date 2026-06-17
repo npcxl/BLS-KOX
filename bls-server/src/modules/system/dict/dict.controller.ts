@@ -1,6 +1,8 @@
 import { Context } from 'koa';
 import { z } from 'zod';
 import { ValidationError } from '../../../core/errors';
+import { getAuditActor, writeOperationLog } from '../../../core/audit';
+import { getCurrentTenantId } from '../../../middleware/tenant';
 import { pageSuccess, success } from '../../../core/response';
 import { DictService } from './dict.service';
 
@@ -42,13 +44,16 @@ export class DictController {
   addType = async (ctx: Context): Promise<void> => {
     const parsed = dictTypeSchema.safeParse(ctx.request.body);
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.issues);
-    success(ctx, { dictTypeId: await this.service.addType(parsed.data) }, '新增成功');
+    const dictTypeId = await this.service.addType(parsed.data);
+    await writeOperationLog({ actor: getAuditActor(ctx, getCurrentTenantId()), moduleName: 'dict', businessType: 'ADD', title: '新增字典类型', requestMethod: ctx.method, requestUrl: ctx.path, requestParams: JSON.stringify(parsed.data), responseStatus: 200, success: '1' }).catch(() => undefined);
+    success(ctx, { dictTypeId }, '新增成功');
   };
 
   editType = async (ctx: Context): Promise<void> => {
     const parsed = editDictTypeSchema.safeParse(ctx.request.body);
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.issues);
     await this.service.editType(parsed.data);
+    await writeOperationLog({ actor: getAuditActor(ctx, getCurrentTenantId()), moduleName: 'dict', businessType: 'UPDATE', title: '修改字典类型', requestMethod: ctx.method, requestUrl: ctx.path, requestParams: JSON.stringify(parsed.data), responseStatus: 200, success: '1' }).catch(() => undefined);
     success(ctx, null, '修改成功');
   };
 

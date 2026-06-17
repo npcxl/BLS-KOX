@@ -67,6 +67,15 @@ function mapBackendMenus(
           ],
         };
       }
+      if (item.path === '/system/log') {
+        return {
+          ...item,
+          children: [
+            { key: '/system/log/login', path: '/system/log/login', name: '登录日志', locale: false },
+            { key: '/system/log/audit', path: '/system/log/audit', name: '操作审计', locale: false },
+          ],
+        };
+      }
       return item;
     });
 

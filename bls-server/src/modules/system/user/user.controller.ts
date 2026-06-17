@@ -2,11 +2,18 @@ import { Context } from 'koa';
 import { z } from 'zod';
 import { ValidationError } from '../../../core/errors';
 import { pageSuccess, success } from '../../../core/response';
+import { getAuditActor, writeOperationLog } from '../../../core/audit';
+import { getCurrentTenantId } from '../../../middleware/tenant';
 import { UserService } from './user.service';
 
 const userSchema = z.object({
-  username: z.string().min(1),
-  nickname: z.string().min(1),
+  username: z.string().min(1).optional(),
+  nickname: z.string().min(1).optional(),
+  realName: z.union([z.string(), z.null()]).optional(),
+  avatar: z.union([z.string(), z.null()]).optional(),
+  gender: z.enum(['0', '1', '2']).optional(),
+  email: z.union([z.string(), z.null()]).optional(),
+  phone: z.union([z.string(), z.null()]).optional(),
   password: z.string().nullable().optional(),
   deptId: z.union([z.string(), z.null()]).optional(),
   isAdmin: z.enum(['0', '1']).optional(),
@@ -44,7 +51,20 @@ export class UserController {
     if (!user) throw new ValidationError('未登录或登录已过期');
     const parsed = userSchema.partial().safeParse(ctx.request.body);
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
-    await this.service.updateProfile(String(user.userId), parsed.data as any);
+
+    const payload = parsed.data as any;
+    const updateData = {
+      nickname: payload.nickname ?? user.nickname,
+      realName: payload.realName ?? user.realName,
+      gender: payload.gender ?? user.gender,
+      email: payload.email ?? user.email,
+      phone: payload.phone ?? user.phone,
+      avatar: payload.avatar ?? user.avatar,
+      remark: payload.remark ?? user.remark,
+    };
+
+    await this.service.updateProfile(String(user.userId), updateData);
+    await writeOperationLog({ actor: getAuditActor(ctx, getCurrentTenantId()), moduleName: 'user', businessType: 'UPDATE', title: '修改个人资料', requestMethod: ctx.method, requestUrl: ctx.path, requestParams: JSON.stringify(updateData), responseStatus: 200, success: '1' }).catch(() => undefined);
     success(ctx, null, '修改成功');
   };
 
@@ -52,6 +72,7 @@ export class UserController {
     const parsed = userSchema.safeParse(ctx.request.body);
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
     const userId = await this.service.add(parsed.data as any);
+    await writeOperationLog({ actor: getAuditActor(ctx, getCurrentTenantId()), moduleName: 'user', businessType: 'ADD', title: '新增用户', requestMethod: ctx.method, requestUrl: ctx.path, requestParams: JSON.stringify(parsed.data), responseStatus: 200, success: '1' }).catch(() => undefined);
     success(ctx, { userId }, '新增成功');
   };
 
@@ -59,6 +80,7 @@ export class UserController {
     const parsed = editUserSchema.safeParse(ctx.request.body);
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
     await this.service.edit(parsed.data as any);
+    await writeOperationLog({ actor: getAuditActor(ctx, getCurrentTenantId()), moduleName: 'user', businessType: 'UPDATE', title: '修改用户', requestMethod: ctx.method, requestUrl: ctx.path, requestParams: JSON.stringify(parsed.data), responseStatus: 200, success: '1' }).catch(() => undefined);
     success(ctx, null, '修改成功');
   };
 
@@ -66,6 +88,7 @@ export class UserController {
     const parsed = idsSchema.safeParse({ ids: ctx.query.ids ?? ctx.request.body?.ids });
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
     await this.service.remove(toIds(parsed.data.ids));
+    await writeOperationLog({ actor: getAuditActor(ctx, getCurrentTenantId()), moduleName: 'user', businessType: 'DELETE', title: '删除用户', requestMethod: ctx.method, requestUrl: ctx.path, requestParams: JSON.stringify({ ids: parsed.data.ids }), responseStatus: 200, success: '1' }).catch(() => undefined);
     success(ctx, null, '删除成功');
   };
 }

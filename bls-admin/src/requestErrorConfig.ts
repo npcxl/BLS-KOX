@@ -1,7 +1,7 @@
 ﻿import type { RequestOptions } from '@@/plugin-request/request';
 import type { RequestConfig } from '@umijs/max';
 import { getIntl, request as umiRequest } from '@umijs/max';
-import { message, notification } from 'antd';
+import { message, notification, Modal } from 'antd';
 import { refreshToken as requestRefreshToken, outLogin } from '@/services/ant-design-pro/api';
 
 // 错误处理方案： 错误类型
@@ -76,6 +76,17 @@ export const errorConfig: RequestConfig = {
     errorHandler: async (error: any, opts: any) => {
       if (opts?.skipErrorHandler) throw error;
       if (error?.response?.status === 401) {
+        const responseCode = error?.response?.data?.code;
+        if (responseCode === 40101) {
+          Modal.confirm({
+            title: '该账号在别处登录',
+            content: '请检查是否泄漏密码，重新登录',
+            onOk: async () => {
+              await logoutAndRedirect();
+            },
+          });
+          return;
+        }
         const originalConfig = error?.config;
         if (isRetriedRequest(originalConfig)) {
           await logoutAndRedirect();

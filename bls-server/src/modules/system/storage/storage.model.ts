@@ -105,6 +105,52 @@ export interface UploadRequestBody {
   storageId?: string;
 }
 
+export interface UploadAuditInput {
+  tenantId: string;
+  userId?: string | null;
+  username?: string | null;
+  moduleName?: string | null;
+  accessType: 'public' | 'private';
+  storageId?: string | null;
+  storageType?: string | null;
+  bucketName?: string | null;
+  objectName?: string | null;
+  originalName: string;
+  safeName: string;
+  fileExt?: string | null;
+  mimeType?: string | null;
+  fileSize: number;
+  maxUploadBytes: number;
+  uploadStatus: '0' | '1';
+  failReason?: string | null;
+  clientIp?: string | null;
+  userAgent?: string | null;
+  requestId?: string | null;
+  fileId?: string | null;
+  fileUrl?: string | null;
+}
+
+export interface OperationLogInput {
+  tenantId: string;
+  userId?: string | null;
+  username?: string | null;
+  moduleName?: string | null;
+  businessType: string;
+  title: string;
+  requestMethod?: string | null;
+  requestUrl?: string | null;
+  requestParams?: string | null;
+  responseStatus?: number | null;
+  success: '0' | '1';
+  errorMessage?: string | null;
+  errorStack?: string | null;
+  clientIp?: string | null;
+  userAgent?: string | null;
+  requestId?: string | null;
+  costTimeMs?: number | null;
+  remark?: string | null;
+}
+
 export interface FileUrlResult {
   fileId: string;
   url: string;

@@ -120,11 +120,12 @@ export class UserRepository extends BaseCrudRepository {
 
   async getProfile(userId: string) {
     return queryOne(
-      `SELECT user_id AS userId, tenant_id AS tenantId, username, nickname, real_name AS realName,
-              avatar, gender, email, phone, dept_id AS deptId, is_admin AS isAdmin,
-              status, remark, create_time AS createTime, update_time AS updateTime
-       FROM sys_user
-       WHERE user_id = :userId AND deleted = 0
+      `SELECT u.user_id AS userId, u.tenant_id AS tenantId, u.username, u.nickname, u.real_name AS realName,
+              u.avatar, u.gender, u.email, u.phone, u.dept_id AS deptId, d.dept_name AS deptName,
+              u.is_admin AS isAdmin, u.status, u.remark, u.create_time AS createTime, u.update_time AS updateTime
+       FROM sys_user u
+       LEFT JOIN sys_dept d ON d.dept_id = u.dept_id AND d.deleted = 0
+       WHERE u.user_id = :userId AND u.deleted = 0
        LIMIT 1`,
       { userId },
     );

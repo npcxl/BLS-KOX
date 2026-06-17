@@ -8,7 +8,7 @@ import {
 } from './config.model';
 import { ConfigRepository } from './config.repository';
 
-const MULTI_LOGIN_KEY = 'sys.auth.multiLogin';
+const MULTI_LOGIN_KEY = 'sys.login.multiDevice';
 
 export class ConfigService {
   constructor(private readonly repository = new ConfigRepository()) {}

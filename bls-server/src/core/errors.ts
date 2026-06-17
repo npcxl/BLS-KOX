@@ -18,6 +18,12 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+export class SessionInvalidError extends AppError {
+  constructor(message = '会话已失效，请重新登录') {
+    super(message, 401, 40101);
+  }
+}
+
 export class ForbiddenError extends AppError {
   constructor(message = '无访问权限') {
     super(message, 403, 403);

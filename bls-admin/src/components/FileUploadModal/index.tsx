@@ -2,18 +2,29 @@ import { InboxOutlined } from '@ant-design/icons';
 import type { UploadFile, UploadProps } from 'antd';
 import { Form, Modal, Radio, Upload, message, Input } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
-import { request } from '@umijs/max';
+import { useFileUpload } from '@/hooks/useFileUpload';
 
 export type FileUploadModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUploaded?: () => void | Promise<void>;
+  onUploaded?: (res: any) => void | Promise<void>;
+  title?: string;
+  uploadUrl?: string;
+  accept?: string;
+  extraData?: Record<string, string>;
 };
 
-export default function FileUploadModal({ open, onOpenChange, onUploaded }: FileUploadModalProps) {
+export default function FileUploadModal({
+  open,
+  onOpenChange,
+  onUploaded,
+  title = '上传文件',
+  uploadUrl = '/api/system/storage/upload',
+  accept,
+  extraData,
+}: FileUploadModalProps) {
   const [form] = Form.useForm();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [submitting, setSubmitting] = useState(false);
 
   const initialValues = useMemo(
     () => ({
@@ -24,10 +35,12 @@ export default function FileUploadModal({ open, onOpenChange, onUploaded }: File
   );
 
   useEffect(() => {
-    if (open) {
-      form.setFieldsValue(initialValues);
-    }
+    if (!open) return;
+    form.setFieldsValue(initialValues);
+    setFileList([]);
   }, [form, initialValues, open]);
+
+  const { upload, uploading } = useFileUpload({ uploadUrl, defaultData: extraData });
 
   const uploadProps: UploadProps = {
     multiple: false,
@@ -57,41 +70,36 @@ export default function FileUploadModal({ open, onOpenChange, onUploaded }: File
       return;
     }
 
-    const fd = new FormData();
-    fd.append('file', rawFile as Blob, file.name);
-    fd.append('accessType', values.accessType);
-    if (values.moduleName) fd.append('moduleName', values.moduleName);
-
-    setSubmitting(true);
-    try {
-      const res = await request('/api/system/storage/upload', {
-        method: 'POST',
-        data: fd,
-      });
-      if (res?.code === 200) {
-        message.success('上传成功');
-        setFileList([]);
-        form.resetFields();
-        onOpenChange(false);
-        await onUploaded?.();
-      }
-    } finally {
-      setSubmitting(false);
+    const res = await upload({
+      file: rawFile as File | Blob,
+      filename: file.name,
+      data: {
+        accessType: values.accessType,
+        moduleName: values.moduleName ?? '',
+      },
+    });
+    if (res?.code === 200) {
+      message.success('上传成功');
+      setFileList([]);
+      form.resetFields();
+      onOpenChange(false);
+      await onUploaded?.(res);
     }
   };
 
   return (
     <Modal
-      title="上传文件"
+      title={title}
       open={open}
       onCancel={() => onOpenChange(false)}
       onOk={handleOk}
-      confirmLoading={submitting}
+      confirmLoading={uploading}
       destroyOnHidden
       width={720}
     >
       <Form form={form} layout="vertical" initialValues={initialValues}>
         <Form.Item name="accessType" label="访问类型" rules={[{ required: true }]}>
+
           <Radio.Group>
             <Radio value="private">私有</Radio>
             <Radio value="public">公共</Radio>
@@ -101,7 +109,7 @@ export default function FileUploadModal({ open, onOpenChange, onUploaded }: File
           <Input placeholder="可选，默认 common" />
         </Form.Item>
         <Form.Item label="文件">
-          <Upload.Dragger {...uploadProps}>
+          <Upload.Dragger {...uploadProps} accept={accept}>
             <p className="ant-upload-drag-icon">
               <InboxOutlined />
             </p>

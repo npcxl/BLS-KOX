@@ -375,4 +375,43 @@ export class StorageRepository {
       { fileId, ...tenant.params },
     );
   }
+
+  async createUploadAudit(input: UploadAuditInput): Promise<void> {
+    await execute(
+      `INSERT INTO sys_upload_audit (
+        audit_id, tenant_id, user_id, username, module_name, access_type, storage_id, storage_type,
+        bucket_name, object_name, original_name, safe_name, file_ext, mime_type, file_size,
+        max_upload_bytes, upload_status, fail_reason, client_ip, user_agent, request_id, file_id, file_url
+      ) VALUES (
+        :auditId, :tenantId, :userId, :username, :moduleName, :accessType, :storageId, :storageType,
+        :bucketName, :objectName, :originalName, :safeName, :fileExt, :mimeType, :fileSize,
+        :maxUploadBytes, :uploadStatus, :failReason, :clientIp, :userAgent, :requestId, :fileId, :fileUrl
+      )`,
+      {
+        auditId: generateSnowflakeId(),
+        tenantId: input.tenantId,
+        userId: input.userId ?? null,
+        username: input.username ?? null,
+        moduleName: input.moduleName ?? null,
+        accessType: input.accessType,
+        storageId: input.storageId ?? null,
+        storageType: input.storageType ?? null,
+        bucketName: input.bucketName ?? null,
+        objectName: input.objectName ?? null,
+        originalName: input.originalName,
+        safeName: input.safeName,
+        fileExt: input.fileExt ?? null,
+        mimeType: input.mimeType ?? null,
+        fileSize: input.fileSize,
+        maxUploadBytes: input.maxUploadBytes,
+        uploadStatus: input.uploadStatus,
+        failReason: input.failReason ?? null,
+        clientIp: input.clientIp ?? null,
+        userAgent: input.userAgent ?? null,
+        requestId: input.requestId ?? null,
+        fileId: input.fileId ?? null,
+        fileUrl: input.fileUrl ?? null,
+      },
+    );
+  }
 }

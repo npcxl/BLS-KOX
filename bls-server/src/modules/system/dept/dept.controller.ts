@@ -1,6 +1,8 @@
 import { Context } from 'koa';
 import { z } from 'zod';
 import { ValidationError } from '../../../core/errors';
+import { getAuditActor, writeOperationLog } from '../../../core/audit';
+import { getCurrentTenantId } from '../../../middleware/tenant';
 import { pageSuccess, success } from '../../../core/response';
 import { DeptService } from './dept.service';
 
@@ -33,6 +35,7 @@ export class DeptController {
     const parsed = deptSchema.safeParse(ctx.request.body);
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
     const deptId = await this.service.add(parsed.data);
+    await writeOperationLog({ actor: getAuditActor(ctx, getCurrentTenantId()), moduleName: 'dept', businessType: 'ADD', title: '新增部门', requestMethod: ctx.method, requestUrl: ctx.path, requestParams: JSON.stringify(parsed.data), responseStatus: 200, success: '1' }).catch(() => undefined);
     success(ctx, { deptId }, '新增成功');
   };
 
@@ -40,6 +43,7 @@ export class DeptController {
     const parsed = editDeptSchema.safeParse(ctx.request.body);
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
     await this.service.edit(parsed.data);
+    await writeOperationLog({ actor: getAuditActor(ctx, getCurrentTenantId()), moduleName: 'dept', businessType: 'UPDATE', title: '修改部门', requestMethod: ctx.method, requestUrl: ctx.path, requestParams: JSON.stringify(parsed.data), responseStatus: 200, success: '1' }).catch(() => undefined);
     success(ctx, null, '修改成功');
   };
 
@@ -47,6 +51,7 @@ export class DeptController {
     const parsed = idsSchema.safeParse({ ids: ctx.query.ids ?? ctx.request.body?.ids });
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
     await this.service.remove(toIds(parsed.data.ids));
+    await writeOperationLog({ actor: getAuditActor(ctx, getCurrentTenantId()), moduleName: 'dept', businessType: 'DELETE', title: '删除部门', requestMethod: ctx.method, requestUrl: ctx.path, requestParams: JSON.stringify({ ids: parsed.data.ids }), responseStatus: 200, success: '1' }).catch(() => undefined);
     success(ctx, null, '删除成功');
   };
 }

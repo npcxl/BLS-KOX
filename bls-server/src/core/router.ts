@@ -11,6 +11,7 @@ import { themeRouter } from '../modules/system/theme/theme.routes';
 import { userRouter } from '../modules/system/user/user.routes';
 import { pageConfigRouter } from '../modules/system/page-config/page-config.routes';
 import { storageRouter } from '../modules/system/storage/storage.routes';
+import logRouter from '../modules/system/log/log.routes';
 
 export function createRouter(): Router {
   const router = new Router({ prefix: '/api' });
@@ -22,6 +23,7 @@ export function createRouter(): Router {
   router.use(packageRouter.routes(), packageRouter.allowedMethods());
   router.use(configRouter.routes(), configRouter.allowedMethods());
   router.use(storageRouter.routes(), storageRouter.allowedMethods());
+  router.use(logRouter.routes(), logRouter.allowedMethods());
   router.use(dictRouter.routes(), dictRouter.allowedMethods());
   router.use(themeRouter.routes(), themeRouter.allowedMethods());
   router.use(deptRouter.routes(), deptRouter.allowedMethods());
@@ -29,5 +31,6 @@ export function createRouter(): Router {
   router.use(roleRouter.routes(), roleRouter.allowedMethods());
   router.use(menuRouter.routes(), menuRouter.allowedMethods());
   router.use(pageConfigRouter.routes(), pageConfigRouter.allowedMethods());
+  router.use(logRouter.routes(), logRouter.allowedMethods());
   return router;
 }
