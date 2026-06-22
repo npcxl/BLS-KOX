@@ -111,7 +111,6 @@ function DeptPageInner() {
           valueType: field.fieldType === 'select' ? 'select' : field.fieldType,
           valueEnum: field.valueEnumKey === 'sys_status' ? statusValueEnum : undefined,
         };
-
         if (field.fieldKey === 'status') base.valueEnum = statusValueEnum;
         return base;
       })

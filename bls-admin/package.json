@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Baolongshen Admin Template",
-  "repository": "https://gitee.com/leheya/bls.git",
+  "repository": "https://gitee.com/leheya/bls-server",
   "scripts": {
     "analyze": "cross-env ANALYZE=1 max build",
     "biome": "biome check --write",

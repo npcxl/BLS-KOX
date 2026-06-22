@@ -5,13 +5,13 @@ import React from 'react';
 
 const getRepoUrl = () => {
   if (!packageJson.repository)
-    return 'https://gitee.com/leheya/bls';
+    return 'https://gitee.com/leheya/bls-server';
   const repo =
     typeof packageJson.repository === 'string'
       ? packageJson.repository
       : (packageJson.repository as { url: string }).url;
   const match = repo.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
-  if (!match) return 'https://gitee.com/leheya/bls';
+  if (!match) return 'https://gitee.com/leheya/bls-server';
   return `https://github.com/${match[1]}/${match[2]}`;
 };
 
