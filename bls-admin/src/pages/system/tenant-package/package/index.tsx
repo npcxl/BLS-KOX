@@ -52,6 +52,15 @@ function PackagePageInner() {
         columns={columns}
         formColumns={formColumns}
         modalWidth={600}
+        excelMetaKey="system-package"
+        permissions={{
+          import: "system:package:import",
+          export: "system:package:export",
+          status: "system:package:status",
+          create: "system:package:add",
+          edit: "system:package:edit",
+          remove: "system:package:remove",
+        }}
         extraActions={(record) => [
           <a
             key="auth"

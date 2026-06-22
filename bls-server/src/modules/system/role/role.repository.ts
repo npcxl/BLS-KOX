@@ -1,12 +1,29 @@
 import { execute, query, queryOne, transaction } from "../../../core/database";
+import { eqCondition, likeCondition } from "../../../core/sql";
 import { getCurrentTenantId } from "../../../middleware/tenant";
 import { getPageParams } from "../../../shared/utils/pagination";
 import { generateSnowflakeId } from "../../../shared/utils/snowflake";
 import { BaseCrudRepository } from "../common/base-crud";
+import { GlobalSearchRepository } from "../global-search/global-search.repository";
+import { syncRoleSearchIndex } from "../global-search/global-search-sync";
 import { RoleInput, RoleQuery } from "./role.model";
 
 export class RoleRepository extends BaseCrudRepository {
+  private readonly searchRepo = new GlobalSearchRepository();
+
   listRoles(query: RoleQuery) {
+    const keyword = query.keyword?.trim();
+    const conditions = [
+      eqCondition("status", "status", query.status),
+      likeCondition("role_name", "roleName", query.roleName),
+      keyword
+        ? {
+            sql: "(role_name LIKE :keyword OR role_key LIKE :keyword OR remark LIKE :keyword)",
+            params: { keyword: `%${keyword}%` },
+          }
+        : { sql: "", params: {} },
+    ];
+
     return this.list(
       {
         table: "sys_role",
@@ -27,7 +44,7 @@ export class RoleRepository extends BaseCrudRepository {
         keywordColumn: "role_name",
         keyword: query.keyword,
         status: query.status,
-        extraConditions: [{ sql: "deleted = 0", params: {} }],
+        conditions,
         orderBy: "sort_num ASC, role_id DESC",
       },
       getPageParams(query),
@@ -81,6 +98,15 @@ export class RoleRepository extends BaseCrudRepository {
           [input.menuIds.map((menuId) => [roleId, menuId])],
         );
       }
+      await syncRoleSearchIndex(this.searchRepo, {
+        roleId,
+        tenantId: tenantId ?? '000000',
+        roleName: input.roleName,
+        roleKey: input.roleKey,
+        remark: input.remark ?? null,
+        status: input.status ?? '0',
+        deleted: 0,
+      });
       return roleId;
     });
   }
@@ -96,6 +122,15 @@ export class RoleRepository extends BaseCrudRepository {
     if (input.menuIds) {
       await this.assignMenus(input.roleId, input.menuIds);
     }
+    await syncRoleSearchIndex(this.searchRepo, {
+      roleId: input.roleId,
+      tenantId: getCurrentTenantId() ?? '000000',
+      roleName: input.roleName,
+      roleKey: input.roleKey,
+      remark: input.remark ?? null,
+      status: input.status ?? '0',
+      deleted: 0,
+    });
   }
 
   async findTenantRole(roleId: string): Promise<{ roleId: string } | null> {
@@ -148,6 +183,13 @@ export class RoleRepository extends BaseCrudRepository {
           ),
         },
       );
+    }
+  }
+
+  async removeRoles(ids: string[]): Promise<void> {
+    await this.softDelete('sys_role', 'role_id', ids);
+    for (const roleId of ids) {
+      await this.searchRepo.deleteSearchIndex(getCurrentTenantId() ?? '000000', 'role', roleId);
     }
   }
 }

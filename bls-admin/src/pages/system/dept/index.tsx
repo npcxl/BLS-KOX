@@ -75,11 +75,11 @@ function DeptPageInner() {
     });
   }, []);
 
-  useEffect(() => {
-    request<PageConfig>('/api/system/page-config/system_dept', { method: 'GET' }).then((res: any) => {
-      if (res?.code === 200 && res?.data) setPageConfig(res.data);
-    });
-  }, []);
+  // useEffect(() => {
+  //   request<PageConfig>('/api/system/page-config/system_dept', { method: 'GET' }).then((res: any) => {
+  //     if (res?.code === 200 && res?.data) setPageConfig(res.data);
+  //   });
+  // }, []);
 
   const deptTreeData = useMemo(
     () => [
@@ -184,6 +184,15 @@ function DeptPageInner() {
       formColumns={formColumns}
       pagination={false}
       expandable={{ defaultExpandAllRows: true }}
+      excelMetaKey="system-dept"
+      permissions={{
+        import: "system:dept:import",
+        export: "system:dept:export",
+        status: "system:dept:status",
+        create: "system:dept:add",
+        edit: "system:dept:edit",
+        remove: "system:dept:remove",
+      }}
     />
   );
 }

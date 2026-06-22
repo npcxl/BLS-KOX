@@ -27,7 +27,7 @@ export class RoleService {
 
   async remove(ids: string[]) {
     if (ids.length === 0) throw new ValidationError('请选择要删除的数据');
-    await this.repository.softDelete('sys_role', 'role_id', ids);
+    await this.repository.removeRoles(ids);
   }
 
   async menuIds(roleId: string): Promise<string[]> {

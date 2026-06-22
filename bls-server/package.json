@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@koa/cors": "latest",
+    "@types/exceljs": "^0.5.3",
     "dotenv": "latest",
+    "exceljs": "^4.4.0",
     "ioredis": "^5.11.1",
     "jsonwebtoken": "latest",
     "koa": "latest",
@@ -21,8 +23,10 @@
     "koa-compose": "latest",
     "koa-helmet": "latest",
     "koa-router": "latest",
+    "kysely": "^0.29.2",
     "minio": "^8.0.7",
     "mysql2": "latest",
+    "ws": "^8.18.3",
     "zod": "latest"
   },
   "devDependencies": {
@@ -33,6 +37,7 @@
     "@types/koa-compose": "latest",
     "@types/koa-router": "latest",
     "@types/node": "latest",
+    "@types/ws": "^8.18.1",
     "tsx": "latest",
     "typescript": "latest"
   },

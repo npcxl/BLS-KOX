@@ -1,10 +1,5 @@
 import { execute, query, queryOne } from "../../../core/database";
-import {
-  eqCondition,
-  joinConditions,
-  likeCondition,
-  SqlFragment,
-} from "../../../core/sql";
+import { eqCondition, joinConditions, likeCondition, SqlFragment } from "../../../core/sql";
 import { getCurrentTenantId, tenantWhere } from "../../../middleware/tenant";
 import { PageParams } from "../../../shared/utils/pagination";
 
@@ -18,18 +13,13 @@ export interface BaseListOptions {
   keywordColumn?: string;
   keyword?: unknown;
   status?: unknown;
+  conditions?: SqlFragment[];
   extraConditions?: SqlFragment[];
 }
 
 export class BaseCrudRepository {
-  async list<T>(
-    options: BaseListOptions,
-    page: PageParams,
-  ): Promise<{ rows: T[]; total: number }> {
-    const tenant =
-      options.tenantScoped === false
-        ? { sql: "", params: {} }
-        : tenantWhere(options.table, options.alias);
+  async list<T>(options: BaseListOptions, page: PageParams): Promise<{ rows: T[]; total: number }> {
+    const tenant = options.tenantScoped === false ? { sql: "", params: {} } : tenantWhere(options.table, options.alias);
 
     const where = joinConditions([
       tenant,
@@ -40,11 +30,8 @@ export class BaseCrudRepository {
             options.keyword,
           )
         : { sql: "", params: {} },
-      eqCondition(
-        options.alias ? `${options.alias}.status` : "status",
-        "status",
-        options.status,
-      ),
+      eqCondition(options.alias ? `${options.alias}.status` : "status", "status", options.status),
+      ...(options.conditions ?? []),
       ...(options.extraConditions ?? []),
     ]);
 

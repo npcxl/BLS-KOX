@@ -233,6 +233,15 @@ export default function StoragePage() {
       columns={columns}
       formColumns={formColumns}
       modalWidth={920}
+      excelMetaKey="system-storage"
+      permissions={{
+        import: "system:storage:import",
+        export: "system:storage:export",
+        status: "system:storage:status",
+        create: "system:storage:add",
+        edit: "system:storage:edit",
+        remove: "system:storage:remove",
+      }}
       beforeSubmit={(values, current) => ({
         ...(current ?? {}),
         ...values,

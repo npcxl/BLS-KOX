@@ -5,6 +5,7 @@ import { ValidationError } from "../../core/errors";
 import { success } from "../../core/response";
 import { getAuditActor, writeOperationLog } from "../../core/audit";
 import { AuthService } from "./auth.service";
+import { buildRequestMeta } from "../../shared/utils/request-meta";
 
 const loginSchema = z.object({
   username: z.string().min(1, "用户名不能为空"),
@@ -28,23 +29,20 @@ export class AuthController {
     const isLocalDev =
       env.nodeEnv === "development" &&
       ["localhost", "127.0.0.1"].includes(domainName);
+    const loginMeta = await buildRequestMeta(ctx, "password");
     const result =
       isLocalDev && parsed.data.tenantId
         ? await this.service.login(
             parsed.data.tenantId,
             parsed.data.username,
             parsed.data.password,
-            {
-              loginIp: ctx.ip,
-              userAgent: ctx.headers["user-agent"] ?? null,
-              requestId: ctx.headers["x-request-id"] ?? null,
-              loginType: "password",
-            },
+            loginMeta,
           )
         : await this.service.loginByDomain(
             domainName,
             parsed.data.username,
             parsed.data.password,
+            loginMeta,
           );
     await writeOperationLog({
       actor: getAuditActor(ctx, result.user.tenantId),

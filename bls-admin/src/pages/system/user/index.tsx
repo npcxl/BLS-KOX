@@ -193,6 +193,7 @@ function UserPageInner() {
       columns={columns}
       formColumns={formColumns}
       modalWidth={820}
+      excelMetaKey="system-user"
       beforeSubmit={(values, current) => {
         const hasRoleIds = Object.prototype.hasOwnProperty.call(
           values,

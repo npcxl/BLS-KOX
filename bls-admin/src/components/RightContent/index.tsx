@@ -1,21 +1,11 @@
-import {
-  BookOutlined,
-  CheckOutlined,
-  ForkOutlined,
-  GlobalOutlined,
-} from '@ant-design/icons';
-import {
-  getAllLocales,
-  getLocale,
-  history,
-  setLocale,
-  useModel,
-} from '@umijs/max';
+import { BookOutlined, CheckOutlined, GlobalOutlined } from '@ant-design/icons';
+import { getAllLocales, getLocale, history, setLocale } from '@umijs/max';
 import type { MenuProps } from 'antd';
-import { Button, Tooltip } from 'antd';
+import { Button, Space, Tooltip } from 'antd';
 import { createStyles } from 'antd-style';
 import React, { useMemo } from 'react';
 import HeaderDropdown from '../HeaderDropdown';
+import { GlobalSearchModal } from './GlobalSearchModal';
 
 export const localeLabelMap: Record<string, { emoji: string; label: string }> =
   {
@@ -66,6 +56,11 @@ const useStyles = createStyles(({ token, css }) => ({
     font-weight: 500;
     color: ${token.colorText};
   `,
+  actions: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  `,
 }));
 
 export const DocLink: React.FC = () => {
@@ -84,9 +79,6 @@ export const DocLink: React.FC = () => {
     </Tooltip>
   );
 };
-
-
-
 
 const onVersionClick: MenuProps['onClick'] = ({ key }) => {
   window.open(key, '_blank', 'noopener,noreferrer');
@@ -135,5 +127,16 @@ export const LangDropdown: React.FC = () => {
         <GlobalOutlined />
       </Button>
     </HeaderDropdown>
+  );
+};
+
+export const RightContent: React.FC = () => {
+  const { styles } = useStyles();
+  return (
+    <Space className={styles.actions} size={8}>
+      <GlobalSearchModal />
+      <DocLink />
+      <LangDropdown />
+    </Space>
   );
 };

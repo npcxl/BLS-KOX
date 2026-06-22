@@ -25,9 +25,9 @@ function ConfigPageInner() {
   const configTypeFormEnum = Object.fromEntries(Object.entries(configTypeValueEnum).map(([k, v]) => [k, v.text]));
 
   const columns: ProColumns<ConfigRecord>[] = [
-    { title: '参数名称', dataIndex: 'configName', ellipsis: true },
+    { title: '参数名称', dataIndex: 'configName', ellipsis: true},
     { title: '参数键名', dataIndex: 'configKey', copyable: true, ellipsis: true },
-    { title: '参数键值', dataIndex: 'configValue', search: false, ellipsis: true },
+    { title: '参数键值', dataIndex: 'configValue',width:100, search: false, ellipsis: true},
     {
       title: '类型',
       dataIndex: 'configType',
@@ -61,6 +61,16 @@ function ConfigPageInner() {
       columns={columns}
       formColumns={formColumns}
       modalWidth={760}
+      excelMetaKey="system-config"
+      permissions={{
+        import: "system:config:import",
+        export: "system:config:export",
+        status: "system:config:status",
+        create: "system:config:add",
+        edit: "system:config:edit",
+        remove: "system:config:remove",
+      }}
+      scroll={{ x: 'max-content' }}
       onSaved={async (_mode, values) => {
         if (
           ['theme.default', 'sys.app.name', 'sys.demo.enabled', 'sys.upload.maxSize', 'sys.version', 'sys.user.defaultPassword'].includes(

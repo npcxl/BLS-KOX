@@ -22,10 +22,10 @@ export class AuthService {
     private readonly configService = new ConfigService(),
   ) {}
 
-  async loginByDomain(domainName: string, username: string, password: string): Promise<LoginResult> {
+  async loginByDomain(domainName: string, username: string, password: string, meta?: { loginIp?: string | null; userAgent?: string | null; requestId?: string | null; loginType?: string | null }): Promise<LoginResult> {
     const tenant = await this.repository.findTenantByDomain(domainName);
     if (!tenant) throw new UnauthorizedError('当前域名未绑定租户');
-    return this.loginByTenant(tenant.tenantId, username, password);
+    return this.loginByTenant(tenant.tenantId, username, password, meta);
   }
 
   async loginByTenant(tenantId: string, username: string, password: string, meta?: { loginIp?: string | null; userAgent?: string | null; requestId?: string | null; loginType?: string | null }): Promise<LoginResult> {
@@ -69,8 +69,8 @@ export class AuthService {
     });
   }
 
-  async login(tenantId: string, username: string, password: string): Promise<LoginResult> {
-    return this.loginByTenant(tenantId, username, password);
+  async login(tenantId: string, username: string, password: string, meta?: { loginIp?: string | null; userAgent?: string | null; requestId?: string | null; loginType?: string | null }): Promise<LoginResult> {
+    return this.loginByTenant(tenantId, username, password, meta);
   }
 
   private async issueSession(userId: string, username: string, tenantId: string, currentUser: CurrentUser): Promise<LoginResult> {

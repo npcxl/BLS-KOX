@@ -1,7 +1,7 @@
+import CrudTablePage from "@/components/CrudTablePage";
 import { useDict } from "@/hooks/useDict";
-import { listLoginLogs, type LoginLogRecord } from "@/services/system/log";
+import { type LoginLogRecord } from "@/services/system/log";
 import type { ProColumns } from "@ant-design/pro-components";
-import { PageContainer, ProTable } from "@ant-design/pro-components";
 import { Tag } from "antd";
 
 export default function LoginLogPage() {
@@ -27,8 +27,8 @@ export default function LoginLogPage() {
       valueType: "select",
       valueEnum: statusValueEnum,
       render: (_, record) => (
-        <Tag color={record.loginStatus === "0" ? "success" : "default"}>
-          {record.loginStatus === "0" ? "成功" : "失败"}
+        <Tag color={record.loginStatus === "1" ? "success" : "error"}>
+          {record.loginStatus === "1" ? "成功" : "失败"}
         </Tag>
       ),
     },
@@ -38,10 +38,17 @@ export default function LoginLogPage() {
       search: false,
       ellipsis: true,
     },
-    { title: "登录IP", dataIndex: "loginIp", search: true },
+    { title: "登录IP", dataIndex: "loginIp", search: true, copyable: true },
     {
       title: "requestId",
       dataIndex: "requestId",
+      search: false,
+      copyable: true,
+    },
+    {
+      title: "userAgent",
+      dataIndex: "userAgent",
+      ellipsis: true,
       search: false,
       copyable: true,
     },
@@ -54,25 +61,20 @@ export default function LoginLogPage() {
   ];
 
   return (
-    <PageContainer title="登录日志" subTitle="查看系统用户登录记录">
-      <ProTable<LoginLogRecord>
-        rowKey="logId"
-        columns={columns}
-        request={async (params) => {
-          const res = await listLoginLogs({
-            ...params,
-            pageNum: params.current,
-            pageSize: params.pageSize,
-          });
-          return {
-            data: res.data ?? [],
-            total: res.total ?? res.data?.length ?? 0,
-            success: res.code === 200 || res.success !== false,
-          };
-        }}
-        search={{ labelWidth: 96 }}
-        pagination={{ defaultPageSize: 10, showSizeChanger: true }}
-      />
-    </PageContainer>
+    <CrudTablePage
+      title="登录日志"
+      rowKey="logId"
+      resource={{ basePath: "/api/system/log/login", list: "", status: false }}
+      columns={columns}
+      formColumns={[]}
+      modalWidth={760}
+      excelMetaKey="system-log-login"
+      permissions={{
+        import: "system:log:import",
+        export: "system:log:export",
+        status: "system:log:status",
+        remove: "system:log:remove",
+      }}
+    />
   );
 }

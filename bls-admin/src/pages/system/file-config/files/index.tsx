@@ -195,6 +195,16 @@ function FilePageInner() {
           remove: false,
           status: false,
         }}
+        excelMetaKey="system-file"
+        permissions={{
+          import: "system:file:import",
+          export: "system:file:export",
+          status: "system:file:status",
+          create: "system:file:add",
+          edit: "system:file:edit",
+          remove: "system:file:remove",
+        }}
+        showCreateButton={false}
         columns={columns}
         formColumns={formColumns}
         modalWidth={720}

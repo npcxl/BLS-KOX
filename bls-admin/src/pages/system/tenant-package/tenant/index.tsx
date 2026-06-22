@@ -69,7 +69,16 @@ function TenantPageInner() {
       columns={columns}
       formColumns={formColumns}
       modalWidth={720}
-    />
+      excelMetaKey="system-tenant"
+      permissions={{
+        import: "system:tenant:import",
+        export: "system:tenant:export",
+        status: "system:tenant:status",
+        create: "system:tenant:add",
+        edit: "system:tenant:edit",
+        remove: "system:tenant:remove",
+      }}
+      />
   );
 }
 

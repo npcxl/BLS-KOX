@@ -15,6 +15,13 @@ export const env = {
   host: process.env.APP_HOST ?? '0.0.0.0',
   port: numberEnv('APP_PORT', numberEnv('PORT', 7001)),
   corsOrigin: process.env.CORS_ORIGIN ?? '*',
+  ws: {
+    enabled: (process.env.WS_ENABLED ?? 'true') === 'true',
+    path: process.env.WS_PATH ?? '/ws/realtime',
+    host: process.env.WS_HOST ?? '',
+    port: numberEnv('WS_PORT', numberEnv('APP_PORT', numberEnv('PORT', 7001))),
+    url: process.env.WS_URL ?? '',
+  },
   jwt: {
     secret: process.env.JWT_SECRET ?? 'please_change_me',
     expiresIn: process.env.JWT_EXPIRES_IN ?? '15m',

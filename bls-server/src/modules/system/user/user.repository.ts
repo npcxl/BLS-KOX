@@ -1,13 +1,36 @@
 import { execute, queryOne, transaction } from "../../../core/database";
+import { eqCondition, likeCondition } from "../../../core/sql";
 import { getCurrentTenantId } from "../../../middleware/tenant";
 import { getPageParams } from "../../../shared/utils/pagination";
 import { hashPassword } from "../../../shared/utils/password";
 import { generateSnowflakeId } from "../../../shared/utils/snowflake";
 import { BaseCrudRepository } from "../common/base-crud";
+import { GlobalSearchRepository } from "../global-search/global-search.repository";
+import { syncUserSearchIndex } from "../global-search/global-search-sync";
 import { UserInput, UserQuery } from "./user.model";
 
 export class UserRepository extends BaseCrudRepository {
+  private readonly searchRepo = new GlobalSearchRepository();
+
   listUsers(query: UserQuery) {
+    console.log("query", query);
+    console.log("getPageParams(query)", getPageParams(query));
+    const keyword = query.keyword?.trim();
+    const conditions = [
+      eqCondition("dept_id", "deptId", query.deptId),
+      likeCondition("username", "username", query.username),
+      likeCondition("nickname", "nickname", query.nickname),
+      likeCondition("real_name", "realName", query.realName),
+      likeCondition("phone", "phone", query.phone),
+      likeCondition("email", "email", query.email),
+      keyword
+        ? {
+            sql: "(username LIKE :keyword OR nickname LIKE :keyword OR real_name LIKE :keyword OR phone LIKE :keyword OR email LIKE :keyword)",
+            params: { keyword: `%${keyword}%` },
+          }
+        : { sql: "", params: {} },
+    ];
+
     return this.list(
       {
         table: "sys_user",
@@ -28,9 +51,8 @@ export class UserRepository extends BaseCrudRepository {
                       WHERE ur.user_id = sys_user.user_id
                     ) AS roleNames
                     FROM sys_user`,
-        keywordColumn: "username",
-        keyword: query.keyword,
         status: query.status,
+        conditions,
         extraConditions: [{ sql: "deleted = 0", params: {} }],
       },
       getPageParams(query),
@@ -68,6 +90,18 @@ export class UserRepository extends BaseCrudRepository {
           [input.roleIds.map((roleId) => [userId, roleId])],
         );
       }
+      await syncUserSearchIndex(this.searchRepo, {
+        userId,
+        tenantId: tenantId ?? "000000",
+        username: input.username,
+        nickname: input.nickname,
+        realName: input.realName ?? null,
+        phone: input.phone ?? null,
+        email: input.email ?? null,
+        deptId: input.deptId ?? null,
+        status: input.status ?? "0",
+        deleted: 0,
+      });
       return userId;
     });
   }
@@ -85,6 +119,18 @@ export class UserRepository extends BaseCrudRepository {
       isAdmin: input.isAdmin ?? "0",
       status: input.status ?? "0",
       remark: input.remark ?? null,
+    });
+    await syncUserSearchIndex(this.searchRepo, {
+      userId: input.userId,
+      tenantId: getCurrentTenantId() ?? "000000",
+      username: input.username,
+      nickname: input.nickname,
+      realName: input.realName ?? null,
+      phone: input.phone ?? null,
+      email: input.email ?? null,
+      deptId: input.deptId ?? null,
+      status: input.status ?? "0",
+      deleted: 0,
     });
 
     if (Array.isArray(input.roleIds)) {
@@ -131,15 +177,29 @@ export class UserRepository extends BaseCrudRepository {
     );
   }
 
-  async updateProfile(userId: string, input: Partial<UserInput>): Promise<void> {
-    await this.update('sys_user', 'user_id', userId, {
+  async updateProfile(
+    userId: string,
+    input: Partial<UserInput>,
+  ): Promise<void> {
+    await this.update("sys_user", "user_id", userId, {
       nickname: input.nickname,
       realName: input.realName ?? null,
       avatar: input.avatar ?? null,
-      gender: input.gender ?? '2',
+      gender: input.gender ?? "2",
       email: input.email ?? null,
       phone: input.phone ?? null,
       remark: input.remark ?? null,
     });
+  }
+
+  async removeUsers(ids: string[]): Promise<void> {
+    await this.softDelete("sys_user", "user_id", ids);
+    for (const userId of ids) {
+      await this.searchRepo.deleteSearchIndex(
+        getCurrentTenantId() ?? "000000",
+        "user",
+        userId,
+      );
+    }
   }
 }

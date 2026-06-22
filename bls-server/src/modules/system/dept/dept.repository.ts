@@ -9,6 +9,7 @@ export class DeptRepository {
     const where = joinConditions([
       tenantWhere("sys_dept"),
       likeCondition("dept_name", "deptName", filters.deptName),
+      
       eqCondition("status", "status", filters.status),
       { sql: "deleted = 0", params: {} },
     ]);

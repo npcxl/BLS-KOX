@@ -103,6 +103,11 @@ export default [
         component: "./system/theme",
       },
       {
+        path: "/system/page-config",
+        name: "页面配置",
+        component: "./system/page-config",
+      },
+      {
         path: "/system/log",
         name: "日志中心",
         routes: [
@@ -154,6 +159,49 @@ export default [
       {
         path: "/tenant",
         redirect: "/tenant/list",
+      },
+    ],
+  },
+  {
+    path: "/business",
+    name: "业务管理",
+    routes: [
+      {
+        path: "/business/finance",
+        name: "财务管理",
+        component: "./business/finance",
+      },
+      {
+        path: "/business/inventory",
+        name: "库存管理",
+        component: "./business/inventory",
+      },
+      {
+        path: "/business/sales",
+        name: "销售管理",
+        component: "./business/sales",
+      },
+
+      {
+        path: "/business/order",
+        name: "订单管理",
+        component: "./business/order",
+      },
+
+      {
+        path: "/business/product",
+        name: "产品管理",
+        component: "./business/product",
+      },
+      {
+        path: "/business/production-line",
+        name: "生产管理",
+        component: "./business/production-line",
+      },
+      {
+        path: "/business/sales",
+        name: "销售管理",
+        component: "./business/sales",
       },
     ],
   },

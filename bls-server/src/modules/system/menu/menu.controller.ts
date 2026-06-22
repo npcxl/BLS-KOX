@@ -2,6 +2,8 @@ import { Context } from 'koa';
 import { z } from 'zod';
 import { ValidationError } from '../../../core/errors';
 import { success } from '../../../core/response';
+import { GlobalSearchRepository } from '../global-search/global-search.repository';
+import { syncMenuSearchIndex } from '../global-search/global-search-sync';
 import { MenuService } from './menu.service';
 
 const menuSchema = z.object({
@@ -25,7 +27,7 @@ function toIds(value: unknown): string[] {
 }
 
 export class MenuController {
-  constructor(private readonly service = new MenuService()) {}
+  constructor(private readonly service = new MenuService(), private readonly searchRepo = new GlobalSearchRepository()) {}
 
   list = async (ctx: Context) => {
     success(ctx, await this.service.list(), '查询成功');
@@ -39,6 +41,7 @@ export class MenuController {
     const parsed = menuSchema.safeParse(ctx.request.body);
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
     const menuId = await this.service.add(parsed.data);
+    await syncMenuSearchIndex(this.searchRepo, { menuId, ...parsed.data, tenantId: ctx.state.user?.tenantId });
     success(ctx, { menuId }, '新增成功');
   };
 
@@ -46,6 +49,7 @@ export class MenuController {
     const parsed = editMenuSchema.safeParse(ctx.request.body);
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
     await this.service.edit(parsed.data);
+    await syncMenuSearchIndex(this.searchRepo, { menuId: parsed.data.menuId, ...parsed.data, tenantId: ctx.state.user?.tenantId });
     success(ctx, null, '修改成功');
   };
 

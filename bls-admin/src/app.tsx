@@ -24,6 +24,8 @@ import React from "react";
 import defaultSettings from "../config/defaultSettings";
 import { errorConfig } from "./requestErrorConfig";
 import { publicThemeConfig, themeCurrent, addTheme, updateTheme } from "@/services/ant-design-pro/api";
+import { GlobalSearchModal } from "./components/RightContent/GlobalSearchModal";
+import { GlobalRealtimeProvider } from "./components/GlobalRealtimeProvider";
 const isDev = process.env.NODE_ENV === "development";
 const loginPath = "/user/login";
 const currentUserPath = "/api/auth/profile";
@@ -410,6 +412,7 @@ export const layout: RunTimeLayoutConfig = ({
       const localeEnabled =
         (initialState?.settings as { locale?: boolean })?.locale !== false;
       return [
+        <GlobalSearchModal key="global-search" />,
         localeEnabled && <LangDropdown key="lang" />,
       ].filter(Boolean);
     },
@@ -564,7 +567,9 @@ export function rootContainer(container: React.ReactNode) {
   return (
     <>
       <OfflineBanner />
-      <ErrorBoundary>{container}</ErrorBoundary>
+      <ErrorBoundary>
+        <GlobalRealtimeProvider>{container}</GlobalRealtimeProvider>
+      </ErrorBoundary>
     </>
   );
 }

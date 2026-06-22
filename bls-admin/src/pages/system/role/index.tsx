@@ -63,8 +63,9 @@ function RolePageInner() {
             菜单权限
           </a>,
         ]}
+        excelMetaKey="system-role"
         permissions={{
-          create: "system:role:create",
+          create: "system:role:add",
           edit: "system:role:edit",
           remove: "system:role:remove",
           status: "system:role:status",

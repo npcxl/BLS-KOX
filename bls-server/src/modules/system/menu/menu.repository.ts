@@ -1,15 +1,19 @@
 import { execute, query } from "../../../core/database";
+import { getCurrentTenantId } from "../../../middleware/tenant";
 import { MenuTreeItem } from "../../../shared/types/current-user";
 import { generateSnowflakeId } from "../../../shared/utils/snowflake";
+import { GlobalSearchRepository } from "../global-search/global-search.repository";
+import { syncMenuSearchIndex } from "../global-search/global-search-sync";
 import { MenuInput } from "./menu.model";
 
 export class MenuRepository {
+  private readonly searchRepo = new GlobalSearchRepository();
+
   listMenus(): Promise<MenuTreeItem[]> {
     return query<MenuTreeItem>(
       `SELECT menu_id AS menuId, parent_id AS parentId, menu_name AS menuName,
               icon, path, component, perms,status, menu_type AS menuType, sort_num AS sortNum
        FROM sys_menu
-       WHERE status = '0'
        ORDER BY sort_num ASC`,
     );
   }
@@ -32,11 +36,21 @@ export class MenuRepository {
         input.status ?? "0",
       ],
     );
+    await syncMenuSearchIndex(this.searchRepo, {
+      menuId,
+      tenantId: getCurrentTenantId(),
+      menuName: input.menuName,
+      path: input.path ?? null,
+      component: input.component ?? null,
+      perms: input.perms ?? null,
+      status: input.status ?? "0",
+      deleted: 0,
+    });
     return menuId;
   }
 
-  update(input: MenuInput & { menuId: string }): Promise<unknown> {
-    return execute(
+  async update(input: MenuInput & { menuId: string }): Promise<unknown> {
+    const result = await execute(
       `UPDATE sys_menu SET parent_id = ?, menu_name = ?, icon = ?, path = ?, component = ?,
        perms = ?, menu_type = ?, sort_num = ?, status = ? WHERE menu_id = ?`,
       [
@@ -52,12 +66,27 @@ export class MenuRepository {
         input.menuId,
       ],
     );
+    await syncMenuSearchIndex(this.searchRepo, {
+      menuId: input.menuId,
+      tenantId: getCurrentTenantId(),
+      menuName: input.menuName,
+      path: input.path ?? null,
+      component: input.component ?? null,
+      perms: input.perms ?? null,
+      status: input.status ?? "0",
+      deleted: 0,
+    });
+    return result;
   }
 
-  remove(ids: string[]): Promise<unknown> {
-    return execute(
+  async remove(ids: string[]): Promise<unknown> {
+    const result = await execute(
       `DELETE FROM sys_menu WHERE menu_id IN (${ids.map(() => "?").join(",")})`,
       ids,
     );
+    for (const menuId of ids) {
+      await this.searchRepo.deleteSearchIndex(getCurrentTenantId() ?? '000000', 'menu', menuId);
+    }
+    return result;
   }
 }

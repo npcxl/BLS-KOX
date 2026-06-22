@@ -1,5 +1,11 @@
 export interface UserQuery {
   keyword?: string;
+  username?: string;
+  nickname?: string;
+  realName?: string;
+  phone?: string;
+  email?: string;
+  deptId?: string;
   status?: string;
   pageNum?: number | string;
   pageSize?: number | string;

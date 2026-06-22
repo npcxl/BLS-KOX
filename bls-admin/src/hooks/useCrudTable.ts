@@ -15,6 +15,7 @@ export type CrudMode = 'create' | 'edit';
 export type UseCrudTableOptions<T extends Record<string, any>> = {
   beforeSubmit?: (values: Partial<T>, current?: T) => Partial<T>;
   onSaved?: (mode: CrudMode, values: Partial<T>, current?: T) => void | Promise<void>;
+  searchMode?: 'fuzzy' | 'exact';
 };
 
 export function useCrudTable<T extends Record<string, any>>(
@@ -23,18 +24,34 @@ export function useCrudTable<T extends Record<string, any>>(
   options: UseCrudTableOptions<T> = {},
 ) {
   const actionRef = useRef<ActionType | undefined>(undefined);
+  const lastRequestParams = useRef<Record<string, any>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [mode, setMode] = useState<CrudMode>('create');
   const [current, setCurrent] = useState<T>();
+  const [createDefaults, setCreateDefaults] = useState<Partial<T> | undefined>();
   const { message, modal } = App.useApp();
 
   const reload = () => actionRef.current?.reload();
 
   const request = async (params: Record<string, any>) => {
+    lastRequestParams.current = params;
+    const { current, pageSize, ...rest } = params;
+    const keywordParts = Object.entries(rest)
+      .filter(([key, value]) => key !== 'keyword' && value !== undefined && value !== null && value !== '')
+      .map(([, value]) => {
+        if (Array.isArray(value)) return value.map(String).filter(Boolean).join(' ');
+        return String(value).trim();
+      })
+      .filter(Boolean);
+    const mergedKeyword = [rest.keyword, ...keywordParts].filter(Boolean).join(' ').trim();
+    const isFuzzySearch = options.searchMode !== 'exact';
+    const keyword = isFuzzySearch ? mergedKeyword : rest.keyword;
+    const queryParams = isFuzzySearch ? { ...rest, keyword: keyword || undefined } : { ...params };
+
     const res = await listResource<T>(resource, {
-      ...params,
-      pageNum: params.current,
-      pageSize: params.pageSize,
+      ...queryParams,
+      pageNum: current,
+      pageSize,
     });
     return {
       data: res.data ?? [],
@@ -43,10 +60,11 @@ export function useCrudTable<T extends Record<string, any>>(
     };
   };
 
-  const openCreate = () => {
+  const openCreate = (defaults?: Partial<T>) => {
     console.log('[useCrudTable] openCreate', resource.basePath);
     setMode('create');
     setCurrent(undefined);
+    setCreateDefaults(defaults);
     setModalOpen(true);
   };
 
@@ -54,12 +72,14 @@ export function useCrudTable<T extends Record<string, any>>(
     console.log('[useCrudTable] openEdit', resource.basePath, record);
     setMode('edit');
     setCurrent(record);
+    setCreateDefaults(undefined);
     setModalOpen(true);
   };
 
   const closeModal = () => {
     setModalOpen(false);
     setCurrent(undefined);
+    setCreateDefaults(undefined);
   };
 
   const submit = async (values: Partial<T>) => {
@@ -106,9 +126,11 @@ export function useCrudTable<T extends Record<string, any>>(
 
   return {
     actionRef,
+    lastRequestParams,
     modalOpen,
     mode,
     current,
+    createDefaults,
     request,
     openCreate,
     openEdit,

@@ -1,44 +1,52 @@
-export type UiFieldType =
+export type PageConfigCode = 'system_user';
+
+export type TableColumnValueType =
   | 'text'
-  | 'password'
-  | 'select'
-  | 'digit'
   | 'textarea'
+  | 'digit'
+  | 'money'
+  | 'date'
   | 'dateTime'
-  | 'treeSelect'
+  | 'dateRange'
+  | 'dateTimeRange'
+  | 'select'
+  | 'radio'
+  | 'checkbox'
+  | 'switch'
   | 'upload';
 
-export interface UiFieldMeta {
-  fieldKey: string;
-  fieldLabel: string;
-  fieldScope: '0' | '1' | '2';
-  fieldType: UiFieldType;
-  valueEnumKey?: string | null;
-  isSearch: boolean;
-  isRequired: boolean;
-  isCopyable: boolean;
-  isEllipsis: boolean;
-  isFormVisible: boolean;
-  isTableVisible: boolean;
-  width?: number | null;
-  sortNum: number;
-  defaultValue?: string | null;
-  placeholder?: string | null;
-  propsJson?: Record<string, unknown> | null;
-  renderCode?: string | null;
-  beforeSubmitCode?: string | null;
+export interface PageConfig {
+  pageId: string;
+  pageCode: PageConfigCode | string;
+  pageName: string;
+  enabled: '0' | '1';
+  sort?: number;
+  remark?: string | null;
+  createTime?: string;
+  updateTime?: string;
 }
 
-export interface PageConfigMeta {
+export interface PageColumnConfig {
+  columnId: string;
   pageCode: string;
-  pageName: string;
+  dataIndex: string;
+  columnName: string;
   title: string;
-  resourcePath: string;
-  rowKey: string;
-  statusKey?: string;
-  isTree: boolean;
-  parentKey?: string | null;
-  status: '0' | '1';
-  remark?: string | null;
-  fields: UiFieldMeta[];
+  orderNum: number;
+  visible: '0' | '1';
+  searchable: '0' | '1';
+  editable: '0' | '1';
+  ellipsis?: '0' | '1';
+  hidden?: '0' | '1';
+  sorter?: '0' | '1';
+  copyable?: '0' | '1';
+  valueType?: TableColumnValueType | null;
+  valueEnumKey?: string | null;
+  width?: number | string | null;
+  fixed?: 'left' | 'right' | null;
+  formType?: string | null;
+  placeholder?: string | null;
+  required?: '0' | '1';
 }
+
+export const USER_PAGE_CODE = 'system_user';

@@ -20,6 +20,11 @@ export default {
       // 依赖 origin 的功能可能需要这个，比如 cookie
       changeOrigin: true,
     },
+    // '/ws/': {
+    //   target: 'ws://localhost:7001',
+    //   ws: true,
+    //   changeOrigin: true,
+    // },
   },
   /**
    * @name 详细的代理配置
