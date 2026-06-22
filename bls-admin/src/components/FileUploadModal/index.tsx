@@ -78,13 +78,16 @@ export default function FileUploadModal({
         moduleName: values.moduleName ?? '',
       },
     });
-    if (res?.code === 200) {
-      message.success('上传成功');
-      setFileList([]);
-      form.resetFields();
-      onOpenChange(false);
-      await onUploaded?.(res);
+
+    if (!res.url && !res.data) {
+      throw new Error('上传成功但未返回文件信息');
     }
+
+    message.success('上传成功');
+    setFileList([]);
+    form.resetFields();
+    onOpenChange(false);
+    await onUploaded?.(res);
   };
 
   return (

@@ -87,19 +87,18 @@ export default function AccountSettingsPage() {
   const uploadProps: UploadProps = {
     listType: 'picture-card',
     maxCount: 1,
-    fileList: avatarFileList,
     showUploadList: false,
+    fileList: avatarFileList,
     beforeUpload: (file) => {
       const isImage = file.type?.startsWith('image/');
       if (!isImage) {
         message.error('只能上传图片');
         return Upload.LIST_IGNORE;
       }
-      return false;
+      return true;
     },
-    onChange: async (info) => {
-      const rawFile = info.file.originFileObj;
-      if (!rawFile) return;
+    customRequest: async (options) => {
+      const rawFile = options.file as File;
 
       try {
         const res = await uploadAvatar({
@@ -111,7 +110,7 @@ export default function AccountSettingsPage() {
         if (!url) throw new Error('上传成功但未返回地址');
 
         const nextFile: UploadFile = {
-          uid: info.file.uid,
+          uid: `${Date.now()}`,
           name: rawFile.name,
           status: 'done',
           url,
@@ -145,7 +144,9 @@ export default function AccountSettingsPage() {
           setAvatarFileList(buildAvatarFileList(resUser.data.avatar ?? undefined));
         }
         message.success('头像已自动保存');
+        options.onSuccess?.(undefined as any);
       } catch (error) {
+        options.onError?.(error as Error);
         message.error(error instanceof Error ? error.message : '头像上传失败');
       }
     },
@@ -254,7 +255,11 @@ export default function AccountSettingsPage() {
                 <Col xs={24}>
                   <Form.Item label="头像上传" extra="上传图片后会自动保存">
                     <Upload {...uploadProps}>
-                      {avatarFileList.length < 1 ? '上传头像' : null}
+                      {avatarFileList.length < 1 ? (
+                        <Button type="dashed">上传头像</Button>
+                      ) : (
+                        <Avatar size={88} src={avatarPreview} />
+                      )}
                     </Upload>
                   </Form.Item>
                 </Col>

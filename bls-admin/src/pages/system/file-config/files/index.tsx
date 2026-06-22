@@ -7,7 +7,7 @@ import type {
   ProFormColumnsType,
 } from "@ant-design/pro-components";
 import { request } from "@umijs/max";
-import { Button, Image, message, Space, Tag, Tooltip } from "antd";
+import { Button, Image, message, Popconfirm, Space, Tag, Tooltip } from "antd";
 import { useMemo, useState } from "react";
 
 export type FileRecord = {
@@ -30,8 +30,8 @@ export type FileRecord = {
 function FilePageInner() {
   const [open, setOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  //字典
   const { valueEnum: statusValueEnum } = useDict("sys_bucket_access_type");
+
   const copyText = async (text?: string | null) => {
     if (!text) return;
 
@@ -42,28 +42,22 @@ function FilePageInner() {
         return;
       }
 
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.left = "-9999px";
-      textarea.style.top = "-9999px";
-      textarea.setAttribute("readonly", "readonly");
-
-      document.body.appendChild(textarea);
-      textarea.select();
-      textarea.setSelectionRange(0, textarea.value.length);
-
-      const success = document.execCommand("copy");
-      document.body.removeChild(textarea);
-
-      if (success) {
-        message.success("地址已复制");
-      } else {
-        message.error("复制失败，请手动复制");
-      }
+      message.warning("当前浏览器不支持自动复制，请手动复制链接");
     } catch (error) {
       console.error("复制失败:", error);
       message.error("复制失败，请手动复制");
+    }
+  };
+
+
+
+  const handleRemove = async (fileId: string) => {
+    const res = await request(`/api/system/storage/files/${fileId}`, {
+      method: "DELETE",
+    });
+    if (res?.code === 200) {
+      message.success("删除成功");
+      setReloadKey((v) => v + 1);
     }
   };
 
@@ -88,9 +82,10 @@ function FilePageInner() {
       dataIndex: "accessType",
       valueType: "select",
       valueEnum: statusValueEnum,
-      render: (_, r) => (
-        <Tag color={r.accessType === 'public' ? 'success' : 'warning'}>
-          {statusValueEnum[r.accessType]?.text ?? (r.accessType === 'public' ? '公开' : '私有')}
+      render: (_, record) => (
+        <Tag color={record.accessType === "public" ? "success" : "warning"}>
+          {statusValueEnum[record.accessType]?.text ??
+            (record.accessType === "public" ? "公开" : "私有")}
         </Tag>
       ),
     },
@@ -150,16 +145,6 @@ function FilePageInner() {
       valueEnum: statusValueEnum,
     },
   ];
-
-  const toolbarExtra = useMemo(
-    () => [
-      <Button key="upload" type="primary" onClick={() => setOpen(true)}>
-        上传文件
-      </Button>,
-    ],
-    []
-  );
-
   const handleDownload = (record: FileRecord) => {
     const link = document.createElement("a");
     link.href = `/api/system/storage/files/${record.fileId}/download`;
@@ -170,16 +155,14 @@ function FilePageInner() {
     link.remove();
     message.success("已开始下载");
   };
-
-  const handleRemove = async (fileId: string) => {
-    const res = await request(`/api/system/storage/files/${fileId}`, {
-      method: "DELETE",
-    });
-    if (res?.code === 200) {
-      message.success("删除成功");
-      setReloadKey((v) => v + 1);
-    }
-  };
+  const toolbarExtra = useMemo(
+    () => [
+      <Button key="upload" type="primary" onClick={() => setOpen(true)}>
+        上传文件
+      </Button>,
+    ],
+    [],
+  );
 
   return (
     <>
@@ -213,13 +196,17 @@ function FilePageInner() {
           <a key="download" onClick={() => void handleDownload(record)}>
             下载
           </a>,
-          <a
+          <Popconfirm
             key="delete"
-            style={{ color: "#ff4d4f" }}
-            onClick={() => handleRemove(record.fileId)}
+            title="确定要删除这个文件吗？"
+            description="删除后将无法恢复，请谨慎操作。"
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => void handleRemove(record.fileId)}
           >
-            删除
-          </a>,
+            <a style={{ color: "#ff4d4f" }}>删除</a>
+          </Popconfirm>,
         ]}
       />
       <FileUploadModal
