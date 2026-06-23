@@ -15,6 +15,65 @@ import {
   UpdateTenantInput,
 } from "./tenant.model";
 
+const DEFAULT_TENANT_CONFIGS = [
+  {
+    configKey: 'sys.user.defaultPassword',
+    configName: '默认密码',
+    configValue: '123456',
+    configType: 'sys' as const,
+    remark: '新建租户默认管理员初始密码',
+  },
+  {
+    configKey: 'sys.app.name',
+    configName: '系统名称',
+    configValue: 'BLS 管理系统',
+    configType: 'sys' as const,
+    remark: '新建租户默认系统名称',
+  },
+  {
+    configKey: 'sys.demo.enabled',
+    configName: '演示模式',
+    configValue: '0',
+    configType: 'sys' as const,
+    remark: '新建租户默认是否启用演示模式',
+  },
+  {
+    configKey: 'sys.upload.maxSize',
+    configName: '上传大小限制',
+    configValue: '20',
+    configType: 'sys' as const,
+    remark: '新建租户默认上传限制，单位 MB',
+  },
+  {
+    configKey: 'sys.version',
+    configName: '系统版本',
+    configValue: '1.0.0',
+    configType: 'sys' as const,
+    remark: '新建租户默认系统版本',
+  },
+  {
+    configKey: 'sys.app.logo',
+    configName: '系统 Logo',
+    configValue: '',
+    configType: 'sys' as const,
+    remark: '新建租户默认系统 Logo',
+  },
+  {
+    configKey: 'sys.user.defaultAvatar',
+    configName: '默认头像',
+    configValue: '',
+    configType: 'sys' as const,
+    remark: '新建租户默认用户头像',
+  },
+  {
+    configKey: 'theme.default',
+    configName: '默认主题',
+    configValue: '{"navTheme":"light","colorPrimary":"#1677ff","layout":"mix","contentWidth":"Fluid"}',
+    configType: 'theme' as const,
+    remark: '新建租户默认主题配置',
+  },
+];
+
 export class TenantRepository {
   listEnabledOptions(): Promise<Pick<Tenant, "tenantId" | "tenantName">[]> {
     return query<Pick<Tenant, "tenantId" | "tenantName">>(
@@ -83,10 +142,21 @@ export class TenantRepository {
     const adminRoleId = generateSnowflakeId();
     const adminUserId = generateSnowflakeId();
     const themeId = generateSnowflakeId();
-    const defaultPassword = await hashPassword("123456");
+    let defaultAdminPassword = await hashPassword('123456');
 
     await transaction(async (conn) => {
       const packageId = input.packageId ?? "P100";
+      const defaultPasswordConfig = await queryOne<{ configValue: string }>(
+        `SELECT config_value AS configValue
+         FROM sys_config
+         WHERE tenant_id = :tenantId AND config_key = 'sys.user.defaultPassword' AND deleted = 0
+         ORDER BY config_id DESC
+         LIMIT 1`,
+        { tenantId: PLATFORM_TENANT_ID },
+      );
+      defaultAdminPassword = await hashPassword(
+        defaultPasswordConfig?.configValue?.trim() || '123456',
+      );
       await conn.execute(
         `INSERT INTO sys_tenant (tenant_id, tenant_name, package_id, expire_time, domain_name, contact_user, contact_phone, status, remark)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -127,7 +197,7 @@ export class TenantRepository {
           adminUserId,
           tenantId,
           "admin",
-          defaultPassword,
+          defaultAdminPassword,
           "租户管理员",
           "租户管理员",
           rootDeptId,
@@ -148,6 +218,22 @@ export class TenantRepository {
          WHERE pm.package_id = ? AND m.status = '0'`,
         [adminRoleId, packageId],
       );
+      for (const config of DEFAULT_TENANT_CONFIGS) {
+        await conn.execute(
+          `INSERT INTO sys_config (config_id, tenant_id, config_key, config_value, config_name, config_type, remark, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            generateSnowflakeId(),
+            tenantId,
+            config.configKey,
+            config.configValue,
+            config.configName,
+            config.configType,
+            config.remark,
+            "0",
+          ],
+        );
+      }
       await conn.execute(
         `INSERT INTO sys_theme_config (theme_id, tenant_id, nav_theme, color_primary, layout, content_width,
           fixed_header, fix_siderbar, color_weak, title, logo, iconfont_url, token_json, status, remark, deleted)

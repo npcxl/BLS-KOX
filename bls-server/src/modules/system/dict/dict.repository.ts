@@ -1,6 +1,6 @@
 import { execute, query, queryOne } from '../../../core/database';
 import { eqCondition, joinConditions, likeCondition } from '../../../core/sql';
-import { getCurrentTenantId, tenantWhere } from '../../../middleware/tenant';
+import { PLATFORM_TENANT_ID } from '../../../shared/constants/tenant';
 import { getPageParams } from '../../../shared/utils/pagination';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { DictData, DictDataInput, DictDataQuery, DictType, DictTypeInput, DictTypeQuery } from './dict.model';
@@ -15,9 +15,7 @@ function buildIdParams(ids: string[]) {
 export class DictRepository {
   async listTypes(filters: DictTypeQuery): Promise<{ rows: DictType[]; total: number }> {
     const page = getPageParams(filters);
-    const tenant = tenantWhere('sys_dict_type');
     const where = joinConditions([
-      tenant,
       likeCondition('dict_name', 'dictName', filters.dictName),
       likeCondition('dict_type', 'dictType', filters.dictType),
       eqCondition('status', 'status', filters.status),
@@ -38,28 +36,24 @@ export class DictRepository {
   }
 
   findTypeById(dictTypeId: string): Promise<DictType | null> {
-    const tenant = tenantWhere('sys_dict_type');
-    const tenantSql = tenant.sql ? ` AND ${tenant.sql}` : '';
     return queryOne<DictType>(
       `SELECT dict_type_id AS dictTypeId, dict_name AS dictName, dict_type AS dictType,
               status, remark, tenant_id AS tenantId, create_time AS createTime, update_time AS updateTime
        FROM sys_dict_type
-       WHERE dict_type_id = :dictTypeId AND deleted = 0${tenantSql}
+       WHERE dict_type_id = :dictTypeId AND deleted = 0
        LIMIT 1`,
-      { dictTypeId, ...tenant.params },
+      { dictTypeId },
     );
   }
 
   findTypeByCode(dictType: string): Promise<DictType | null> {
-    const tenant = tenantWhere('sys_dict_type');
-    const tenantSql = tenant.sql ? ` AND ${tenant.sql}` : '';
     return queryOne<DictType>(
       `SELECT dict_type_id AS dictTypeId, dict_name AS dictName, dict_type AS dictType,
               status, remark, tenant_id AS tenantId, create_time AS createTime, update_time AS updateTime
        FROM sys_dict_type
-       WHERE dict_type = :dictType AND deleted = 0${tenantSql}
+       WHERE dict_type = :dictType AND deleted = 0
        LIMIT 1`,
-      { dictType, ...tenant.params },
+      { dictType },
     );
   }
 
@@ -70,7 +64,7 @@ export class DictRepository {
        VALUES (:dictTypeId, :tenantId, :dictName, :dictType, :status, :remark, 0)`,
       {
         dictTypeId,
-        tenantId: getCurrentTenantId(),
+        tenantId: PLATFORM_TENANT_ID,
         dictName: input.dictName,
         dictType: input.dictType,
         status: input.status ?? '0',
@@ -81,37 +75,29 @@ export class DictRepository {
   }
 
   updateType(input: DictTypeInput & { dictTypeId: string }): Promise<unknown> {
-    const tenant = tenantWhere('sys_dict_type');
-    const tenantSql = tenant.sql ? ` AND ${tenant.sql}` : '';
     return execute(
       `UPDATE sys_dict_type
        SET dict_name = :dictName, dict_type = :dictType, status = :status, remark = :remark
-       WHERE dict_type_id = :dictTypeId AND deleted = 0${tenantSql}`,
+       WHERE dict_type_id = :dictTypeId AND deleted = 0`,
       {
         dictTypeId: input.dictTypeId,
         dictName: input.dictName,
         dictType: input.dictType,
         status: input.status ?? '0',
         remark: input.remark ?? null,
-        ...tenant.params,
       },
     );
   }
 
   removeTypes(ids: string[]): Promise<unknown> {
-    const tenant = tenantWhere('sys_dict_type');
     const { params, placeholders } = buildIdParams(ids);
-    const tenantSql = tenant.sql ? ` AND ${tenant.sql}` : '';
-    return execute(`UPDATE sys_dict_type SET deleted = 1 WHERE dict_type_id IN (${placeholders})${tenantSql}`, {
+    return execute(`UPDATE sys_dict_type SET deleted = 1 WHERE dict_type_id IN (${placeholders})`, {
       ...params,
-      ...tenant.params,
     });
   }
 
   async listDataByType(dictType: string): Promise<DictData[]> {
-    const tenant = tenantWhere('sys_dict_data');
     const where = joinConditions([
-      tenant,
       { sql: 'dict_type_id IN (SELECT dict_type_id FROM sys_dict_type WHERE dict_type = :dictType)', params: { dictType } },
       eqCondition('status', 'status', '0'),
       { sql: 'deleted = 0', params: {} },
@@ -129,12 +115,10 @@ export class DictRepository {
 
   async listData(filters: DictDataQuery): Promise<{ rows: DictData[]; total: number }> {
     const page = getPageParams(filters);
-    const tenant = tenantWhere('sys_dict_data');
     const dictTypeFilter = filters.dictType
       ? { sql: 'dict_type_id IN (SELECT dict_type_id FROM sys_dict_type WHERE dict_type = :dictType)', params: { dictType: filters.dictType } }
       : { sql: '', params: {} };
     const where = joinConditions([
-      tenant,
       eqCondition('dict_type_id', 'dictTypeId', filters.dictTypeId),
       dictTypeFilter,
       likeCondition('dict_label', 'dictLabel', filters.dictLabel),
@@ -163,7 +147,7 @@ export class DictRepository {
        VALUES (:dictDataId, :tenantId, :dictTypeId, :dictLabel, :dictValue, :dictSort, :status, :remark, 0)`,
       {
         dictDataId,
-        tenantId: getCurrentTenantId(),
+        tenantId: PLATFORM_TENANT_ID,
         dictTypeId: input.dictTypeId,
         dictLabel: input.dictLabel,
         dictValue: input.dictValue,
@@ -176,13 +160,11 @@ export class DictRepository {
   }
 
   updateData(input: DictDataInput & { dictDataId: string }): Promise<unknown> {
-    const tenant = tenantWhere('sys_dict_data');
-    const tenantSql = tenant.sql ? ` AND ${tenant.sql}` : '';
     return execute(
       `UPDATE sys_dict_data
        SET dict_type_id = :dictTypeId, dict_label = :dictLabel, dict_value = :dictValue,
            dict_sort = :dictSort, status = :status, remark = :remark
-       WHERE dict_data_id = :dictDataId AND deleted = 0${tenantSql}`,
+       WHERE dict_data_id = :dictDataId AND deleted = 0`,
       {
         dictDataId: input.dictDataId,
         dictTypeId: input.dictTypeId,
@@ -191,18 +173,14 @@ export class DictRepository {
         dictSort: input.dictSort ?? 0,
         status: input.status ?? '0',
         remark: input.remark ?? null,
-        ...tenant.params,
       },
     );
   }
 
   removeData(ids: string[]): Promise<unknown> {
-    const tenant = tenantWhere('sys_dict_data');
     const { params, placeholders } = buildIdParams(ids);
-    const tenantSql = tenant.sql ? ` AND ${tenant.sql}` : '';
-    return execute(`UPDATE sys_dict_data SET deleted = 1 WHERE dict_data_id IN (${placeholders})${tenantSql}`, {
+    return execute(`UPDATE sys_dict_data SET deleted = 1 WHERE dict_data_id IN (${placeholders})`, {
       ...params,
-      ...tenant.params,
     });
   }
 }

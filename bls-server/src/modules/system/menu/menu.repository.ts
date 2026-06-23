@@ -12,9 +12,21 @@ export class MenuRepository {
   listMenus(): Promise<MenuTreeItem[]> {
     return query<MenuTreeItem>(
       `SELECT menu_id AS menuId, parent_id AS parentId, menu_name AS menuName,
-              icon, path, component, perms,status, menu_type AS menuType, sort_num AS sortNum
+              icon, path, component, perms, status, menu_type AS menuType, sort_num AS sortNum
        FROM sys_menu
-       ORDER BY sort_num ASC`,
+       ORDER BY sort_num ASC, menu_id ASC`,
+    );
+  }
+
+  listPackageMenus(packageId: string): Promise<MenuTreeItem[]> {
+    return query<MenuTreeItem>(
+      `SELECT m.menu_id AS menuId, m.parent_id AS parentId, m.menu_name AS menuName,
+              m.icon, m.path, m.component, m.perms, m.status, m.menu_type AS menuType, m.sort_num AS sortNum
+       FROM sys_menu m
+       INNER JOIN sys_package_menu pm ON pm.menu_id = m.menu_id
+       WHERE pm.package_id = :packageId
+       ORDER BY m.sort_num ASC, m.menu_id ASC`,
+      { packageId },
     );
   }
 

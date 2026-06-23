@@ -24,17 +24,17 @@ businessRouter.post('/orders/add', jwtAuth(), hasPerm('business:order:add'), con
 businessRouter.put('/orders/edit', jwtAuth(), hasPerm('business:order:edit'), controller.orderEdit);
 businessRouter.delete('/orders/remove', jwtAuth(), hasPerm('business:order:remove'), controller.orderRemove);
 
-businessRouter.get('/finance-records/list', jwtAuth(), hasPerm('business:finance-record:list'), controller.financeList);
-businessRouter.get('/finance-records/:id', jwtAuth(), hasPerm('business:finance-record:list'), controller.financeDetail);
-businessRouter.post('/finance-records/add', jwtAuth(), hasPerm('business:finance-record:add'), controller.financeAdd);
-businessRouter.put('/finance-records/edit', jwtAuth(), hasPerm('business:finance-record:edit'), controller.financeEdit);
-businessRouter.delete('/finance-records/remove', jwtAuth(), hasPerm('business:finance-record:remove'), controller.financeRemove);
+businessRouter.get('/finance-records/list', jwtAuth(), hasPerm('business:finance:list'), controller.financeList);
+businessRouter.get('/finance-records/:id', jwtAuth(), hasPerm('business:finance:list'), controller.financeDetail);
+businessRouter.post('/finance-records/add', jwtAuth(), hasPerm('business:finance:add'), controller.financeAdd);
+businessRouter.put('/finance-records/edit', jwtAuth(), hasPerm('business:finance:edit'), controller.financeEdit);
+businessRouter.delete('/finance-records/remove', jwtAuth(), hasPerm('business:finance:remove'), controller.financeRemove);
 
-businessRouter.get('/sales-records/list', jwtAuth(), hasPerm('business:sales-record:list'), controller.salesList);
-businessRouter.get('/sales-records/:id', jwtAuth(), hasPerm('business:sales-record:list'), controller.salesDetail);
-businessRouter.post('/sales-records/add', jwtAuth(), hasPerm('business:sales-record:add'), controller.salesAdd);
-businessRouter.put('/sales-records/edit', jwtAuth(), hasPerm('business:sales-record:edit'), controller.salesEdit);
-businessRouter.delete('/sales-records/remove', jwtAuth(), hasPerm('business:sales-record:remove'), controller.salesRemove);
+businessRouter.get('/sales-records/list', jwtAuth(), hasPerm('business:sales:list'), controller.salesList);
+businessRouter.get('/sales-records/:id', jwtAuth(), hasPerm('business:sales:list'), controller.salesDetail);
+businessRouter.post('/sales-records/add', jwtAuth(), hasPerm('business:sales:add'), controller.salesAdd);
+businessRouter.put('/sales-records/edit', jwtAuth(), hasPerm('business:sales:edit'), controller.salesEdit);
+businessRouter.delete('/sales-records/remove', jwtAuth(), hasPerm('business:sales:remove'), controller.salesRemove);
 
 businessRouter.get('/inventories/list', jwtAuth(), hasPerm('business:inventory:list'), controller.inventoryList);
 businessRouter.get('/inventories/:id', jwtAuth(), hasPerm('business:inventory:list'), controller.inventoryDetail);
