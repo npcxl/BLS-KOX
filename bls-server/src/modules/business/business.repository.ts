@@ -1,4 +1,4 @@
-import { sql } from "kysely";
+import { getKyselyRuntime } from "../../shared/utils/kysely-runtime";
 import { getDb } from "../../core/database";
 import { getCurrentTenantId } from "../../middleware/tenant";
 import { generateSnowflakeId } from "../../shared/utils/snowflake";
@@ -29,13 +29,14 @@ export class BusinessRepository<
   }
 
   async list(filters: PageQuery): Promise<PageResult<TRow>> {
+    const { sql } = await getKyselyRuntime();
     const pageNum = Math.max(Number(filters.pageNum ?? 1), 1);
     const pageSize = Math.max(Number(filters.pageSize ?? 20), 1);
     const offset = (pageNum - 1) * pageSize;
     let builder = await this.buildQuery();
 
     if (filters.keyword) {
-      builder = builder.where((eb) =>
+      builder = builder.where((eb: any) =>
         eb.or(
           this.config.searchColumns.map((column) =>
             eb(column as any, "like", `%${filters.keyword}%`),
@@ -67,12 +68,13 @@ export class BusinessRepository<
       .offset(offset)
       .execute()) as unknown as TRow[];
     const totalResult = await (await this.buildQuery())
-      .select((eb) => eb.fn.countAll<number>().as("total"))
+      .select((eb: any) => eb.fn.countAll().as("total"))
       .executeTakeFirst();
     return { rows, total: Number(totalResult?.total ?? 0) };
   }
 
   async detail(id: string): Promise<TRow | null> {
+    const { sql } = await getKyselyRuntime();
     return (await (
       await this.buildQuery()
     )

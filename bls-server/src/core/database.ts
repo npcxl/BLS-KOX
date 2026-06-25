@@ -10,10 +10,6 @@ console.log('[db] config loaded', {
   connectionLimit: env.db.connectionLimit,
 });
 
-/**
- * 原来的 Promise Pool
- * 继续给 query / queryOne / execute / transaction 使用
- */
 export const pool = mysql.createPool({
   host: env.db.host,
   port: env.db.port,
@@ -28,7 +24,6 @@ export const pool = mysql.createPool({
 
 /**
  * Kysely 专用 Pool
- * 不影响你之前的底层封装
  */
 const kyselyPool = createMysqlPool({
   host: env.db.host,

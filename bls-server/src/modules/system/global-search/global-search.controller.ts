@@ -54,7 +54,7 @@ export class GlobalSearchController {
 
   listConfigs = async (ctx: Context): Promise<void> => {
     const result = await this.service.listConfigs(ctx.query);
-    pageSuccess(ctx, result, result.length);
+    pageSuccess(ctx, result.rows, result.total);
   };
 
   saveConfig = async (ctx: Context): Promise<void> => {
@@ -82,8 +82,8 @@ export class GlobalSearchController {
   };
 
   rebuild = async (ctx: Context): Promise<void> => {
-    const moduleKey = typeof ctx.request.body?.moduleKey === 'string' ? ctx.request.body.moduleKey : undefined;
-    const tenantId = typeof ctx.request.body?.tenantId === 'string' ? ctx.request.body.tenantId : undefined;
+    const moduleKey = typeof (ctx.request.body as any)?.moduleKey === 'string' ? (ctx.request.body as any).moduleKey : undefined;
+    const tenantId = typeof (ctx.request.body as any)?.tenantId === 'string' ? (ctx.request.body as any).tenantId : undefined;
     const affected = await this.service.rebuildSearchIndex(moduleKey, tenantId);
     success(ctx, { affected }, '重建成功');
   };

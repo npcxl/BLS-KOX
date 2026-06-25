@@ -23,7 +23,9 @@ export class AuthService {
   ) {}
 
   async loginByDomain(domainName: string, username: string, password: string, meta?: { loginIp?: string | null; userAgent?: string | null; requestId?: string | null; loginType?: string | null }): Promise<LoginResult> {
+    console.log('domainName', domainName);
     const tenant = await this.repository.findTenantByDomain(domainName);
+    console.log('tenant', tenant);
     if (!tenant) throw new UnauthorizedError('当前域名未绑定租户');
     return this.loginByTenant(tenant.tenantId, username, password, meta);
   }

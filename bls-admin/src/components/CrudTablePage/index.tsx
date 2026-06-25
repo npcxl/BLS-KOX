@@ -46,6 +46,8 @@ export type CrudTablePageProps<T extends Record<string, any>> = {
     current?: T
   ) => void | Promise<void>;
   embedded?: boolean;
+  showFormModal?: boolean;
+  showEditAction?: boolean;
   formGrid?: boolean;
   formColProps?: Record<string, any>;
   defaultSearchMode?: "fuzzy" | "exact";
@@ -94,7 +96,9 @@ export default function CrudTablePage<T extends Record<string, any>>({
   columnConfig,
   statusKey = "status",
   createButtonText = "新增",
-  showCreateButton = true, // 特殊表不需要新增。
+  showCreateButton = true,
+  showEditAction = true,
+  showFormModal = true,
   modalWidth = 640,
   pagination = { defaultPageSize: 10, showSizeChanger: true },
   scroll,
@@ -273,9 +277,10 @@ export default function CrudTablePage<T extends Record<string, any>>({
     title: "操作",
     valueType: "option",
     width: 160,
+    fixed: "right",
     render: (_, record) => (
       <Space size="small" wrap>
-        {canEdit && <a onClick={() => crud.openEdit(record)}>编辑</a>}
+        {showEditAction && canEdit && <a onClick={() => crud.openEdit(record)}>编辑</a>}
 
         {canChangeStatus &&
           record[statusKey] !== undefined &&
@@ -365,7 +370,7 @@ export default function CrudTablePage<T extends Record<string, any>>({
         }
       />
 
-      {crud.modalOpen && (
+      {showFormModal && crud.modalOpen && (
         <BetaSchemaForm<T>
           key={formKey}
           title={crud.mode === "edit" ? `编辑${title}` : `新增${title}`}
@@ -374,17 +379,12 @@ export default function CrudTablePage<T extends Record<string, any>>({
           grid={formGrid}
           rowProps={{ gutter: 16 }}
           open={crud.modalOpen}
-          // 重点：控制高度写在这里
           modalProps={{
             destroyOnHidden: true,
             onCancel: crud.closeModal,
-            // 2. 表单内容区域高度控制（核心）
             bodyStyle: {
-              // 方案1：固定像素高度
-              // maxHeight: '600px',
-              // 方案2：自适应屏幕（推荐，视口高度80%，减去标题+底部按钮）
               maxHeight: "calc(80vh - 120px)",
-              overflowY: "auto", // 内容超出出现垂直滚动
+              overflowY: "auto",
               overflowX: "hidden",
             },
           }}

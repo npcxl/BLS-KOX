@@ -85,7 +85,7 @@ export class UserController {
   };
 
   remove = async (ctx: Context) => {
-    const parsed = idsSchema.safeParse({ ids: ctx.query.ids ?? ctx.request.body?.ids });
+    const parsed = idsSchema.safeParse({ ids: (ctx.query as any)?.ids ?? (ctx.request.body as any)?.ids });
     if (!parsed.success) throw new ValidationError('参数错误', parsed.error.flatten());
     await this.service.remove(toIds(parsed.data.ids));
     await writeOperationLog({ actor: getAuditActor(ctx, getCurrentTenantId()), moduleName: 'user', businessType: 'DELETE', title: '删除用户', requestMethod: ctx.method, requestUrl: ctx.path, requestParams: JSON.stringify({ ids: parsed.data.ids }), responseStatus: 200, success: '1' }).catch(() => undefined);

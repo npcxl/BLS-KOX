@@ -3,6 +3,10 @@ export interface RoleQuery {
   status?: string;
   pageNum?: number | string;
   pageSize?: number | string;
+  tenantId?: string | null;
+  userId?: string | null;
+  username?: string | null;
+  roleName?: string | null;
 }
 
 export interface RoleInput {

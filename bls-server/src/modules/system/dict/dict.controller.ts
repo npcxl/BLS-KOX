@@ -58,7 +58,7 @@ export class DictController {
   };
 
   removeTypes = async (ctx: Context): Promise<void> => {
-    await this.service.removeTypes(toIds(ctx.query.ids ?? ctx.request.body?.ids));
+    await this.service.removeTypes(toIds(ctx.query.ids ?? (ctx.request.body as any)?.ids));
     success(ctx, null, '删除成功');
   };
 
@@ -88,7 +88,7 @@ export class DictController {
   };
 
   removeData = async (ctx: Context): Promise<void> => {
-    await this.service.removeData(toIds(ctx.query.ids ?? ctx.request.body?.ids));
+    await this.service.removeData(toIds(ctx.query.ids ?? (ctx.request.body as any)?.ids));
     success(ctx, null, '删除成功');
   };
 }

@@ -225,6 +225,7 @@ export class GlobalSearchRepository {
     status?: string | null;
     deleted?: number;
     sourceTable?: string | null;
+    searchConfigId?: string | null;
   }): Promise<void> {
     const indexId = `${input.tenantId}:${input.moduleKey}:${input.bizId}`;
     await execute(

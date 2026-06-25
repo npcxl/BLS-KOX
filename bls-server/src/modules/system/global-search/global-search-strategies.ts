@@ -21,113 +21,145 @@ export const GLOBAL_SEARCH_SYNC_STRATEGIES = {
   sys_theme_config: syncThemeSearchIndex,
 };
 
-export type GlobalSearchSyncStrategyTable = keyof typeof GLOBAL_SEARCH_SYNC_STRATEGIES;
+export type GlobalSearchSyncStrategyTable =
+  keyof typeof GLOBAL_SEARCH_SYNC_STRATEGIES;
 
 export function getGlobalSearchSyncStrategy(table: string) {
-  return GLOBAL_SEARCH_SYNC_STRATEGIES[table as GlobalSearchSyncStrategyTable];
+  return GLOBAL_SEARCH_SYNC_STRATEGIES[
+    table as GlobalSearchSyncStrategyTable
+  ];
 }
 
-export async function syncFromTable(repo: GlobalSearchRepository, table: string, row: Record<string, unknown>) {
-  const strategy = getGlobalSearchSyncStrategy(table);
-  if (!strategy) return;
+export async function syncFromTable(
+  repo: GlobalSearchRepository,
+  table: string,
+  row: Record<string, unknown>,
+) {
   if (table === 'sys_user') {
-    await strategy(repo, {
-      userId: String(row.userId ?? row.user_id),
-      tenantId: String(row.tenantId ?? row.tenant_id ?? '000000'),
-      username: String(row.username ?? ''),
-      nickname: String(row.nickname ?? ''),
-      realName: (row.realName ?? row.real_name ?? null) as string | null,
-      phone: (row.phone ?? null) as string | null,
-      email: (row.email ?? null) as string | null,
-      deptId: (row.deptId ?? row.dept_id ?? null) as string | null,
-      createBy: (row.createBy ?? row.create_by ?? null) as string | null,
-      status: (row.status ?? '0') as string,
-      deleted: Number(row.deleted ?? 0),
+    await syncUserSearchIndex(repo, {
+      userId: toStringValue(row.userId ?? row.user_id),
+      tenantId: toStringValue(row.tenantId ?? row.tenant_id ?? '000000'),
+      username: toStringValue(row.username),
+      nickname: toStringValue(row.nickname),
+      realName: toNullableString(row.realName ?? row.real_name),
+      phone: toNullableString(row.phone),
+      email: toNullableString(row.email),
+      deptId: toNullableString(row.deptId ?? row.dept_id),
+      createBy: toNullableString(row.createBy ?? row.create_by),
+      status: toStringValue(row.status ?? '0'),
+      deleted: toNumberValue(row.deleted ?? 0),
     });
     return;
   }
+
   if (table === 'sys_role') {
-    await strategy(repo, {
-      roleId: String(row.roleId ?? row.role_id),
-      tenantId: String(row.tenantId ?? row.tenant_id ?? '000000'),
-      roleName: String(row.roleName ?? row.role_name ?? ''),
-      roleKey: String(row.roleKey ?? row.role_key ?? ''),
-      remark: (row.remark ?? null) as string | null,
-      status: (row.status ?? '0') as string,
-      deleted: Number(row.deleted ?? 0),
+    await syncRoleSearchIndex(repo, {
+      roleId: toStringValue(row.roleId ?? row.role_id),
+      tenantId: toStringValue(row.tenantId ?? row.tenant_id ?? '000000'),
+      roleName: toStringValue(row.roleName ?? row.role_name),
+      roleKey: toStringValue(row.roleKey ?? row.role_key),
+      remark: toNullableString(row.remark),
+      status: toStringValue(row.status ?? '0'),
+      deleted: toNumberValue(row.deleted ?? 0),
     });
     return;
   }
+
   if (table === 'sys_menu') {
-    await strategy(repo, {
-      menuId: String(row.menuId ?? row.menu_id),
-      tenantId: (row.tenantId ?? row.tenant_id ?? '000000') as string | null,
-      menuName: String(row.menuName ?? row.menu_name ?? ''),
-      path: (row.path ?? null) as string | null,
-      component: (row.component ?? null) as string | null,
-      perms: (row.perms ?? null) as string | null,
-      status: (row.status ?? '0') as string,
-      deleted: Number(row.deleted ?? 0),
+    await syncMenuSearchIndex(repo, {
+      menuId: toStringValue(row.menuId ?? row.menu_id),
+      tenantId: toNullableString(row.tenantId ?? row.tenant_id ?? '000000'),
+      menuName: toStringValue(row.menuName ?? row.menu_name),
+      path: toNullableString(row.path),
+      component: toNullableString(row.component),
+      perms: toNullableString(row.perms),
+      status: toStringValue(row.status ?? '0'),
+      deleted: toNumberValue(row.deleted ?? 0),
     });
     return;
   }
+
   if (table === 'sys_dept') {
-    await strategy(repo, {
-      deptId: String(row.deptId ?? row.dept_id),
-      tenantId: String(row.tenantId ?? row.tenant_id ?? '000000'),
-      parentId: (row.parentId ?? row.parent_id ?? null) as string | null,
-      deptName: String(row.deptName ?? row.dept_name ?? ''),
-      sortNum: (row.sortNum ?? row.sort_num ?? null) as number | null,
-      status: (row.status ?? '0') as string,
-      deleted: Number(row.deleted ?? 0),
+    await syncDeptSearchIndex(repo, {
+      deptId: toStringValue(row.deptId ?? row.dept_id),
+      tenantId: toStringValue(row.tenantId ?? row.tenant_id ?? '000000'),
+      parentId: toNullableString(row.parentId ?? row.parent_id),
+      deptName: toStringValue(row.deptName ?? row.dept_name),
+      sortNum: toNullableNumber(row.sortNum ?? row.sort_num),
+      status: toStringValue(row.status ?? '0'),
+      deleted: toNumberValue(row.deleted ?? 0),
     });
     return;
   }
+
   if (table === 'sys_config') {
-    await strategy(repo, {
-      configId: String(row.configId ?? row.config_id),
-      tenantId: String(row.tenantId ?? row.tenant_id ?? '000000'),
-      configKey: String(row.configKey ?? row.config_key ?? ''),
-      configName: String(row.configName ?? row.config_name ?? ''),
-      configValue: (row.configValue ?? row.config_value ?? null) as string | null,
-      configType: (row.configType ?? row.config_type ?? null) as string | null,
-      status: (row.status ?? '0') as string,
-      deleted: Number(row.deleted ?? 0),
+    await syncConfigSearchIndex(repo, {
+      configId: toStringValue(row.configId ?? row.config_id),
+      tenantId: toStringValue(row.tenantId ?? row.tenant_id ?? '000000'),
+      configKey: toStringValue(row.configKey ?? row.config_key),
+      configName: toStringValue(row.configName ?? row.config_name),
+      configValue: toNullableString(row.configValue ?? row.config_value),
+      configType: toNullableString(row.configType ?? row.config_type),
+      status: toStringValue(row.status ?? '0'),
+      deleted: toNumberValue(row.deleted ?? 0),
     });
     return;
   }
+
   if (table === 'sys_tenant') {
-    await strategy(repo, {
-      tenantId: String(row.tenantId ?? row.tenant_id),
-      tenantName: String(row.tenantName ?? row.tenant_name ?? ''),
-      packageId: (row.packageId ?? row.package_id ?? null) as string | null,
-      domainName: (row.domainName ?? row.domain_name ?? null) as string | null,
-      contactUser: (row.contactUser ?? row.contact_user ?? null) as string | null,
-      contactPhone: (row.contactPhone ?? row.contact_phone ?? null) as string | null,
-      status: (row.status ?? '0') as string,
-      deleted: Number(row.deleted ?? 0),
+    await syncTenantSearchIndex(repo, {
+      tenantId: toStringValue(row.tenantId ?? row.tenant_id),
+      tenantName: toStringValue(row.tenantName ?? row.tenant_name),
+      packageId: toNullableString(row.packageId ?? row.package_id),
+      domainName: toNullableString(row.domainName ?? row.domain_name),
+      contactUser: toNullableString(row.contactUser ?? row.contact_user),
+      contactPhone: toNullableString(row.contactPhone ?? row.contact_phone),
+      status: toStringValue(row.status ?? '0'),
+      deleted: toNumberValue(row.deleted ?? 0),
     });
     return;
   }
+
   if (table === 'sys_package') {
-    await strategy(repo, {
-      packageId: String(row.packageId ?? row.package_id),
-      packageName: String(row.packageName ?? row.package_name ?? ''),
-      status: (row.status ?? '0') as string,
-      remark: (row.remark ?? null) as string | null,
-      deleted: Number(row.deleted ?? 0),
+    await syncPackageSearchIndex(repo, {
+      packageId: toStringValue(row.packageId ?? row.package_id),
+      packageName: toStringValue(row.packageName ?? row.package_name),
+      status: toStringValue(row.status ?? '0'),
+      remark: toNullableString(row.remark),
+      deleted: toNumberValue(row.deleted ?? 0),
     });
     return;
   }
+
   if (table === 'sys_theme_config') {
-    await strategy(repo, {
-      themeId: String(row.themeId ?? row.theme_id),
-      tenantId: String(row.tenantId ?? row.tenant_id ?? '000000'),
-      title: (row.title ?? null) as string | null,
-      navTheme: (row.navTheme ?? row.nav_theme ?? null) as string | null,
-      colorPrimary: (row.colorPrimary ?? row.color_primary ?? null) as string | null,
-      status: (row.status ?? '0') as string,
-      deleted: Number(row.deleted ?? 0),
+    await syncThemeSearchIndex(repo, {
+      themeId: toStringValue(row.themeId ?? row.theme_id),
+      tenantId: toStringValue(row.tenantId ?? row.tenant_id ?? '000000'),
+      title: toNullableString(row.title),
+      navTheme: toNullableString(row.navTheme ?? row.nav_theme),
+      colorPrimary: toNullableString(row.colorPrimary ?? row.color_primary),
+      status: toStringValue(row.status ?? '0'),
+      deleted: toNumberValue(row.deleted ?? 0),
     });
   }
+}
+
+function toStringValue(value: unknown): string {
+  return value == null ? '' : String(value);
+}
+
+function toNullableString(value: unknown): string | null {
+  return value == null ? null : String(value);
+}
+
+function toNumberValue(value: unknown): number {
+  const num = Number(value);
+  return Number.isNaN(num) ? 0 : num;
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (value == null || value === '') return null;
+
+  const num = Number(value);
+  return Number.isNaN(num) ? null : num;
 }

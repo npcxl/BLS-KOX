@@ -270,10 +270,11 @@ export async function getInitialState(): Promise<{
 
     const systemTitle = latest.systemMap["sys.app.name"];
     const systemLogo = latest.systemMap["sys.app.logo"];
+    console.log(systemTitle);
     const nextSettings = {
       ...defaultSettings,
       ...latest.theme,
-      title: latest.theme.title ?? systemTitle ?? defaultSettings.title,
+      title:systemTitle ?? defaultSettings.title,
       logo:
         latest.theme.logo ??
         systemLogo ??

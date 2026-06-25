@@ -28,7 +28,7 @@ export const excelMetas: ExcelMetaConfig[] = [
       { key: 'status', title: '状态', dbField: 'status', dictionaryCode: 'sys_status' },
     ],
     importStrategy: { batchSize: 200, rollbackOnError: true, uniqueFields: ['username', 'phone', 'email'] },
-    async queryBuilder(queryParam) {
+    queryBuilder(queryParam) {
       const keyword = String(queryParam.keyword ?? '').trim();
       const where: string[] = ['deleted = 0'];
       const params: Record<string, any> = {};
@@ -66,7 +66,7 @@ export const excelMetas: ExcelMetaConfig[] = [
       ] },
     ],
     importStrategy: { batchSize: 200, rollbackOnError: true, uniqueFields: ['configKey'] },
-    async queryBuilder(queryParam) {
+    queryBuilder(queryParam) {
       const where = ['deleted = 0'];
       const params: Record<string, any> = { tenantId: getCurrentTenantId() ?? '000000' };
       if (queryParam.configKey) {

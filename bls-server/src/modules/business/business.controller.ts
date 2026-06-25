@@ -35,7 +35,7 @@ function mapInput(input: Record<string, unknown>): Record<string, unknown> {
   return input;
 }
 
-function repo<T>(cfg: ConstructorParameters<typeof BusinessRepository<T>>[0]) {
+function repo<T extends Record<string, unknown>>(cfg: ConstructorParameters<typeof BusinessRepository<T>>[0]) {
   return new BusinessRepository<T>(cfg as any);
 }
 
@@ -126,7 +126,6 @@ export class BusinessController {
         "status",
         "remark",
       ],
-      dateColumn: "created_at",
       dateColumn: "created_at",
       mapInput,
     }),
@@ -616,7 +615,7 @@ export class BusinessController {
     });
     if (!parsed.success)
       throw new ValidationError("参数错误", parsed.error.flatten());
-    await service.edit(parsed.data.id, parsed.data);
+    await service.edit(String(parsed.data.id), parsed.data);
     await writeOperationLog({
       actor: getAuditActor(ctx, getCurrentTenantId()),
       moduleName: "business",

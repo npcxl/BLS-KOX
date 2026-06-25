@@ -1,0 +1,31 @@
+.bls-rich-editor {
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.bls-rich-editor__toolbar {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.bls-rich-editor__body {
+  position: relative;
+  min-height: 320px;
+}
+
+.bls-rich-editor__body .w-e-text-container {
+  min-height: 320px;
+}
+
+.bls-rich-editor__uploading {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 2;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 12px;
+}

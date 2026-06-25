@@ -27,9 +27,13 @@ export interface OperationLogInput {
   remark?: string | null;
   userId?: string | null;
   username?: string | null;
+  tenantId?: string | null;
 }
 
 export interface UploadAuditInput {
+  tenantId?: string | null;
+  userId?: string | null;
+  username?: string | null;
   actor: AuditActor;
   moduleName?: string | null;
   accessType: 'public' | 'private';
@@ -43,6 +47,9 @@ export interface UploadAuditInput {
   mimeType?: string | null;
   fileSize: number;
   maxUploadBytes: number;
+  clientIp?: string | null;
+  userAgent?: string | null;
+  requestId?: string | null;
   uploadStatus: '0' | '1';
   failReason?: string | null;
   fileId?: string | null;
@@ -76,7 +83,7 @@ function normalizeText(value: unknown): string | null {
   return String(value);
 }
 
-export async function writeOperationLog(input: OperationLogInput): Promise<void> {
+export async function writeOperationLog(input: any): Promise<void> {
   await execute(
     `INSERT INTO sys_operation_log (
       log_id, tenant_id, user_id, username, module_name, business_type, title,
@@ -111,7 +118,7 @@ export async function writeOperationLog(input: OperationLogInput): Promise<void>
   );
 }
 
-export async function writeUploadAudit(input: UploadAuditInput): Promise<void> {
+export async function writeUploadAudit(input: any): Promise<void> {
   const actor = input.actor ?? getAuditActor({});
   await execute(
     `INSERT INTO sys_upload_audit (

@@ -45,7 +45,7 @@ export class RoleController {
   };
 
   remove = async (ctx: Context) => {
-    await this.service.remove(toIds(ctx.query.ids ?? ctx.request.body?.ids));
+    await this.service.remove(toIds(ctx.query.ids ?? (ctx.request.body as any)?.ids));
     success(ctx, null, '删除成功');
   };
 

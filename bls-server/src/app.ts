@@ -14,7 +14,7 @@ import { attachRealtimeWs } from './modules/system/realtime/realtime.ws';
 function getLanUrls(port: number): string[] {
   return Object.values(os.networkInterfaces())
     .flat()
-    .filter((net): net is os.NetworkInterfaceInfo => Boolean(net) && net.family === 'IPv4' && !net.internal)
+    .filter((net): net is os.NetworkInterfaceInfo => Boolean(net) && net?.family === 'IPv4' && !net?.internal)
     .map((net) => `http://${net.address}:${port}`);
 }
 

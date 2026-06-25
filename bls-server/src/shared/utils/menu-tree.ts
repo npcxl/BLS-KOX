@@ -1,17 +1,24 @@
-import { MenuTreeItem } from '../types/current-user';
+import { MenuTreeItem } from "../types/current-user";
 
 export function buildMenuTree(items: MenuTreeItem[]): MenuTreeItem[] {
-  const map = new Map<number, MenuTreeItem>();
+  const map = new Map<string, MenuTreeItem>();
   const roots: MenuTreeItem[] = [];
 
-  items.forEach((item) => map.set(item.menuId, { ...item, children: [] }));
+  items.forEach((item) =>
+    map.set(String(item.menuId), {
+      ...item,
+      children: [],
+    }),
+  );
 
   map.forEach((item) => {
-    if (item.parentId === 0) {
+    if (String(item.parentId) === "0") {
       roots.push(item);
       return;
     }
-    const parent = map.get(item.parentId);
+
+    const parent = map.get(String(item.parentId));
+
     if (parent) {
       parent.children = parent.children ?? [];
       parent.children.push(item);
@@ -22,10 +29,13 @@ export function buildMenuTree(items: MenuTreeItem[]): MenuTreeItem[] {
 
   const prune = (nodes: MenuTreeItem[]): MenuTreeItem[] =>
     nodes
-      .sort((a, b) => a.sortNum - b.sortNum)
+      .sort((a, b) => Number(a.sortNum ?? 0) - Number(b.sortNum ?? 0))
       .map((node) => ({
         ...node,
-        ...(node.children && node.children.length > 0 ? { children: prune(node.children) } : { children: undefined }),
+        children:
+          node.children && node.children.length > 0
+            ? prune(node.children)
+            : undefined,
       }));
 
   return prune(roots);

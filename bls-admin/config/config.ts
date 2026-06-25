@@ -210,7 +210,7 @@ export default defineConfig({
       },
     },
   },
-  exportStatic: {},
+  //exportStatic: {},
   define: {
     'process.env.CI': process.env.CI,
     'process.env.COMMIT_HASH': commitHash,

@@ -376,7 +376,7 @@ export class StorageRepository {
     );
   }
 
-  async createUploadAudit(input: UploadAuditInput): Promise<void> {
+  async createUploadAudit(input: any): Promise<void> {
     await execute(
       `INSERT INTO sys_upload_audit (
         audit_id, tenant_id, user_id, username, module_name, access_type, storage_id, storage_type,

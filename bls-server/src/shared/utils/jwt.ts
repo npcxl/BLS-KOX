@@ -8,6 +8,7 @@ export type TokenType = 'access' | 'refresh';
 export type TokenPayload = JwtPayload & {
   jti: string;
   tokenType: TokenType;
+  exp?: number;
 };
 
 function buildPayload(payload: JwtPayload, tokenType: TokenType): TokenPayload {

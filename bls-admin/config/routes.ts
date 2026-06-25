@@ -64,6 +64,37 @@ export default [
     ],
   },
   {
+    path: "/contentManagement",
+    name: "内容管理",
+    routes: [
+      {
+        path: "/contentManagement/HomePageConfiguration",
+        name: "首页配置",
+        component: "./contentManagement/HomePageConfiguration",
+      },
+      {
+        path: "/contentManagement/Meeting",
+        name: "会议信息",
+        component: "./contentManagement/Meeting",
+      },
+      {
+        path: "/contentManagement/News",
+        name: "新闻",
+        component: "./contentManagement/News",
+      },
+      {
+        path: "/contentManagement/specialGuest",
+        name: "特邀嘉宾",
+        component: "./contentManagement/specialGuest",
+      },
+      {
+        path: "/contentManagement/Download",
+        name: "下载中心",
+        component: "./contentManagement/Download",
+      },
+    ],
+  },
+  {
     path: "/system",
     name: "系统管理",
     routes: [

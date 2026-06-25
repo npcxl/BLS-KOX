@@ -212,7 +212,7 @@ const Login: React.FC = () => {
             fieldProps={{ size: 'large', prefix: <UserOutlined /> }}
             placeholder={intl.formatMessage({
               id: 'pages.login.username.placeholder',
-              defaultMessage: '用户名: admin or user',
+              defaultMessage: '请输入账号',
             })}
             rules={[
               {
@@ -229,7 +229,7 @@ const Login: React.FC = () => {
             fieldProps={{ size: 'large', prefix: <LockOutlined /> }}
             placeholder={intl.formatMessage({
               id: 'pages.login.password.placeholder',
-              defaultMessage: '密码: 123456',
+              defaultMessage: '请输入密码',
             })}
             rules={[
               {

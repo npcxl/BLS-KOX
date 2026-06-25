@@ -11,6 +11,7 @@
     "db:init": "tsx src/scripts/init-db.ts"
   },
   "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@koa/cors": "latest",
     "@types/exceljs": "^0.5.3",
     "dotenv": "latest",

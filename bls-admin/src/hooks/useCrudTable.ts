@@ -82,9 +82,19 @@ export function useCrudTable<T extends Record<string, any>>(
     setCreateDefaults(undefined);
   };
 
+  const normalizeIds = (input: Partial<T>) => {
+    const output = { ...input } as Record<string, any>;
+    Object.keys(output).forEach((key) => {
+      if (key === 'id' && output[key] != null) {
+        output[key] = String(output[key]);
+      }
+    });
+    return output as Partial<T>;
+  };
+
   const submit = async (values: Partial<T>) => {
     const basePayload = mode === 'edit' && current ? { [idKey]: current[idKey], ...values } : values;
-    const payload = options.beforeSubmit?.(basePayload, current) ?? basePayload;
+    const payload = normalizeIds(options.beforeSubmit?.(basePayload, current) ?? basePayload);
     const res = mode === 'edit' ? await editResource(resource, payload) : await addResource(resource, payload);
     if (res.code !== 200) return false;
     message.success(mode === 'edit' ? '修改成功' : '新增成功');

@@ -13,7 +13,7 @@ function assertPermission(meta: ExcelMetaConfig, ctx: Koa.Context) {
   const user = ctx.state.user;
   if (!user) throw new Error('未登录或登录失效');
   if (!meta.permissionKey) return;
-  const permissions = Array.isArray(user.permissions) ? user.permissions : [];
+  const permissions = Array.isArray((user as any).permissions) ? (user as any).permissions : [];
   if (permissions.length && !permissions.includes(meta.permissionKey) && !permissions.includes(`${meta.permissionKey}:all`)) {
     throw new Error('无权限访问该Excel功能');
   }
@@ -76,11 +76,11 @@ export class ExcelService {
     const meta = this.getMeta(metaKey);
     assertPermission(meta, ctx);
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(file);
+    await workbook.xlsx.load(file as any);
     const sheet = workbook.worksheets[0];
     if (!sheet) throw new Error('Excel文件为空');
     const importColumns = normalizeColumns(meta.importColumns);
-    const header = sheet.getRow(1).values.slice(1).map(String);
+    const header = (sheet.getRow(1)?.values as any)?.slice(1).map(String);
     const expectedHeader = buildHeaderRow(importColumns);
     if (header.length < expectedHeader.length) throw new Error('Excel表头与模板不匹配，缺少列');
     const errors: ExcelImportRowError[] = [];

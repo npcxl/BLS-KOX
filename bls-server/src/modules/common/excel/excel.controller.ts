@@ -23,7 +23,7 @@ export class ExcelController {
   };
 
   import = async (ctx: Context) => {
-    const metaKey = String(ctx.request.body?.metaKey ?? ctx.query.metaKey ?? '');
+    const metaKey = String((ctx.request.body as any)?.metaKey ?? (ctx.query as any)?.metaKey ?? '');
     if (!metaKey) ctx.throw(400, 'metaKey不能为空');
     const upload = (ctx.request.files as any)?.file;
     if (!upload) ctx.throw(400, '请上传Excel文件');

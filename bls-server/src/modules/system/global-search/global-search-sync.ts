@@ -57,7 +57,7 @@ export async function syncRoleSearchIndex(repo: GlobalSearchRepository, role: {
 }
 
 export async function syncMenuSearchIndex(repo: GlobalSearchRepository, menu: {
-  menuId: string;
+  menuId?: string;
   tenantId?: string | null;
   menuName: string;
   path?: string | null;
@@ -71,7 +71,7 @@ export async function syncMenuSearchIndex(repo: GlobalSearchRepository, menu: {
     tenantId,
     moduleKey: 'menu',
     moduleName: '菜单管理',
-    bizId: menu.menuId,
+    bizId: menu.menuId ?? '',
     title: menu.menuName,
     subtitle: menu.perms ?? null,
     content: [menu.menuName, menu.path, menu.component, menu.perms].filter(Boolean).join(','),

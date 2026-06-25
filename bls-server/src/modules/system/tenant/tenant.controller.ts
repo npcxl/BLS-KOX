@@ -52,7 +52,7 @@ export class TenantController {
   };
 
   remove = async (ctx: Context): Promise<void> => {
-    await this.service.remove(parseIds(ctx.query.ids ?? ctx.request.body?.ids));
+    await this.service.remove(parseIds(ctx.query.ids ?? (ctx.request.body as any)?.ids));  
     success(ctx, null, '删除成功');
   };
 
