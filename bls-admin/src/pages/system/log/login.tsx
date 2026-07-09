@@ -27,8 +27,8 @@ export default function LoginLogPage() {
       valueType: "select",
       valueEnum: statusValueEnum,
       render: (_, record) => (
-        <Tag color={record.loginStatus === "1" ? "success" : "error"}>
-          {record.loginStatus === "1" ? "成功" : "失败"}
+        <Tag color={statusValueEnum[record.loginStatus]?.color ?? 'default'}>
+          {statusValueEnum[record.loginStatus]?.text ?? record.loginStatus}
         </Tag>
       ),
     },

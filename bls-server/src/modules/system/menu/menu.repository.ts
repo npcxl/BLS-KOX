@@ -58,6 +58,9 @@ export class MenuRepository {
       status: input.status ?? "0",
       deleted: 0,
     });
+    // 自动分配给超管角色和超管套餐，免去手动添加
+    await execute(`INSERT IGNORE INTO sys_role_menu (role_id, menu_id) VALUES ('000001', ?)`, [menuId]);
+    await execute(`INSERT IGNORE INTO sys_package_menu (package_id, menu_id) VALUES ('P001', ?)`, [menuId]);
     return menuId;
   }
 
@@ -92,8 +95,12 @@ export class MenuRepository {
   }
 
   async remove(ids: string[]): Promise<unknown> {
+    const placeholders = ids.map(() => "?").join(",");
+    // 级联清理关联表
+    await execute(`DELETE FROM sys_role_menu WHERE menu_id IN (${placeholders})`, ids);
+    await execute(`DELETE FROM sys_package_menu WHERE menu_id IN (${placeholders})`, ids);
     const result = await execute(
-      `DELETE FROM sys_menu WHERE menu_id IN (${ids.map(() => "?").join(",")})`,
+      `DELETE FROM sys_menu WHERE menu_id IN (${placeholders})`,
       ids,
     );
     for (const menuId of ids) {

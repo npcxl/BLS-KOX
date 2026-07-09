@@ -83,9 +83,8 @@ function FilePageInner() {
       valueType: "select",
       valueEnum: statusValueEnum,
       render: (_, record) => (
-        <Tag color={record.accessType === "public" ? "success" : "warning"}>
-          {statusValueEnum[record.accessType]?.text ??
-            (record.accessType === "public" ? "公开" : "私有")}
+        <Tag color={statusValueEnum[record.accessType]?.color ?? 'default'}>
+          {statusValueEnum[record.accessType]?.text ?? record.accessType}
         </Tag>
       ),
     },

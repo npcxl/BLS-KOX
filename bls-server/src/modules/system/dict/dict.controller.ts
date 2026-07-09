@@ -21,6 +21,7 @@ const dictDataSchema = z.object({
   dictLabel: z.string().min(1),
   dictValue: z.string().min(1),
   dictSort: z.coerce.number().optional(),
+  tag: z.string().optional(),
   status: z.enum(['0', '1']).optional(),
   remark: z.string().nullable().optional(),
 });

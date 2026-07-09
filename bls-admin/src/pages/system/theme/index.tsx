@@ -24,11 +24,10 @@ export type ThemeRecord = {
 function ThemePageInner() {
   const { valueEnum: statusValueEnum } = useDict('sys_status');
   const statusFormEnum = Object.fromEntries(Object.entries(statusValueEnum).map(([k, v]) => [k, v.text]));
-
-  const yesNoEnum = {
-    1: { text: '是', status: 'Success' },
-    0: { text: '否', status: 'Default' },
-  };
+  const { valueEnum: yesNoValueEnum } = useDict('sys_yes_no');
+  const { valueEnum: navThemeValueEnum } = useDict('sys_nav_theme');
+  const { valueEnum: layoutValueEnum } = useDict('sys_layout_type');
+  const { valueEnum: contentWidthValueEnum } = useDict('sys_content_width');
 
   const columns: ProColumns<ThemeRecord>[] = [
     // { title: '标题', dataIndex: 'title', ellipsis: true },
@@ -37,32 +36,32 @@ function ThemePageInner() {
       title: '导航主题',
       dataIndex: 'navTheme',
       valueType: 'select',
-      valueEnum: { light: '亮色', dark: '暗色', realDark: '深色' },
+      valueEnum: navThemeValueEnum,
     },
     { title: '主色', dataIndex: 'colorPrimary', search: false, copyable: true },
     {
       title: '布局',
       dataIndex: 'layout',
       valueType: 'select',
-      valueEnum: { side: '侧边菜单', top: '顶部菜单', mix: '混合菜单' },
+      valueEnum: layoutValueEnum,
     },
     {
       title: '固定头部',
       dataIndex: 'fixedHeader',
       search: false,
-      valueEnum: yesNoEnum,
+      valueEnum: yesNoValueEnum,
     },
     {
       title: '固定侧栏',
       dataIndex: 'fixSiderbar',
       search: false,
-      valueEnum: yesNoEnum,
+      valueEnum: yesNoValueEnum,
     },
     {
       title: '色弱模式',
       dataIndex: 'colorWeak',
       search: false,
-      valueEnum: yesNoEnum,
+      valueEnum: yesNoValueEnum,
     },
     {
       title: '状态',
@@ -80,7 +79,7 @@ function ThemePageInner() {
       dataIndex: 'navTheme',
       valueType: 'select',
       initialValue: 'light',
-      valueEnum: { light: '亮色', dark: '暗色', realDark: '深色' },
+      valueEnum: navThemeValueEnum,
     },
     { title: '主色', dataIndex: 'colorPrimary', valueType: 'color', initialValue: '#1677ff' },
     {
@@ -88,14 +87,14 @@ function ThemePageInner() {
       dataIndex: 'layout',
       valueType: 'select',
       initialValue: 'mix',
-      valueEnum: { side: '侧边菜单', top: '顶部菜单', mix: '混合菜单' },
+      valueEnum: layoutValueEnum,
     },
     {
       title: '内容宽度',
       dataIndex: 'contentWidth',
       valueType: 'select',
       initialValue: 'Fluid',
-      valueEnum: { Fluid: '流式', Fixed: '定宽' },
+      valueEnum: contentWidthValueEnum,
     },
     { title: '固定头部', dataIndex: 'fixedHeader', valueType: 'switch', initialValue: false },
     { title: '固定侧栏', dataIndex: 'fixSiderbar', valueType: 'switch', initialValue: true },

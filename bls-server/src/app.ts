@@ -49,5 +49,8 @@ if (require.main === module) {
     if (lanUrls.length > 0) {
       console.log(`LAN access: ${lanUrls.join(', ')}`);
     }
+    if (env.redis.enabled) {
+      console.log(`[redis] connected ${env.redis.host}:${env.redis.port}`);
+    }
   });
 }

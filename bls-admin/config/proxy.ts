@@ -12,16 +12,16 @@
 export default {
   // 如果需要自定义本地开发服务器  请取消注释按需调整
   dev: {
-    // localhost:8000/api/** -> https://preview.pro.ant.design/api/**
+    // localhost:9000/api/** -> https://preview.pro.ant.design/api/**
     '/api/': {
       // 要代理的地址
-      target: 'http://localhost:7001',
+      target: 'http://localhost:6001',
       // 配置了这个可以从 http 代理到 https
       // 依赖 origin 的功能可能需要这个，比如 cookie
       changeOrigin: true,
     },
     // '/ws/': {
-    //   target: 'ws://localhost:7001',
+    //   target: 'ws://localhost:6001',
     //   ws: true,
     //   changeOrigin: true,
     // },
@@ -31,7 +31,7 @@ export default {
    * @doc https://github.com/chimurai/http-proxy-middleware
    */
   test: {
-    // localhost:8000/api/** -> https://pro-api.ant-design-demo.workers.dev/api/**
+    // localhost:9000/api/** -> https://pro-api.ant-design-demo.workers.dev/api/**
     '/api/': {
       target: 'https://pro-api.ant-design-demo.workers.dev',
       changeOrigin: true,

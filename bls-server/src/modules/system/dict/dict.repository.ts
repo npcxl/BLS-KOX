@@ -104,7 +104,7 @@ export class DictRepository {
     ]);
     return query<DictData>(
       `SELECT dict_data_id AS dictDataId, dict_type_id AS dictTypeId, dict_label AS dictLabel,
-              dict_value AS dictValue, dict_sort AS dictSort, status, remark, tenant_id AS tenantId,
+              dict_value AS dictValue, dict_sort AS dictSort, tag, status, remark, tenant_id AS tenantId,
               create_time AS createTime, update_time AS updateTime
        FROM sys_dict_data
        ${where.sql}
@@ -128,7 +128,7 @@ export class DictRepository {
     const params = { ...where.params, offset: page.offset, pageSize: page.pageSize };
     const rows = await query<DictData>(
       `SELECT dict_data_id AS dictDataId, dict_type_id AS dictTypeId, dict_label AS dictLabel,
-              dict_value AS dictValue, dict_sort AS dictSort, status, remark, tenant_id AS tenantId,
+              dict_value AS dictValue, dict_sort AS dictSort, tag, status, remark, tenant_id AS tenantId,
               create_time AS createTime, update_time AS updateTime
        FROM sys_dict_data
        ${where.sql}
@@ -143,8 +143,8 @@ export class DictRepository {
   async createData(input: DictDataInput): Promise<string> {
     const dictDataId = input.dictDataId ?? generateSnowflakeId();
     await execute(
-      `INSERT INTO sys_dict_data (dict_data_id, tenant_id, dict_type_id, dict_label, dict_value, dict_sort, status, remark, deleted)
-       VALUES (:dictDataId, :tenantId, :dictTypeId, :dictLabel, :dictValue, :dictSort, :status, :remark, 0)`,
+      `INSERT INTO sys_dict_data (dict_data_id, tenant_id, dict_type_id, dict_label, dict_value, dict_sort, tag, status, remark, deleted)
+       VALUES (:dictDataId, :tenantId, :dictTypeId, :dictLabel, :dictValue, :dictSort, :tag, :status, :remark, 0)`,
       {
         dictDataId,
         tenantId: PLATFORM_TENANT_ID,
@@ -152,6 +152,7 @@ export class DictRepository {
         dictLabel: input.dictLabel,
         dictValue: input.dictValue,
         dictSort: input.dictSort ?? 0,
+        tag: input.tag ?? 'default',
         status: input.status ?? '0',
         remark: input.remark ?? null,
       },
@@ -163,7 +164,7 @@ export class DictRepository {
     return execute(
       `UPDATE sys_dict_data
        SET dict_type_id = :dictTypeId, dict_label = :dictLabel, dict_value = :dictValue,
-           dict_sort = :dictSort, status = :status, remark = :remark
+           dict_sort = :dictSort, tag = :tag, status = :status, remark = :remark
        WHERE dict_data_id = :dictDataId AND deleted = 0`,
       {
         dictDataId: input.dictDataId,
@@ -171,6 +172,7 @@ export class DictRepository {
         dictLabel: input.dictLabel,
         dictValue: input.dictValue,
         dictSort: input.dictSort ?? 0,
+        tag: input.tag ?? 'default',
         status: input.status ?? '0',
         remark: input.remark ?? null,
       },

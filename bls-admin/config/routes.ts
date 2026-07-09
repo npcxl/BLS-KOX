@@ -64,37 +64,6 @@ export default [
     ],
   },
   {
-    path: "/contentManagement",
-    name: "内容管理",
-    routes: [
-      {
-        path: "/contentManagement/HomePageConfiguration",
-        name: "首页配置",
-        component: "./contentManagement/HomePageConfiguration",
-      },
-      {
-        path: "/contentManagement/Meeting",
-        name: "会议信息",
-        component: "./contentManagement/Meeting",
-      },
-      {
-        path: "/contentManagement/News",
-        name: "新闻",
-        component: "./contentManagement/News",
-      },
-      {
-        path: "/contentManagement/specialGuest",
-        name: "特邀嘉宾",
-        component: "./contentManagement/specialGuest",
-      },
-      {
-        path: "/contentManagement/Download",
-        name: "下载中心",
-        component: "./contentManagement/Download",
-      },
-    ],
-  },
-  {
     path: "/system",
     name: "系统管理",
     routes: [
@@ -190,49 +159,6 @@ export default [
       {
         path: "/tenant",
         redirect: "/tenant/list",
-      },
-    ],
-  },
-  {
-    path: "/business",
-    name: "业务管理",
-    routes: [
-      {
-        path: "/business/finance",
-        name: "财务管理",
-        component: "./business/finance",
-      },
-      {
-        path: "/business/inventory",
-        name: "库存管理",
-        component: "./business/inventory",
-      },
-      {
-        path: "/business/sales",
-        name: "销售管理",
-        component: "./business/sales",
-      },
-
-      {
-        path: "/business/order",
-        name: "订单管理",
-        component: "./business/order",
-      },
-
-      {
-        path: "/business/product",
-        name: "产品管理",
-        component: "./business/product",
-      },
-      {
-        path: "/business/production-line",
-        name: "生产管理",
-        component: "./business/production-line",
-      },
-      {
-        path: "/business/sales",
-        name: "销售管理",
-        component: "./business/sales",
       },
     ],
   },

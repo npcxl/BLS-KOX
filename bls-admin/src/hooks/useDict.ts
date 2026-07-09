@@ -8,7 +8,7 @@ export type DictOption = {
 
 export function useDict(dictType: string) {
   const [options, setOptions] = useState<DictOption[]>([]);
-  const [valueEnum, setValueEnum] = useState<Record<string, { text: string }>>({});
+  const [valueEnum, setValueEnum] = useState<Record<string, { text: string; color?: string }>>({});
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -19,9 +19,9 @@ export function useDict(dictType: string) {
       .then((data: DictDataItem[]) => {
         if (cancelled) return;
         setOptions(data.map((item) => ({ label: item.dictLabel, value: item.dictValue })));
-        const enumMap: Record<string, { text: string }> = {};
+        const enumMap: Record<string, { text: string; color?: string }> = {};
         for (const item of data) {
-          enumMap[item.dictValue] = { text: item.dictLabel };
+          enumMap[item.dictValue] = { text: item.dictLabel, color: item.tag };
         }
         setValueEnum(enumMap);
       })
@@ -44,9 +44,9 @@ export function useDict(dictType: string) {
     fetchDictData(dictType)
       .then((data: DictDataItem[]) => {
         setOptions(data.map((item) => ({ label: item.dictLabel, value: item.dictValue })));
-        const enumMap: Record<string, { text: string }> = {};
+        const enumMap: Record<string, { text: string; color?: string }> = {};
         for (const item of data) {
-          enumMap[item.dictValue] = { text: item.dictLabel };
+          enumMap[item.dictValue] = { text: item.dictLabel, color: item.tag };
         }
         setValueEnum(enumMap);
       })
@@ -57,7 +57,7 @@ export function useDict(dictType: string) {
 }
 
 export function useMultiDict(dictTypes: string[]) {
-  const [result, setResult] = useState<Record<string, { options: DictOption[]; valueEnum: Record<string, { text: string }> }>>({});
+  const [result, setResult] = useState<Record<string, { options: DictOption[]; valueEnum: Record<string, { text: string; color?: string }> }>>({});
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -73,11 +73,11 @@ export function useMultiDict(dictTypes: string[]) {
     )
       .then((items) => {
         if (cancelled) return;
-        const map: Record<string, { options: DictOption[]; valueEnum: Record<string, { text: string }> }> = {};
+        const map: Record<string, { options: DictOption[]; valueEnum: Record<string, { text: string; color?: string }> }> = {};
         for (const { type, data } of items) {
           map[type] = {
             options: data.map((item) => ({ label: item.dictLabel, value: item.dictValue })),
-            valueEnum: Object.fromEntries(data.map((item) => [item.dictValue, { text: item.dictLabel }])),
+            valueEnum: Object.fromEntries(data.map((item) => [item.dictValue, { text: item.dictLabel, color: item.tag }])),
           };
         }
         setResult(map);

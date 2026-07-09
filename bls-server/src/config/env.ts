@@ -13,13 +13,13 @@ export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   appName: process.env.APP_NAME ?? 'bls-server',
   host: process.env.APP_HOST ?? '0.0.0.0',
-  port: numberEnv('APP_PORT', numberEnv('PORT', 7001)),
+  port: numberEnv('APP_PORT', numberEnv('PORT', 6001)),
   corsOrigin: process.env.CORS_ORIGIN ?? '*',
   ws: {
     enabled: (process.env.WS_ENABLED ?? 'true') === 'true',
     path: process.env.WS_PATH ?? '/ws/realtime',
     host: process.env.WS_HOST ?? '',
-    port: numberEnv('WS_PORT', numberEnv('APP_PORT', numberEnv('PORT', 7001))),
+    port: numberEnv('WS_PORT', numberEnv('APP_PORT', numberEnv('PORT', 6001))),
     url: process.env.WS_URL ?? '',
   },
   jwt: {

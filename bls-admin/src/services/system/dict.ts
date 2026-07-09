@@ -6,6 +6,7 @@ export type DictDataItem = {
   dictLabel: string;
   dictValue: string;
   dictSort: number;
+  tag: string;
   status: '0' | '1';
   remark: string | null;
 };
@@ -36,11 +37,11 @@ export async function getDictLabel(dictType: string, dictValue: string): Promise
   return data.find((item) => item.dictValue === dictValue)?.dictLabel ?? dictValue;
 }
 
-export async function getDictValueEnum(dictType: string): Promise<Record<string, { text: string; status?: string }>> {
+export async function getDictValueEnum(dictType: string): Promise<Record<string, { text: string; status?: string; color?: string }>> {
   const data = await fetchDictData(dictType);
-  const enumMap: Record<string, { text: string; status?: string }> = {};
+  const enumMap: Record<string, { text: string; status?: string; color?: string }> = {};
   for (const item of data) {
-    enumMap[item.dictValue] = { text: item.dictLabel };
+    enumMap[item.dictValue] = { text: item.dictLabel, color: item.tag };
   }
   return enumMap;
 }

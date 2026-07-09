@@ -17,12 +17,7 @@ import {
   globalSearchConfigRouter,
   searchIndexRouter,
 } from "../modules/system/global-search/global-search.routes";
-import { businessRouter } from "../modules/business/business.routes";
 import { excelRouter } from "../modules/common/excel/excel.routes";
-import { newsRouter } from "../modules/content-management/news/news.routes";
-import { meetingRouter } from "../modules/content-management/meeting/meeting.routes";
-import { specialGuestRouter } from "../modules/content-management/special-guest/special-guest.routes";
-import { downloadRouter } from "../modules/content-management/download/download.routes";
 
 export function createRouter(): Router {
   const router = new Router({ prefix: "/api" });
@@ -48,11 +43,6 @@ export function createRouter(): Router {
   );
   router.use(searchIndexRouter.routes(), searchIndexRouter.allowedMethods());
   router.use(excelRouter.routes(), excelRouter.allowedMethods());
-  router.use(newsRouter.routes(), newsRouter.allowedMethods());
-  router.use(meetingRouter.routes(), meetingRouter.allowedMethods());
-  router.use(specialGuestRouter.routes(), specialGuestRouter.allowedMethods());
-  router.use(downloadRouter.routes(), downloadRouter.allowedMethods());
-  router.use(businessRouter.routes(), businessRouter.allowedMethods());
   router.use(logRouter.routes(), logRouter.allowedMethods());
   return router;
 }

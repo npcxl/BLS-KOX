@@ -15,6 +15,7 @@ export interface DictData {
   dictLabel: string;
   dictValue: string;
   dictSort: number;
+  tag: string;
   status: '0' | '1';
   remark: string | null;
   tenantId: string;
@@ -53,6 +54,7 @@ export interface DictDataInput {
   dictLabel: string;
   dictValue: string;
   dictSort?: number;
+  tag?: string;
   status?: '0' | '1';
   remark?: string | null;
 }

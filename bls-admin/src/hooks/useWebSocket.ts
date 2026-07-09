@@ -67,7 +67,7 @@ export function useWebSocket<TMessage = unknown>({
     clearTimers();
     setConnecting(true);
     setErrorText(null);
-    const wsUrl = 'ws://localhost:7001/ws/realtime';
+    const wsUrl = 'ws://localhost:6001/ws/realtime';
 
     const socket = new WebSocket(wsUrl);
     socketRef.current = socket;

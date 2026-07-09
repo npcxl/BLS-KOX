@@ -12,6 +12,7 @@ import { useState } from "react";
 
 function OperationAuditTable() {
   const { valueEnum: businessTypeValueEnum } = useDict("sys_business_type");
+  const { valueEnum: uploadStatusValueEnum } = useDict("sys_upload_status");
 
   const columns: ProColumns<OperationLogRecord>[] = [
     { title: "用户名", dataIndex: "username", copyable: true },
@@ -30,13 +31,10 @@ function OperationAuditTable() {
       title: "结果",
       dataIndex: "success",
       valueType: "select",
-      valueEnum: {
-        1: { text: "成功", status: "Success" },
-        "0": { text: "失败", status: "Error" },
-      },
+      valueEnum: uploadStatusValueEnum,
       render: (_, record) => (
-        <Tag color={record.success === 1 ? "success" : "error"}>
-          {record.success === 1 ? "成功" : "失败"}
+        <Tag color={uploadStatusValueEnum[record.success]?.color ?? 'default'}>
+          {uploadStatusValueEnum[record.success]?.text ?? record.success}
         </Tag>
       ),
     },
@@ -116,8 +114,8 @@ function UploadAuditTable() {
       valueType: "select",
       valueEnum: sys_upload_status?.valueEnum,
       render: (_, record) => (
-        <Tag color={record.uploadStatus === "1" ? "success" : "error"}>
-          {record.uploadStatus === "1" ? "成功" : "失败"}
+        <Tag color={sys_upload_status?.valueEnum?.[record.uploadStatus]?.color ?? 'default'}>
+          {sys_upload_status?.valueEnum?.[record.uploadStatus]?.text ?? record.uploadStatus}
         </Tag>
       ),
     },
