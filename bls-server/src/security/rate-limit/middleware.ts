@@ -3,6 +3,7 @@ import type { Context, Next } from 'koa';
 import { getRequestContext } from '../../core/request-context';
 import { RateLimitService } from './RateLimitService';
 import { defaultRateLimitRules, matchRateLimitRules } from './rules';
+import { rateLimitRejectedTotal } from '../../observability/metrics';
 
 let _svc: RateLimitService | null = null;
 function getService(): RateLimitService { if (!_svc) _svc = new RateLimitService(defaultRateLimitRules); return _svc; }
@@ -31,6 +32,7 @@ export function rateLimitMiddleware() {
       if (!result.allowed) {
         ctx.status = 429;
         ctx.set('Retry-After', String(result.retryAfter));
+        rateLimitRejectedTotal.inc({ path: result.routeKey ?? ctx.path, dimension: result.dimension ?? 'default' });
         ctx.body = { code: 42901, message: '请求过于频繁，请稍后再试', data: null };
         return;
       }

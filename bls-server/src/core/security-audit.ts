@@ -10,6 +10,7 @@ import { generateSnowflakeId } from '../shared/utils/snowflake';
 import type { AuditActor } from './audit';
 import { logger } from './logger';
 import { getRequestContext } from './request-context';
+import { securityEventsTotal, crossTenantAccessTotal, loginFailedTotal, refreshReuseDetectedTotal } from '../observability/metrics';
 
 // ========== 事件类型 ==========
 
@@ -156,6 +157,13 @@ export async function writeSecurityLog(input: SecurityLogInput): Promise<void> {
         source: input.source ?? 'system',
       },
     );
+
+    // 发射 Prometheus 指标
+    const riskLevel = input.riskLevel ?? EVENT_RISK[input.eventType] ?? RiskLevel.LOW;
+    securityEventsTotal.inc({ event_type: input.eventType, risk_level: riskLevel });
+    if (input.eventType === SecurityEventType.CROSS_TENANT_ACCESS) crossTenantAccessTotal.inc();
+    if (input.eventType === SecurityEventType.LOGIN_FAILED) loginFailedTotal.inc();
+    if (input.eventType === SecurityEventType.TOKEN_INVALID && input.title?.includes('Refresh Token 复用')) refreshReuseDetectedTotal.inc();
   } catch (error) {
     logger.error('安全审计日志写入失败', {
       event: 'security_audit_write_failed',

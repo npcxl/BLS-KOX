@@ -38,6 +38,7 @@ function log(level: LogLevel, message: string, meta?: Record<string, unknown>): 
     level,
     timestamp: new Date().toISOString(),
     requestId: ctx?.requestId,
+    traceId: ctx?.traceId,
     tenantId: ctx?.tenantId,
     userId: ctx?.userId,
     message,

@@ -10,6 +10,7 @@ import { errorHandler } from './middleware/error-handler';
 import { logger } from './core/logger';
 import { tenantMiddleware } from './middleware/tenant';
 import { replayProtectionMiddleware } from './middlewares/replayProtection';
+import { httpMetricsMiddleware } from './middleware/http-metrics';
 import { requestContextMiddleware } from './core/request-context';
 import { rateLimitMiddleware } from './security/rate-limit/middleware';
 import { attachRealtimeWs } from './api/system/realtime/realtime.ws';
@@ -38,6 +39,7 @@ export function createApp(): Koa {
   app.use(koaBody({ multipart: true, formidable: { multiples: false } }));
   app.use(bodyParser({ enableTypes: ['json', 'form'] }));
   app.use(requestContextMiddleware);
+  app.use(httpMetricsMiddleware);
   app.use(tenantMiddleware);
   app.use(replayProtectionMiddleware());
   app.use(rateLimitMiddleware());

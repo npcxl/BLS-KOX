@@ -3,6 +3,7 @@ import { readdirSync, existsSync, lstatSync } from "node:fs";
 import { join, relative } from "node:path";
 import { jwtAuth } from "../middleware/auth";
 import type { Context } from "koa";
+import { collectMetrics } from "../observability/metrics";
 
 function camelToKebab(name: string): string {
   return name.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
@@ -146,6 +147,7 @@ function registerFunctions(prefix: string, mod: any, apiRouter: Router): void {
 export function createRouter(): Router {
   const router = new Router({ prefix: "/api" });
   router.get("/health", (ctx) => { ctx.body = { status: "ok" }; });
+  router.get("/metrics", (ctx) => { ctx.type = 'text/plain'; ctx.body = collectMetrics(); });
 
   router.get("/ready", async (ctx) => {
     const READY_TIMEOUT = 2_000;

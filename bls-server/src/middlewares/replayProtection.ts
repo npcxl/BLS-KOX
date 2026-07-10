@@ -5,8 +5,10 @@
 import type { Context, Next } from 'koa';
 import { env } from '../config/env';
 import { ReplayProtectionService, SecurityError } from '../services/ReplayProtectionService';
+import { SecurityErrorCode } from '../shared/constants/security-error-code';
 import type { ReplayRule } from '../config/replay-protection';
 import { writeSecurityLog, actorFromCtx, SecurityEventType, RiskLevel } from '../core/security-audit';
+import { replayRejectedTotal, idempotencyConflictTotal } from '../observability/metrics';
 import { getRequestContext } from '../core/request-context';
 import { logger } from '../core/logger';
 
@@ -91,6 +93,18 @@ export function replayProtectionMiddleware() {
           actor: actorFromCtx(ctx),
           route: ctx.path, method: ctx.method, source: 'replay',
         }).catch((e) => logger.error('安全日志写入失败', { error: String(e) }));
+
+        // 指标采集
+        if (err.securityCode === SecurityErrorCode.REPLAY_DETECTED) {
+          replayRejectedTotal.inc({ reason: 'nonce' });
+        } else if (err.securityCode === SecurityErrorCode.SIGNATURE_INVALID) {
+          replayRejectedTotal.inc({ reason: 'signature' });
+        } else {
+          replayRejectedTotal.inc({ reason: 'timestamp' });
+        }
+        if (err.securityCode >= 40902 && err.securityCode <= 40904) {
+          idempotencyConflictTotal.inc({ type: err.securityCode === 40903 ? 'processing' : err.securityCode === 40904 ? 'conflict' : 'missing_key' });
+        }
 
         ctx.status = err.status;
         ctx.body = { code: err.securityCode, message: err.message, data: null };
