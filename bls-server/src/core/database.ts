@@ -55,12 +55,8 @@ pool.on('connection', (connection) => {
     }
   });
 });
-pool.on('acquire', (connection) => {
-  console.log('[db] connection %d acquired', connection.threadId);
-});
-pool.on('release', (connection) => {
-  console.log('[db] connection %d released', connection.threadId);
-});
+// pool.on('acquire', (connection) => { console.log('[db] connection %d acquired', connection.threadId); });
+// pool.on('release', (connection) => { console.log('[db] connection %d released', connection.threadId); });
 pool.on('enqueue', () => {
   console.log('[db] waiting for available connection slot');
 });
@@ -92,12 +88,8 @@ kyselyPool.on('error', (err) => {
   console.error('[db:kysely] pool error:', err.message);
 });
 
-kyselyPool.on('acquire', (connection) => {
-  console.log('[db:kysely] connection %d acquired', connection.threadId);
-});
-kyselyPool.on('release', (connection) => {
-  console.log('[db:kysely] connection %d released', connection.threadId);
-});
+// kyselyPool.on('acquire', (connection) => { console.log('[db:kysely] connection %d acquired', connection.threadId); });
+// kyselyPool.on('release', (connection) => { console.log('[db:kysely] connection %d released', connection.threadId); });
 kyselyPool.on('enqueue', () => {
   console.log('[db:kysely] waiting for available connection slot');
 });

@@ -20,6 +20,7 @@ import { importJob } from './queue/jobs/import.job';
 import { notificationJob } from './queue/jobs/notification.job';
 import { webhookJob } from './queue/jobs/webhook.job';
 import { outboxPublisher } from './outbox/outbox-publisher';
+import { registerOutboxSubscribers } from './outbox/subscribers';
 
 export function createApp(): Koa {
   const app = new Koa();
@@ -70,7 +71,8 @@ if (require.main === module) {
   // P6: 注册并启动 Worker
   worker.register(exportJob).register(importJob).register(notificationJob).register(webhookJob).start();
 
-  // P7: 启动 Outbox Publisher
+  // P7: 注册订阅者并启动 Outbox Publisher
+  registerOutboxSubscribers();
   outboxPublisher.start();
 
   // ========== Graceful Shutdown ==========

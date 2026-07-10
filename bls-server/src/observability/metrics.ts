@@ -183,3 +183,48 @@ export const jobQueueCompletedTotal = new Counter({
   help: 'Jobs completed successfully',
   registers: [metricsRegistry],
 });
+
+// ========== P7: Outbox ==========
+
+export const outboxPending = new Gauge({
+  name: 'bls_kox_outbox_pending',
+  help: 'Outbox events currently pending or processing (live DB count)',
+  registers: [metricsRegistry],
+  async collect() {
+    try {
+      const { getDb } = require('../core/database');
+      const db = await getDb();
+      const [row] = await (db as any)
+        .selectFrom('outbox_event').select((eb: any) => eb.fn.countAll().as('cnt'))
+        .where('status', 'in', ['pending', 'processing']).execute() as any[];
+      this.set(Number(row?.cnt ?? 0));
+    } catch {
+      // DB 不可用时保持上次值
+    }
+  },
+});
+
+export const outboxPublishedTotal = new Counter({
+  name: 'bls_kox_outbox_published_total',
+  help: 'Total outbox events published successfully',
+  registers: [metricsRegistry],
+});
+
+export const outboxDeadTotal = new Counter({
+  name: 'bls_kox_outbox_dead_total',
+  help: 'Total outbox events moved to dead letter',
+  registers: [metricsRegistry],
+});
+
+export const outboxRetryTotal = new Counter({
+  name: 'bls_kox_outbox_retry_total',
+  help: 'Total outbox retry attempts (handler failures)',
+  registers: [metricsRegistry],
+});
+
+export const outboxPublishDurationSeconds = new Histogram({
+  name: 'bls_kox_outbox_publish_duration_seconds',
+  help: 'Outbox publish (markPublished) duration in seconds',
+  buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 2, 5],
+  registers: [metricsRegistry],
+});

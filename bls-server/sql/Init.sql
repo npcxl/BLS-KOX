@@ -29,13 +29,15 @@ CREATE TABLE `outbox_event` (
   `aggregate_type` varchar(64) DEFAULT NULL,
   `aggregate_id` varchar(32) DEFAULT NULL,
   `payload_json` json DEFAULT NULL,
-  `status` enum('pending','processing','published','failed','dead') NOT NULL DEFAULT 'pending',
+  `status` enum('pending','processing','published','dead') NOT NULL DEFAULT 'pending',
   `retry_count` int NOT NULL DEFAULT '0',
   `next_retry_at` datetime DEFAULT NULL,
+  `processing_at` datetime DEFAULT NULL COMMENT '领取(processing)时间, 用于 stale recovery, 见 P7',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `published_at` datetime DEFAULT NULL,
   PRIMARY KEY (`event_id`),
   KEY `idx_status_retry` (`status`,`next_retry_at`),
+  KEY `idx_status_processing` (`status`,`processing_at`),
   KEY `idx_tenant_type` (`tenant_id`,`event_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Outbox 事件表';
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -290,7 +292,7 @@ CREATE TABLE `sys_jobs` (
   `user_id` varchar(32) DEFAULT NULL,
   `job_type` varchar(64) NOT NULL,
   `job_data` json DEFAULT NULL,
-  `status` enum('queued','processing','completed','failed','cancelled') NOT NULL DEFAULT 'queued',
+  `status` enum('queued','processing','completed','dead','cancelled') NOT NULL DEFAULT 'queued',
   `attempt` int NOT NULL DEFAULT '0',
   `max_attempts` int NOT NULL DEFAULT '3',
   `next_retry_at` datetime DEFAULT NULL,

@@ -9,6 +9,8 @@
 import { fetchPending, markPublished, markFailed } from './outbox';
 import type { OutboxEvent } from './outbox';
 import { logger } from '../core/logger';
+import { getDb } from '../core/database';
+
 
 const POLL_INTERVAL = 3_000;
 const DRAIN_TIMEOUT = 30_000;
@@ -44,9 +46,10 @@ export class OutboxPublisher {
   }
 
   private async poll(): Promise<void> {
+    const db = await getDb();
     while (this.running) {
       try {
-        const event = await fetchPending();
+        const event = await fetchPending(db);
         if (event) {
           const p = this.dispatch(event).finally(() => this.inflight.delete(event.eventId));
           this.inflight.set(event.eventId, p);
@@ -59,9 +62,12 @@ export class OutboxPublisher {
   }
 
   private async dispatch(event: OutboxEvent): Promise<void> {
+    const db = await getDb();
     const handlers = this.subscribers.get(event.eventType) ?? [];
-    if (handlers.length === 0) { await markPublished(event.eventId); return; }
+    if (handlers.length === 0) { await markPublished(db, event.eventId); return; }
 
+    // At-Least-Once: 同一 eventType 下所有 handler 顺序执行, 任一失败则整体重试.
+    // 因此每个 handler 必须幂等 (详见 docs/outbox.md 及 subscribers.ts 注释)
     let failed = false;
     for (const handler of handlers) {
       try { await handler(event); } catch (err: any) {
@@ -70,9 +76,9 @@ export class OutboxPublisher {
       }
     }
     if (failed) {
-      await markFailed(event.eventId, event, 'Handler execution failed');
+      await markFailed(db, event.eventId, event, 'Handler execution failed');
     } else {
-      await markPublished(event.eventId);
+      await markPublished(db, event.eventId);
     }
   }
 }

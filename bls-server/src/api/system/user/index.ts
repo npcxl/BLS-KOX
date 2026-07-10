@@ -8,6 +8,7 @@ import { getRequestContext } from '../../../core/request-context';
 import { logSecurity } from '../../../core/security-audit';
 import { SecurityEventType } from '../../../core/security-audit';
 import { pickAllowed, USER_PROFILE_FIELDS, USER_CREATE_FIELDS, USER_EDIT_FIELDS } from '../../../shared/utils/mass-assignment';
+import { appendEvent, EventTypes } from '../../../outbox/outbox';
 
 function tenantId(): string {
   const ctx = getRequestContext();
@@ -64,7 +65,18 @@ router.put('/profile', jwtAuth(), async (ctx: Context) => {
 router.post('/add', jwtAuth(), hasPerm('system:user:add'), async (ctx: Context) => {
   const db = (await getDb()) as any;
   const data = pickAllowed((ctx.request.body ?? {}) as any, USER_CREATE_FIELDS);
-  await db.insertInto(T).values({...data, tenant_id: tenantId(), deleted:0} as any).execute();
+  const tid = tenantId();
+  // 业务写入与 Outbox 事件写入同一事务 → 原子性: 任一失败整体回滚
+  await db.transaction().execute(async (trx: any) => {
+    await trx.insertInto(T).values({ ...data, tenant_id: tid, deleted: 0 } as any).execute();
+    await appendEvent(trx, {
+      tenantId: tid,
+      eventType: EventTypes.USER_CREATED,
+      aggregateType: 'user',
+      aggregateId: (data as any).username,
+      payload: { username: (data as any).username, nickname: (data as any).nickname },
+    });
+  });
   ctx.body = { code: 200, message: '新增成功' };
 });
 
