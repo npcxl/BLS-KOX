@@ -159,8 +159,17 @@ export const websocketConnections = new Gauge({
 
 export const jobQueueWaiting = new Gauge({
   name: 'bls_kox_job_queue_waiting',
-  help: 'Jobs waiting in queue',
+  help: 'Jobs waiting in queue (live DB count)',
   registers: [metricsRegistry],
+  async collect() {
+    try {
+      const { getDb } = require('../core/database');
+      const [row] = await (await getDb())
+        .selectFrom('sys_jobs').select((eb: any) => eb.fn.countAll().as('cnt'))
+        .where('status', '=', 'queued').execute() as any[];
+      this.set(Number(row?.cnt ?? 0));
+    } catch {}
+  },
 });
 
 export const jobQueueFailedTotal = new Counter({
