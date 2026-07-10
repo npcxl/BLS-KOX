@@ -106,6 +106,7 @@ export function replayProtectionMiddleware() {
           idempotencyConflictTotal.inc({ type: err.securityCode === 40903 ? 'processing' : err.securityCode === 40904 ? 'conflict' : 'missing_key' });
         }
 
+        ctx.state.metricsRoute = rule.path; // 标准化 route label
         ctx.status = err.status;
         ctx.body = { code: err.securityCode, message: err.message, data: null };
         return;

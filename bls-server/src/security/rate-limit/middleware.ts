@@ -30,6 +30,7 @@ export function rateLimitMiddleware() {
       const result = await svc.check(rule, key, routeKey);
 
       if (!result.allowed) {
+        ctx.state.metricsRoute = routeKey; // 提前返回路径写入标准化 route
         ctx.status = 429;
         ctx.set('Retry-After', String(result.retryAfter));
         rateLimitRejectedTotal.inc({ path: result.routeKey ?? ctx.path, dimension: result.dimension ?? 'default' });

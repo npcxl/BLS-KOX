@@ -1,216 +1,139 @@
 /**
- * 轻量级 Metrics Registry（Prometheus 格式）
+ * P5 Observability — prom-client 统一 Registry
  *
- * 避免引入重量级 SDK，提供 Counter / Gauge / Histogram 三大类型。
- * GET /api/metrics 输出 Prometheus text format。
+ * 所有指标定义在此文件，使用 prom-client 标准库。
+ * GET /api/metrics 通过 metricsRegistry.metrics() 输出 Prometheus exposition format。
  */
 
-interface MetricLabel { name: string; value: string; }
+import {
+  Registry,
+  Counter,
+  Gauge,
+  Histogram,
+  collectDefaultMetrics,
+} from 'prom-client';
 
-class Counter {
-  private values = new Map<string, number>();
-  constructor(
-    public name: string,
-    public help: string,
-    public labelNames: string[] = [],
-  ) {}
+export const metricsRegistry = new Registry();
 
-  inc(labels: Record<string, string> = {}, value = 1) {
-    const key = this.keyOf(labels);
-    this.values.set(key, (this.values.get(key) ?? 0) + value);
-  }
+// 默认 Node.js 指标（内存、GC、事件循环等）
+collectDefaultMetrics({ register: metricsRegistry, prefix: 'bls_kox_' });
 
-  private keyOf(labels: Record<string, string>) {
-    return this.labelNames.map((n) => `${n}=${labels[n] ?? ''}`).join(',');
-  }
+// ========== HTTP ==========
 
-  export(): string {
-    const lines = [`# HELP ${this.name} ${this.help}`, `# TYPE ${this.name} counter`];
-    for (const [k, v] of this.values) {
-      lines.push(`${this.name}{${k}} ${v}`);
-    }
-    return lines.join('\n');
-  }
-}
+export const httpRequestsTotal = new Counter({
+  name: 'bls_kox_http_requests_total',
+  help: 'Total HTTP requests',
+  labelNames: ['method', 'route', 'status'],
+  registers: [metricsRegistry],
+});
 
-class Gauge {
-  private values = new Map<string, number>();
-  constructor(
-    public name: string,
-    public help: string,
-    public labelNames: string[] = [],
-  ) {}
+export const httpRequestDurationSeconds = new Histogram({
+  name: 'bls_kox_http_request_duration_seconds',
+  help: 'HTTP request duration in seconds',
+  labelNames: ['method', 'route'],
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+  registers: [metricsRegistry],
+});
 
-  set(labels: Record<string, string> = {}, value: number) {
-    this.values.set(this.keyOf(labels), value);
-  }
+export const httpRequestErrorsTotal = new Counter({
+  name: 'bls_kox_http_request_errors_total',
+  help: 'Total HTTP request errors',
+  labelNames: ['method', 'route'],
+  registers: [metricsRegistry],
+});
 
-  inc(labels: Record<string, string> = {}, value = 1) {
-    const key = this.keyOf(labels);
-    this.values.set(key, (this.values.get(key) ?? 0) + value);
-  }
+// ========== Security ==========
 
-  dec(labels: Record<string, string> = {}, value = 1) { this.inc(labels, -value); }
+export const securityEventsTotal = new Counter({
+  name: 'bls_kox_security_events_total',
+  help: 'Total security events',
+  labelNames: ['event_type', 'risk_level'],
+  registers: [metricsRegistry],
+});
 
-  private keyOf(labels: Record<string, string>) {
-    return this.labelNames.map((n) => `${n}=${labels[n] ?? ''}`).join(',');
-  }
+export const rateLimitRejectedTotal = new Counter({
+  name: 'bls_kox_rate_limit_rejected_total',
+  help: 'Rate limit rejections',
+  labelNames: ['route', 'dimension'],
+  registers: [metricsRegistry],
+});
 
-  export(): string {
-    const lines = [`# HELP ${this.name} ${this.help}`, `# TYPE ${this.name} gauge`];
-    for (const [k, v] of this.values) {
-      lines.push(`${this.name}{${k}} ${v}`);
-    }
-    return lines.join('\n');
-  }
-}
+export const replayRejectedTotal = new Counter({
+  name: 'bls_kox_replay_rejected_total',
+  help: 'Replay attack rejections',
+  labelNames: ['reason'],
+  registers: [metricsRegistry],
+});
 
-class Histogram {
-  private buckets: number[];
-  private data = new Map<string, number[]>();
-  private sum = new Map<string, number>();
-  private count = new Map<string, number>();
+export const idempotencyConflictTotal = new Counter({
+  name: 'bls_kox_idempotency_conflict_total',
+  help: 'Idempotency conflicts',
+  labelNames: ['type'],
+  registers: [metricsRegistry],
+});
 
-  constructor(
-    public name: string,
-    public help: string,
-    buckets: number[],
-    public labelNames: string[] = [],
-  ) {
-    this.buckets = buckets.sort((a, b) => a - b);
-  }
+export const refreshReuseDetectedTotal = new Counter({
+  name: 'bls_kox_refresh_reuse_detected_total',
+  help: 'Refresh token reuse detections',
+  registers: [metricsRegistry],
+});
 
-  observe(labels: Record<string, string> = {}, value: number) {
-    const key = this.keyOf(labels);
-    if (!this.data.has(key)) this.data.set(key, new Array(this.buckets.length + 1).fill(0));
-    const counts = this.data.get(key)!;
-    const idx = this.buckets.findIndex((b) => value <= b);
-    counts[idx === -1 ? this.buckets.length : idx]++;
-    this.sum.set(key, (this.sum.get(key) ?? 0) + value);
-    this.count.set(key, (this.count.get(key) ?? 0) + 1);
-  }
+export const crossTenantAccessTotal = new Counter({
+  name: 'bls_kox_cross_tenant_access_total',
+  help: 'Cross-tenant access attempts',
+  registers: [metricsRegistry],
+});
 
-  private keyOf(labels: Record<string, string>) {
-    return this.labelNames.map((n) => `${n}=${labels[n] ?? ''}`).join(',');
-  }
+export const loginFailedTotal = new Counter({
+  name: 'bls_kox_login_failed_total',
+  help: 'Failed login attempts',
+  registers: [metricsRegistry],
+});
 
-  export(): string {
-    const lines = [`# HELP ${this.name} ${this.help}`, `# TYPE ${this.name} histogram`];
-    for (const [k, counts] of this.data) {
-      let acc = 0;
-      for (let i = 0; i < this.buckets.length; i++) {
-        acc += counts[i];
-        lines.push(`${this.name}_bucket{${k},le="${this.buckets[i]}"} ${acc}`);
-      }
-      lines.push(`${this.name}_bucket{${k},le="+Inf"} ${acc + (counts[this.buckets.length] ?? 0)}`);
-      lines.push(`${this.name}_sum{${k}} ${this.sum.get(k) ?? 0}`);
-      lines.push(`${this.name}_count{${k}} ${this.count.get(k) ?? 0}`);
-    }
-    return lines.join('\n');
-  }
-}
+// ========== Database ==========
 
-// ========== HTTP Metrics ==========
+export const dbQueryDurationSeconds = new Histogram({
+  name: 'bls_kox_db_query_duration_seconds',
+  help: 'Database query duration',
+  labelNames: ['operation'],
+  buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 2],
+  registers: [metricsRegistry],
+});
 
-export const httpRequestsTotal = new Counter(
-  'http_requests_total',
-  'Total HTTP requests',
-  ['method', 'route', 'status'],
-);
+export const dbQueryErrorsTotal = new Counter({
+  name: 'bls_kox_db_query_errors_total',
+  help: 'Database query errors',
+  labelNames: ['operation'],
+  registers: [metricsRegistry],
+});
 
-export const httpRequestDurationSeconds = new Histogram(
-  'http_request_duration_seconds',
-  'HTTP request duration in seconds',
-  [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
-  ['method', 'route'],
-);
+// ========== Redis ==========
 
-export const httpRequestErrorsTotal = new Counter(
-  'http_request_errors_total',
-  'Total HTTP request errors',
-  ['method', 'route'],
-);
+export const redisOperationDurationSeconds = new Histogram({
+  name: 'bls_kox_redis_operation_duration_seconds',
+  help: 'Redis operation duration',
+  labelNames: ['operation'],
+  buckets: [0.0001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5],
+  registers: [metricsRegistry],
+});
 
-// ========== Security Metrics ==========
+export const redisOperationErrorsTotal = new Counter({
+  name: 'bls_kox_redis_operation_errors_total',
+  help: 'Redis operation errors',
+  labelNames: ['operation'],
+  registers: [metricsRegistry],
+});
 
-export const securityEventsTotal = new Counter(
-  'security_events_total',
-  'Total security events',
-  ['event_type', 'risk_level'],
-);
+// ========== Session / WebSocket ==========
 
-export const rateLimitRejectedTotal = new Counter(
-  'rate_limit_rejected_total',
-  'Rate limit rejections',
-  ['path', 'dimension'],
-);
+export const activeSessions = new Gauge({
+  name: 'bls_kox_active_sessions',
+  help: 'Active user sessions',
+  registers: [metricsRegistry],
+});
 
-export const replayRejectedTotal = new Counter(
-  'replay_rejected_total',
-  'Replay attack rejections',
-  ['reason'],
-);
-
-export const idempotencyConflictTotal = new Counter(
-  'idempotency_conflict_total',
-  'Idempotency conflicts',
-  ['type'],
-);
-
-export const refreshReuseDetectedTotal = new Counter(
-  'refresh_reuse_detected_total',
-  'Refresh token reuse detections',
-);
-
-export const crossTenantAccessTotal = new Counter(
-  'cross_tenant_access_total',
-  'Cross-tenant access attempts',
-);
-
-export const loginFailedTotal = new Counter(
-  'login_failed_total',
-  'Failed login attempts',
-);
-
-// ========== Infrastructure Metrics ==========
-
-export const dbQueryErrorsTotal = new Counter(
-  'db_query_errors_total',
-  'Database query errors',
-);
-
-export const redisOperationErrorsTotal = new Counter(
-  'redis_operation_errors_total',
-  'Redis operation errors',
-);
-
-export const activeSessions = new Gauge(
-  'active_sessions',
-  'Active user sessions',
-);
-
-export const websocketConnections = new Gauge(
-  'websocket_connections',
-  'Active WebSocket connections',
-);
-
-/** 导出所有指标为 Prometheus text format */
-export function collectMetrics(): string {
-  const all = [
-    httpRequestsTotal,
-    httpRequestDurationSeconds,
-    httpRequestErrorsTotal,
-    securityEventsTotal,
-    rateLimitRejectedTotal,
-    replayRejectedTotal,
-    idempotencyConflictTotal,
-    refreshReuseDetectedTotal,
-    crossTenantAccessTotal,
-    loginFailedTotal,
-    dbQueryErrorsTotal,
-    redisOperationErrorsTotal,
-    activeSessions,
-    websocketConnections,
-  ];
-  return all.map((m) => m.export()).filter(Boolean).join('\n\n') + '\n';
-}
+export const websocketConnections = new Gauge({
+  name: 'bls_kox_websocket_connections',
+  help: 'Active WebSocket connections',
+  registers: [metricsRegistry],
+});
