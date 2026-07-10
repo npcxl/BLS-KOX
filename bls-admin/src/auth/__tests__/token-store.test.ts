@@ -1,23 +1,18 @@
 /**
  * Token Store 单元测试
  */
-import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
-import type { TokenStore } from '@/auth/token-store';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Mock localStorage
+// Mock localStorage（vi.mock 会在所有 import 之前执行）
 const store = new Map<string, string>();
-
-let tokenStore: TokenStore;
-
-beforeAll(async () => {
-  vi.stubGlobal('localStorage', {
-    getItem: (key: string) => store.get(key) ?? null,
-    setItem: (key: string, value: string) => { store.set(key, value); },
-    removeItem: (key: string) => { store.delete(key); },
-  });
-  const mod = await import('@/auth/token-store');
-  tokenStore = mod.tokenStore;
+vi.stubGlobal('localStorage', {
+  getItem: (key: string) => store.get(key) ?? null,
+  setItem: (key: string, value: string) => { store.set(key, value); },
+  removeItem: (key: string) => { store.delete(key); },
 });
+
+// 静态导入（mock 已在上面设置好）
+import { tokenStore } from '@/auth/token-store';
 
 beforeEach(() => {
   store.clear();
