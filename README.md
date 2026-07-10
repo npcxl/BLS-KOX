@@ -20,7 +20,7 @@ export default defineCrudModule({
   prefix: '/system/role',       // 路由前缀
   table: 'sys_role',            // 数据库表名
   pkField: 'role_id',           // 主键字段
-  searchFields: ['role_name'],  // 关键字搜索字段
+  searchFields: ['role_name'],  // 关键字搜索字段   
   name: '角色',                 // 模块中文名（日志使用）
 });
 ```
@@ -405,12 +405,14 @@ router.post('/add', jwtAuth(), hasPerm('order:add'), async (ctx) => {
 
 ```tsx
 export default function OrderPage() {
+  const { proColumns } = usePageConfig('business_order');
+
   return (
     <CrudTablePage<OrderRecord>
       title="订单管理"
       rowKey="id"
       resource={{ basePath: '/api/business/orders' }}
-      columns={columns}
+      columns={proColumns}
       formColumns={formColumns}
     />
   );
@@ -774,7 +776,108 @@ const { connected, connecting, lastMessage, errorText, reconnect } = useWebSocke
 
 ---
 
-## 4. 快速接入指南
+## 4. 动态列配置
+
+### 4.1 概述
+
+BLS 支持**运行时动态配置页面列**。列的显示、搜索、编辑、顺序等属性全部存储在数据库中，无需改代码即可调整。
+
+```
+硬编码方式: 改 columns → 改代码 → 重新编译 → 部署
+动态方式:   打开管理页 → 勾选/排序 → 保存 → 即时生效
+```
+
+### 4.2 使用方式
+
+前端只需一行 `usePageConfig(pageCode)` 替代硬编码的 `columns`：
+
+```tsx
+import { usePageConfig } from '@/hooks/usePageConfig';
+
+function UserPage() {
+  const { proColumns } = usePageConfig('system_user');
+  // proColumns 自动从 sys_page_column_config 加载，替代硬编码的 columns
+
+  return (
+    <CrudTablePage
+      columns={proColumns}   // ← 动态列
+      formColumns={formColumns}  // ← 表单列可独立定义
+      ...
+    />
+  );
+}
+```
+
+### 4.3 数据表
+
+**`sys_page_config`** — 页面注册：
+
+```sql
+page_config_id, page_code, page_name, enabled, sort
+```
+
+**`sys_page_column_config`** — 列定义（核心）：
+
+| 字段 | 说明 |
+|------|------|
+| `data_index` | 字段标识（camelCase，如 `roleName`） |
+| `title` | 列标题（如 角色名称） |
+| `order_num` | 排序（数字越小越靠前） |
+| `visible` | 表格中是否显示 |
+| `searchable` | 是否可搜索（勾选后后端自动支持精确过滤） |
+| `editable` | 表单中是否可编辑 |
+| `ellipsis` | 超出省略 |
+| `copyable` | 可复制 |
+| `value_type` | 类型：text / select / dateTime / digit / textarea / switch |
+| `value_enum_code` | 字典编码（如 `sys_status`，自动渲染 Tag + 下拉选项） |
+| `required` | 必填校验 |
+
+### 4.4 后端联动
+
+列表接口从 `sys_page_column_config` 动态读取 `searchable=1` 的字段，自动支持：
+
+- **模糊搜索**：`keyword=测试` → 所有 `searchable` 字段做 `LIKE`
+- **精确过滤**：`status=0` → 自动 `WHERE status = '0'`
+
+无需在后端硬编码任何搜索字段。
+
+### 4.5 管理页面
+
+**入口**：系统菜单 → **页面配置**
+
+- 左侧：页面列表（可搜索）
+- 右侧：选中页面的列配置表格（直接编辑 `title`、`orderNum`、勾选 `visible/searchable/editable` 等）
+- 保存后即时生效
+
+### 4.6 注册新页面的列配置
+
+```sql
+-- 1. 注册页面
+INSERT INTO sys_page_config (page_config_id, page_code, page_name) 
+VALUES ('P_NEW', 'business_tag', '标签管理');
+
+-- 2. 注册列
+INSERT INTO sys_page_column_config VALUES
+('C_TAG_01','business_tag','tagName','标签名称',1,1,1,1,1,0,'text',NULL,NULL,1,'000000',0,NOW(),NOW()),
+('C_TAG_02','business_tag','color','颜色',2,1,0,1,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C_TAG_03','business_tag','status','状态',3,1,1,1,0,0,'select','sys_status',NULL,0,'000000',0,NOW(),NOW()),
+('C_TAG_04','business_tag','createTime','创建时间',4,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW());
+```
+
+前端直接 `usePageConfig('business_tag')` 即可获取列配置。
+
+### 4.7 与 `defineCrudModule` 的关系
+
+| 层 | 定义什么 | 存储位置 |
+|----|---------|---------|
+| `defineCrudModule` (config) | **接口行为**：list/add/edit/remove/status | 后端代码 |
+| `sys_page_column_config` | **列样式**：显示/搜索/编辑/顺序/字典 | 数据库 |
+
+两者独立但紧密配合。`defineCrudModule` 处理数据逻辑，列配置处理展示效果。改列配置不需要重新部署后端。
+
+---
+
+## 5. 快速接入指南
 
 ### 新增一个 CRUD 模块的步骤
 
@@ -799,12 +902,14 @@ export default {
 ```tsx
 // 2. 在 bls-admin/src/pages/business/orders/index.tsx
 export default function OrderPage() {
+  const { proColumns } = usePageConfig('business_order');
+
   return (
     <CrudTablePage<OrderRecord>
       title="订单管理"
       rowKey="id"
       resource={{ basePath: '/api/business/orders' }}
-      columns={columns}
+      columns={proColumns}
       formColumns={formColumns}
       excelMetaKey="orders"
       permissions={{ create: 'business:order:add', edit: 'business:order:edit', remove: 'business:order:remove' }}
