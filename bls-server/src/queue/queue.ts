@@ -1,8 +1,12 @@
 /**
- * MySQL-backed Job Queue
+ * P6: MySQL-backed Job Queue
  *
- * 提交 Job → INSERT sys_jobs (status='queued')
- * Worker   → SELECT FOR UPDATE → process → UPDATE status
+ * 核心特性:
+ *   - 原子claim: SELECT FOR UPDATE SKIP LOCKED + UPDATE 在同一事务
+ *   - 多 Worker 安全: SKIP LOCKED 避免重复消费
+ *   - Stale Recovery: 恢复卡在 'processing' 超过5分钟的 Job
+ *   - Dead Letter: maxAttempts 超限 → status='dead'
+ *   - Metrics: 队列长度/失败计数
  */
 import { getDb } from '../core/database';
 import { generateSnowflakeId } from '../shared/utils/snowflake';
@@ -10,8 +14,11 @@ import type { JobRecord, JobStatus } from './job-types';
 import { logger } from '../core/logger';
 
 const TABLE = 'sys_jobs';
+const STALE_TIMEOUT = 300_000; // 5分钟 — processing 停滞超过此时间自动回收
 
-/** 提交一个 Job */
+/** ──────── Public API ──────── */
+
+/** 提交 Job */
 export async function enqueue(params: {
   tenantId: string;
   userId?: string;
@@ -23,13 +30,13 @@ export async function enqueue(params: {
   const jobId = generateSnowflakeId().toString();
   const now = new Date();
 
-  const record: any = {
+  await db.insertInto(TABLE).values({
     job_id: jobId,
     tenant_id: params.tenantId,
     user_id: params.userId ?? null,
     job_type: params.jobType,
     job_data: JSON.stringify(params.jobData),
-    status: 'queued' as JobStatus,
+    status: 'queued',
     attempt: 0,
     max_attempts: params.maxAttempts ?? 3,
     next_retry_at: now,
@@ -37,109 +44,84 @@ export async function enqueue(params: {
     result: null,
     created_at: now,
     updated_at: now,
-  };
+  } as any).execute();
 
-  await db.insertInto(TABLE).values(record).execute();
-  logger.info('[queue] enqueued', { jobId, jobType: params.jobType, tenantId: params.tenantId });
-
-  return {
-    jobId,
-    tenantId: params.tenantId,
-    userId: params.userId,
-    jobType: params.jobType,
-    jobData: params.jobData,
-    status: 'queued',
-    attempt: 0,
-    maxAttempts: params.maxAttempts ?? 3,
-    nextRetryAt: now,
-    errorMessage: null,
-    result: null,
-    createdAt: now,
-    updatedAt: now,
-  };
+  logger.info('[queue] enqueued', { jobId, jobType: params.jobType });
+  return mapRow({
+    job_id: jobId, tenant_id: params.tenantId, user_id: params.userId,
+    job_type: params.jobType, job_data: params.jobData, status: 'queued',
+    attempt: 0, max_attempts: params.maxAttempts ?? 3, next_retry_at: now,
+    error_message: null, result: null, created_at: now, updated_at: now,
+  });
 }
 
-/** 获取一条待处理的 Job（Worker 调用） */
+/** 原子化领取一个 Job（事务内 SELECT FOR UPDATE SKIP LOCKED → UPDATE） */
 export async function dequeue(): Promise<JobRecord | null> {
   const db = (await getDb()) as any;
 
-  const row = await db
-    .selectFrom(TABLE)
-    .selectAll()
-    .where('status', 'in', ['queued', 'failed'])
-    .where('next_retry_at', '<=', new Date())
-    .orderBy('next_retry_at', 'asc')
-    .limit(1)
-    .forUpdate()
-    .skipLocked()
-    .executeTakeFirst();
+  // 1) 先回收 stale processing
+  await recoverStale(db);
 
-  if (!row) return null;
+  // 2) 在事务内完成 claim
+  const result = await db.transaction().execute(async (trx: any) => {
+    const row = await trx
+      .selectFrom(TABLE)
+      .selectAll()
+      .where('status', 'in', ['queued'])
+      .where('next_retry_at', '<=', new Date())
+      .orderBy('next_retry_at', 'asc')
+      .limit(1)
+      .forUpdate().skipLocked()
+      .executeTakeFirst();
 
-  // 标记为 processing
-  await db
-    .updateTable(TABLE)
-    .set({ status: 'processing', attempt: (row.attempt ?? 0) + 1, updated_at: new Date() } as any)
-    .where('job_id', '=', row.job_id)
-    .execute();
+    if (!row) return null;
 
-  return mapRow(row);
+    await trx
+      .updateTable(TABLE)
+      .set({ status: 'processing', attempt: (row.attempt ?? 0) + 1, updated_at: new Date() } as any)
+      .where('job_id', '=', row.job_id)
+      .execute();
+
+    return row;
+  });
+
+  return result ? mapRow(result) : null;
 }
 
-/** 标记 Job 完成 */
+/** 标记完成 */
 export async function completeJob(jobId: string, result: unknown): Promise<void> {
   const db = await getDb();
-  await db
-    .updateTable(TABLE)
+  await db.updateTable(TABLE)
     .set({ status: 'completed', result: JSON.stringify(result), updated_at: new Date() } as any)
-    .where('job_id', '=', jobId)
-    .execute();
+    .where('job_id', '=', jobId).execute();
   logger.info('[queue] completed', { jobId });
 }
 
-/** 标记 Job 失败（Worker 调用） */
-export async function failJob(jobId: string, record: JobRecord, error: string): Promise<void> {
+/** 标记失败（自动判断 dead letter） */
+export async function failJob(jobId: string, record: Pick<JobRecord, 'attempt' | 'maxAttempts'>, error: string): Promise<void> {
   const db = await getDb();
-  const exceeded = record.attempt + 1 >= record.maxAttempts;
+  const attempt = record.attempt + 1;
 
-  if (exceeded) {
-    await db
-      .updateTable(TABLE)
-      .set({
-        status: 'failed',
-        error_message: error,
-        updated_at: new Date(),
-      } as any)
-      .where('job_id', '=', jobId)
-      .execute();
-    logger.warn('[queue] dead letter', { jobId, error, attempts: record.attempt + 1 });
+  if (attempt >= record.maxAttempts) {
+    // → Dead Letter
+    await db.updateTable(TABLE)
+      .set({ status: 'dead', error_message: error, updated_at: new Date() } as any)
+      .where('job_id', '=', jobId).execute();
+    logger.warn('[queue] dead letter', { jobId, attempts: attempt });
   } else {
-    const backoff = Math.pow(2, record.attempt) * 1000; // 指数退避: 2s, 4s, 8s...
-    const nextRetry = new Date(Date.now() + backoff);
-    await db
-      .updateTable(TABLE)
-      .set({
-        status: 'queued',
-        error_message: error,
-        next_retry_at: nextRetry,
-        updated_at: new Date(),
-      } as any)
-      .where('job_id', '=', jobId)
-      .execute();
-    logger.info('[queue] retry scheduled', { jobId, nextRetry: nextRetry.toISOString(), attempt: record.attempt + 1 });
+    const backoff = Math.pow(2, attempt - 1) * 1000;
+    await db.updateTable(TABLE)
+      .set({ status: 'queued', error_message: error, next_retry_at: new Date(Date.now() + backoff), updated_at: new Date() } as any)
+      .where('job_id', '=', jobId).execute();
+    logger.info('[queue] retry scheduled', { jobId, backoff: `${backoff / 1000}s` });
   }
 }
 
-/** 查询 Job 状态（带 Tenant 隔离） */
+/** 查询 Job */
 export async function getJob(tenantId: string, jobId: string): Promise<JobRecord | null> {
-  const db = await getDb();
-  const row = await db
-    .selectFrom(TABLE)
-    .selectAll()
-    .where('job_id', '=', jobId)
-    .where('tenant_id', '=', tenantId)
+  const row = await (await getDb()).selectFrom(TABLE).selectAll()
+    .where('job_id', '=', jobId).where('tenant_id', '=', tenantId)
     .executeTakeFirst();
-
   return row ? mapRow(row) : null;
 }
 
@@ -147,15 +129,24 @@ export async function getJob(tenantId: string, jobId: string): Promise<JobRecord
 export async function listJobs(tenantId: string, opts?: { status?: JobStatus; limit?: number }): Promise<JobRecord[]> {
   const db = await getDb();
   let q = db.selectFrom(TABLE).selectAll().where('tenant_id', '=', tenantId).orderBy('created_at', 'desc');
-
   if (opts?.status) q = q.where('status', '=', opts.status);
   if (opts?.limit) q = q.limit(opts.limit);
-
-  const rows = await q.execute();
-  return rows.map(mapRow);
+  return (await q.execute()).map(mapRow);
 }
 
-/** 数据库行 → JobRecord */
+/** ──────── Internal ──────── */
+
+/** 恢复卡在 processing 状态超过 STALE_TIMEOUT 的 Job */
+async function recoverStale(db: any): Promise<void> {
+  const cutoff = new Date(Date.now() - STALE_TIMEOUT);
+  await db.updateTable(TABLE)
+    .set({ status: 'queued', error_message: 'Recovered from stale processing state' } as any)
+    .where('status', '=', 'processing')
+    .where('updated_at', '<=', cutoff)
+    .execute();
+}
+
+/** 行列转换 */
 function mapRow(row: any): JobRecord {
   return {
     jobId: String(row.job_id),

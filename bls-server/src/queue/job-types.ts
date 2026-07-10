@@ -1,5 +1,5 @@
 /** Job 类型定义 */
-export type JobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type JobStatus = 'queued' | 'processing' | 'completed' | 'dead' | 'cancelled';
 
 export interface JobRecord {
   jobId: string;
