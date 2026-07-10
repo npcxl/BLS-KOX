@@ -1,10 +1,10 @@
 import { request } from '@umijs/max';
 
 export type PageConfigRecord = {
-  pageId: string;
+  pageConfigId: string;
   pageCode: string;
   pageName: string;
-  enabled: '0' | '1';
+  enabled: boolean;
   sort?: number;
   remark?: string | null;
   createTime?: string;
@@ -17,14 +17,15 @@ export type PageColumnConfigRecord = {
   dataIndex: string;
   title: string;
   orderNum: number;
-  visible: '0' | '1';
-  searchable: '0' | '1';
-  editable: '0' | '1';
-  ellipsis?: '0' | '1';
-  formType?: string | null;
+  visible: boolean;
+  searchable: boolean;
+  editable: boolean;
+  copyable: boolean;
+  ellipsis: boolean;
+  valueType?: string | null;
   valueEnumCode?: string | null;
   placeholder?: string | null;
-  required?: '0' | '1';
+  required: boolean;
 };
 
 export async function listPageConfigs() {
@@ -45,9 +46,15 @@ export async function getPageColumnConfig(pageCode: string) {
   });
 }
 
-export async function savePageConfig(payload: { page: PageConfigRecord; columns: PageColumnConfigRecord[] }) {
+export async function savePageConfig(payload: { page: Partial<PageConfigRecord>; columns: PageColumnConfigRecord[] }) {
   return request<{ data?: null }>(`/api/system/page-config/save`, {
     method: 'POST',
     data: payload,
+  });
+}
+
+export async function deletePageConfig(pageCode: string) {
+  return request<{ data?: null }>(`/api/system/page-config/page/${pageCode}`, {
+    method: 'DELETE',
   });
 }

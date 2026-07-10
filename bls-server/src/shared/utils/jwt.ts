@@ -20,12 +20,12 @@ function buildPayload(payload: JwtPayload, tokenType: TokenType): TokenPayload {
 }
 
 export function signToken(payload: JwtPayload): string {
-  const options: SignOptions = { expiresIn: env.jwt.expiresIn };
+  const options = { expiresIn: env.jwt.expiresIn } as SignOptions;
   return `Bearer ${jwt.sign(buildPayload(payload, 'access'), env.jwt.secret, options)}`;
 }
 
 export function signRefreshToken(payload: JwtPayload): string {
-  const options: SignOptions = { expiresIn: env.jwt.refreshExpiresIn };
+  const options = { expiresIn: env.jwt.refreshExpiresIn } as SignOptions;
   return jwt.sign(buildPayload(payload, 'refresh'), env.jwt.secret, options);
 }
 

@@ -123,7 +123,7 @@ export function useCrudTable<T extends Record<string, any>>(
     });
   };
 
-  const changeStatus = async (record: T, status: '0' | '1') => {
+  const changeStatus = async (record: T, status: string) => {
     const res = await changeResourceStatus(resource, {
       [idKey as string]: record[idKey],
       status,

@@ -1,8 +1,8 @@
 import CrudTablePage from "@/components/CrudTablePage";
 import { useMultiDict } from "@/hooks/useDict";
+import { usePageConfig } from "@/hooks/usePageConfig";
 import { listResource } from "@/services/system/crud";
 import type {
-  ProColumns,
   ProFormColumnsType,
 } from "@ant-design/pro-components";
 import { request } from "@umijs/max";
@@ -29,11 +29,28 @@ export type UserRecord = {
 };
 
 function UserPageInner() {
-  const { sys_status, sys_gender, sys_yes_no } = useMultiDict([
+  const multiDict = useMultiDict([
     "sys_status",
     "sys_gender",
     "sys_yes_no",
-  ]);
+  ]) as any as {
+    sys_status?: { valueEnum: Record<string, { text: string; color?: string }> };
+    sys_gender?: { valueEnum: Record<string, { text: string; color?: string }> };
+    sys_yes_no?: { valueEnum: Record<string, { text: string; color?: string }> };
+    loading: boolean;
+  };
+  const sysStatus = multiDict.sys_status?.valueEnum ?? {};
+  const sysGender = multiDict.sys_gender?.valueEnum ?? {};
+  const sysYesNo = multiDict.sys_yes_no?.valueEnum ?? {};
+
+  const { proColumns } = usePageConfig("system_user");
+
+  const genderFormEnum = Object.fromEntries(
+    Object.entries(sysGender).map(([k, v]: [string, any]) => [k, v.text])
+  );
+  const yesNoFormEnum = Object.fromEntries(
+    Object.entries(sysYesNo).map(([k, v]: [string, any]) => [k, v.text])
+  );
 
   // 获取角色列表用于多选器
   const [roleOptions, setRoleOptions] = useState<
@@ -53,45 +70,6 @@ function UserPageInner() {
       );
     });
   }, []);
-
-  const statusValueEnum = sys_status?.valueEnum ?? {};
-  const genderValueEnum = sys_gender?.valueEnum ?? {};
-  const yesNoValueEnum = sys_yes_no?.valueEnum ?? {};
-  const statusFormEnum = Object.fromEntries(
-    Object.entries(statusValueEnum).map(([k, v]) => [k, v.text])
-  );
-  const genderFormEnum = Object.fromEntries(
-    Object.entries(genderValueEnum).map(([k, v]) => [k, v.text])
-  );
-  const yesNoFormEnum = Object.fromEntries(
-    Object.entries(yesNoValueEnum).map(([k, v]) => [k, v.text])
-  );
-
-  const columns: ProColumns<UserRecord>[] = [
-    { title: "用户名", dataIndex: "username", copyable: true, ellipsis: true },
-    { title: "昵称", dataIndex: "nickname", search: false },
-    { title: "真实姓名", dataIndex: "realName", search: false },
-    { title: "手机号", dataIndex: "phone", search: false },
-    { title: "邮箱", dataIndex: "email", search: false, ellipsis: true },
-    {
-      title: "管理员",
-      dataIndex: "isAdmin",
-      search: false,
-      valueEnum: yesNoValueEnum,
-    },
-    {
-      title: "状态",
-      dataIndex: "status",
-      valueType: "select",
-      valueEnum: statusValueEnum,
-    },
-    {
-      title: "创建时间",
-      dataIndex: "createTime",
-      valueType: "dateTime",
-      search: false,
-    },
-  ];
 
   function buildDeptTreeSelectData(depts: DeptRecord[] = []): any[] {
     return depts.map((item) => ({
@@ -113,6 +91,7 @@ function UserPageInner() {
       }
     });
   }, []);
+
   const formColumns: ProFormColumnsType<UserRecord>[] = [
     {
       title: "用户名",
@@ -161,7 +140,9 @@ function UserPageInner() {
       dataIndex: "status",
       valueType: "select",
       initialValue: "0",
-      valueEnum: statusFormEnum,
+      valueEnum: Object.fromEntries(
+        Object.entries(sysStatus).map(([k, v]: [string, any]) => [k, v.text])
+      ),
     },
     {
       title: "角色",
@@ -190,7 +171,7 @@ function UserPageInner() {
       title="用户管理"
       rowKey="userId"
       resource={{ basePath: "/api/system/user", status: false }}
-      columns={columns}
+      columns={proColumns}
       formColumns={formColumns}
       modalWidth={820}
       excelMetaKey="system-user"

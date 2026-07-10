@@ -1,11 +1,13 @@
 import CrudTablePage from "@/components/CrudTablePage";
 import { useDict } from "@/hooks/useDict";
+import { usePageConfig } from "@/hooks/usePageConfig";
 import type {
   ProColumns,
   ProFormColumnsType,
 } from "@ant-design/pro-components";
 import { request } from "@umijs/max";
 import { message, Switch } from "antd";
+import { useMemo } from "react";
 
 export type StorageRecord = {
   storageId: string;
@@ -58,6 +60,7 @@ function toJsonString(value: unknown) {
 export default function StoragePage() {
   const { options: storageTypeOptions } = useDict("sys_storage_type");
   const { options: statusOptions } = useDict("sys_status");
+  const { proColumns: baseColumns } = usePageConfig("system_storage");
 
   const storageTypeValueEnum = Object.fromEntries(
     storageTypeOptions.map((item) => [item.value, { text: item.label }])
@@ -66,68 +69,29 @@ export default function StoragePage() {
     statusOptions.map((item) => [item.value, { text: item.label }])
   );
 
-  const columns: ProColumns<StorageRecord>[] = [
-    { title: "存储名称", dataIndex: "storageName", ellipsis: true },
-    {
-      title: "存储类型",
-      dataIndex: "storageType",
-      valueType: "select",
-      valueEnum: storageTypeValueEnum,
-    },
-    { title: "Endpoint", dataIndex: "endpoint", search: false, ellipsis: true },
-    { title: "Region", dataIndex: "region", search: false },
-    { title: "端口", dataIndex: "port", search: false, width: 90 },
-    {
-      title: "公共桶",
-      dataIndex: "publicBucket",
-      search: false,
-      ellipsis: true,
-    },
-    {
-      title: "私有桶",
-      dataIndex: "privateBucket",
-      search: false,
-      ellipsis: true,
-    },
-    {
-      title: "公共地址",
-      dataIndex: "publicBaseUrl",
-      search: false,
-      ellipsis: true,
-    },
-    {
-      title: "是否默认",
-      dataIndex: "isDefault",
-      search: false,
-      render: (_, record) => (
-        <Switch
-          checked={String(record.isDefault) === "1"}
-          onChange={async (checked) => {
-            const res = await request("/api/system/storage/edit", {
-              method: "PUT",
-              data: { ...record, isDefault: checked ? "1" : "0" },
-            });
-            if (res?.code === 200) {
-              message.success("默认存储已更新");
-              window.location.reload();
-            }
-          }}
-        />
-      ),
-    },
-    {
-      title: "状态",
-      dataIndex: "status",
-      valueType: "select",
-      valueEnum: statusValueEnum,
-    },
-    {
-      title: "创建时间",
-      dataIndex: "createTime",
-      valueType: "dateTime",
-      search: false,
-    },
-  ];
+  const columns: ProColumns<StorageRecord>[] = useMemo(() => baseColumns.map((col: any) => {
+    if (col.dataIndex === "isDefault") {
+      return {
+        ...col,
+        render: (_: any, record: StorageRecord) => (
+          <Switch
+            checked={String(record.isDefault) === "1"}
+            onChange={async (checked) => {
+              const res = await request("/api/system/storage/edit", {
+                method: "PUT",
+                data: { ...record, isDefault: checked ? "1" : "0" },
+              });
+              if (res?.code === 200) {
+                message.success("默认存储已更新");
+                window.location.reload();
+              }
+            }}
+          />
+        ),
+      };
+    }
+    return col;
+  }), [baseColumns]);
 
   const formColumns: ProFormColumnsType<StorageRecord>[] = [
     {
@@ -233,7 +197,6 @@ export default function StoragePage() {
       columns={columns}
       formColumns={formColumns}
       modalWidth={920}
-      excelMetaKey="system-storage"
       permissions={{
         import: "system:storage:import",
         export: "system:storage:export",

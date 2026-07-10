@@ -56,8 +56,10 @@ export function useDict(dictType: string) {
   return { options, valueEnum, loading, getLabel, refresh };
 }
 
-export function useMultiDict(dictTypes: string[]) {
-  const [result, setResult] = useState<Record<string, { options: DictOption[]; valueEnum: Record<string, { text: string; color?: string }> }>>({});
+type DictResult = { options: DictOption[]; valueEnum: Record<string, { text: string; color?: string }> };
+
+export function useMultiDict<T extends readonly string[]>(dictTypes: T): { [K in T[number]]: DictResult } & { loading: boolean } {
+  const [result, setResult] = useState<Record<string, DictResult>>({});
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -73,7 +75,7 @@ export function useMultiDict(dictTypes: string[]) {
     )
       .then((items) => {
         if (cancelled) return;
-        const map: Record<string, { options: DictOption[]; valueEnum: Record<string, { text: string; color?: string }> }> = {};
+        const map: Record<string, DictResult> = {};
         for (const { type, data } of items) {
           map[type] = {
             options: data.map((item) => ({ label: item.dictLabel, value: item.dictValue })),

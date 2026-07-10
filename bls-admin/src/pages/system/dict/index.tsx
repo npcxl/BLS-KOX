@@ -2,10 +2,11 @@ import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ProColumns, ProFormColumnsType } from '@ant-design/pro-components';
 import { BetaSchemaForm, PageContainer, ProTable } from '@ant-design/pro-components';
 import { Button, Space, Tag } from 'antd';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useCrudTable } from '@/hooks/useCrudTable';
 import { listResource, type CrudResource } from '@/services/system/crud';
 import { useDict } from '@/hooks/useDict';
+import { usePageConfig } from '@/hooks/usePageConfig';
 
 export type DictTypeRecord = {
   dictTypeId: string;
@@ -48,25 +49,12 @@ const TAG_OPTIONS = [
 ];
 
 const typeResource: CrudResource = { basePath: '/api/system/dict/type', status: false };
-
-const typeColumns: ProColumns<DictTypeRecord>[] = [
-  { title: '字典名称', dataIndex: 'dictName', ellipsis: true },
-  { title: '字典类型', dataIndex: 'dictType', copyable: true, ellipsis: true },
-  { title: '备注', dataIndex: 'remark', search: false, ellipsis: true },
-  { title: '创建时间', dataIndex: 'createTime', valueType: 'dateTime', search: false },
-];
-
-const typeFormColumns: ProFormColumnsType<DictTypeRecord>[] = [
-  { title: '字典名称', dataIndex: 'dictName', formItemProps: { rules: [{ required: true, message: '请输入字典名称' }] } },
-  { title: '字典类型', dataIndex: 'dictType', formItemProps: { rules: [{ required: true, message: '请输入字典类型' }] } },
-  { title: '备注', dataIndex: 'remark', valueType: 'textarea' },
-];
-
 const dataResource: CrudResource = { basePath: '/api/system/dict/data', status: false };
 
 function DictTypeList({ onEnter }: { onEnter: (record: DictTypeRecord) => void }) {
   const crud = useCrudTable<DictTypeRecord>(typeResource, 'dictTypeId');
   const { valueEnum: statusValueEnum } = useDict('sys_status');
+  const { proColumns: baseColumns } = usePageConfig('system_dict_type');
 
   const actionColumn: ProColumns<DictTypeRecord> = {
     title: '操作',
@@ -81,28 +69,23 @@ function DictTypeList({ onEnter }: { onEnter: (record: DictTypeRecord) => void }
     ),
   };
 
-  const statusColumn: ProColumns<DictTypeRecord> = {
-    title: '状态',
-    dataIndex: 'status',
-    valueType: 'select',
-    valueEnum: statusValueEnum,
-    render: (_, record) => (
-      <Tag color={statusValueEnum[record.status]?.color ?? 'default'}>
-        {statusValueEnum[record.status]?.text ?? record.status}
-      </Tag>
-    ),
-  };
-
-  const mergedColumns: ProColumns<DictTypeRecord>[] = [
-    typeColumns[0],
-    typeColumns[1],
-    statusColumn,
-    ...typeColumns.slice(2),
-  ];
+  const columns: ProColumns<DictTypeRecord>[] = useMemo(() => baseColumns.map((col: any) => {
+    if (col.dataIndex === 'status') {
+      return {
+        ...col,
+        render: (_: any, record: DictTypeRecord) => (
+          <Tag color={statusValueEnum[record.status]?.color ?? 'default'}>
+            {statusValueEnum[record.status]?.text ?? record.status}
+          </Tag>
+        ),
+      };
+    }
+    return col;
+  }), [baseColumns, statusValueEnum]);
 
   const formColumns: ProFormColumnsType<DictTypeRecord>[] = [
-    typeFormColumns[0],
-    typeFormColumns[1],
+    { title: '字典名称', dataIndex: 'dictName', formItemProps: { rules: [{ required: true, message: '请输入字典名称' }] } },
+    { title: '字典类型', dataIndex: 'dictType', formItemProps: { rules: [{ required: true, message: '请输入字典类型' }] } },
     {
       title: '状态',
       dataIndex: 'status',
@@ -112,7 +95,7 @@ function DictTypeList({ onEnter }: { onEnter: (record: DictTypeRecord) => void }
         Object.entries(statusValueEnum).map(([k, v]) => [k, v.text]),
       ),
     },
-    ...typeFormColumns.slice(2),
+    { title: '备注', dataIndex: 'remark', valueType: 'textarea' },
   ];
 
   return (
@@ -120,7 +103,7 @@ function DictTypeList({ onEnter }: { onEnter: (record: DictTypeRecord) => void }
       <ProTable<DictTypeRecord>
         rowKey="dictTypeId"
         actionRef={crud.actionRef}
-        columns={[...mergedColumns, actionColumn]}
+        columns={[...columns, actionColumn]}
         request={crud.request}
         search={{ labelWidth: 96 }}
         pagination={{ defaultPageSize: 10, showSizeChanger: true }}
@@ -154,6 +137,7 @@ function DictTypeList({ onEnter }: { onEnter: (record: DictTypeRecord) => void }
 
 function DictDataDetail({ record, onBack }: { record: DictTypeRecord; onBack: () => void }) {
   const { valueEnum: statusValueEnum } = useDict('sys_status');
+  const { proColumns: baseColumns } = usePageConfig('system_dict_data');
   const crud = useCrudTable<DictDataRecord>(dataResource, 'dictDataId', {
     beforeSubmit: (values) => ({
       ...values,
@@ -161,29 +145,27 @@ function DictDataDetail({ record, onBack }: { record: DictTypeRecord; onBack: ()
     }),
   });
 
-  const dataColumns: ProColumns<DictDataRecord>[] = [
-    { title: '字典标签', dataIndex: 'dictLabel', ellipsis: true },
-    { title: '字典值', dataIndex: 'dictValue', copyable: true, ellipsis: true },
-    { title: '排序', dataIndex: 'dictSort', search: false, width: 80 },
-    {
-      title: '标签', dataIndex: 'tag', search: false, width: 100,
-      render: (_, r) => (
-        <Tag color={r.tag || 'default'}>{r.tag || 'default'}</Tag>
-      ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      valueType: 'select',
-      valueEnum: statusValueEnum,
-      render: (_, r) => (
-        <Tag color={statusValueEnum[r.status]?.color ?? 'default'}>
-          {statusValueEnum[r.status]?.text ?? (r.status === '0' ? '正常' : '停用')}
-        </Tag>
-      ),
-    },
-    { title: '备注', dataIndex: 'remark', search: false, ellipsis: true },
-  ];
+  const dataColumns: ProColumns<DictDataRecord>[] = useMemo(() => baseColumns.map((col: any) => {
+    if (col.dataIndex === 'tag') {
+      return {
+        ...col,
+        render: (_: any, r: DictDataRecord) => (
+          <Tag color={r.tag || 'default'}>{r.tag || 'default'}</Tag>
+        ),
+      };
+    }
+    if (col.dataIndex === 'status') {
+      return {
+        ...col,
+        render: (_: any, r: DictDataRecord) => (
+          <Tag color={statusValueEnum[r.status]?.color ?? 'default'}>
+            {statusValueEnum[r.status]?.text ?? (r.status === '0' ? '正常' : '停用')}
+          </Tag>
+        ),
+      };
+    }
+    return col;
+  }), [baseColumns, statusValueEnum]);
 
   const dataFormColumns: ProFormColumnsType<DictDataRecord>[] = [
     { title: '字典标签', dataIndex: 'dictLabel', formItemProps: { rules: [{ required: true, message: '请输入字典标签' }] } },

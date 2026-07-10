@@ -1,6 +1,7 @@
-import type { ProColumns, ProFormColumnsType } from '@ant-design/pro-components';
+import type { ProFormColumnsType } from '@ant-design/pro-components';
 import React, { useState } from 'react';
 import { useDict } from '@/hooks/useDict';
+import { usePageConfig } from '@/hooks/usePageConfig';
 import CrudTablePage from '@/components/CrudTablePage';
 import MenuAuthModal from './components/MenuAuthModal';
 
@@ -14,19 +15,7 @@ export type PackageRecord = {
 
 function PackagePageInner() {
   const { valueEnum: statusValueEnum } = useDict('sys_status');
-  const statusFormEnum = Object.fromEntries(Object.entries(statusValueEnum).map(([k, v]) => [k, v.text]));
-
-  const columns: ProColumns<PackageRecord>[] = [
-    { title: '套餐名称', dataIndex: 'packageName', ellipsis: true },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      valueType: 'select',
-      valueEnum: statusValueEnum,
-    },
-    { title: '备注', dataIndex: 'remark', search: false, ellipsis: true },
-    { title: '创建时间', dataIndex: 'createTime', valueType: 'dateTime', search: false },
-  ];
+  const { proColumns } = usePageConfig('system_package');
 
   const formColumns: ProFormColumnsType<PackageRecord>[] = [
     { title: '套餐名称', dataIndex: 'packageName', formItemProps: { rules: [{ required: true, message: '请输入套餐名称' }] } },
@@ -35,7 +24,7 @@ function PackagePageInner() {
       dataIndex: 'status',
       valueType: 'select',
       initialValue: '0',
-      valueEnum: statusFormEnum,
+      valueEnum: Object.fromEntries(Object.entries(statusValueEnum).map(([k, v]) => [k, v.text])),
     },
     { title: '备注', dataIndex: 'remark', valueType: 'textarea' },
   ];
@@ -49,7 +38,7 @@ function PackagePageInner() {
         title="套餐管理"
         rowKey="packageId"
         resource={{ basePath: '/api/system/package' }}
-        columns={columns}
+        columns={proColumns}
         formColumns={formColumns}
         modalWidth={600}
         excelMetaKey="system-package"

@@ -9,7 +9,7 @@ import http from 'node:http';
 import { createRouter } from './core/router';
 import { errorHandler } from './middleware/error-handler';
 import { tenantMiddleware } from './middleware/tenant';
-import { attachRealtimeWs } from './modules/system/realtime/realtime.ws';
+import { attachRealtimeWs } from './api/system/realtime/realtime.ws';
 
 function getLanUrls(port: number): string[] {
   return Object.values(os.networkInterfaces())

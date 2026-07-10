@@ -1,13 +1,13 @@
 import CrudTablePage from "@/components/CrudTablePage";
 import IconPicker, { getAntdIcon } from "@/components/IconPicker";
 import { useDict } from "@/hooks/useDict";
+import { usePageConfig } from "@/hooks/usePageConfig";
 import { editResource, listResource } from "@/services/system/crud";
 import type {
-  ProColumns,
   ProFormColumnsType,
 } from "@ant-design/pro-components";
 import { App } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export type MenuRecord = {
   menuId: string;
@@ -38,6 +38,7 @@ export default function MenuPage() {
   const { message } = App.useApp();
   const { valueEnum: menuTypeValueEnum } = useDict("sys_menu_type");
   const { valueEnum: statusValueEnum } = useDict("sys_status");
+  const { proColumns: baseColumns } = usePageConfig("system_menu");
   const [menuTree, setMenuTree] = useState<any[]>([]);
   const [iconTarget, setIconTarget] = useState<MenuRecord | null>(null);
   const [iconValue, setIconValue] = useState<string | undefined>();
@@ -56,38 +57,18 @@ export default function MenuPage() {
     refreshMenuTree();
   }, []);
 
-  const columns: ProColumns<MenuRecord>[] = [
-    { title: "菜单名称", dataIndex: "menuName", ellipsis: true },
-    {
-      title: "图标",
-      dataIndex: "icon",
-      search: false,
-      width: 80,
-      align: "center",
-      render: (_, record) => getAntdIcon(record.icon) || record.icon || "-",
-    },
-    { title: "路由地址", dataIndex: "path", search: false, copyable: true },
-    {
-      title: "组件路径",
-      dataIndex: "component",
-      search: false,
-      ellipsis: true,
-    },
-    { title: "权限标识", dataIndex: "perms", search: false, copyable: true },
-    {
-      title: "类型",
-      dataIndex: "menuType",
-      valueType: "select",
-      valueEnum: menuTypeValueEnum,
-    },
-    {
-      title: "状态",
-      dataIndex: "status",
-      valueType: "select",
-      valueEnum: statusValueEnum,
-    },
-    { title: "排序", dataIndex: "sortNum", search: false, width: 80 },
-  ];
+  const columns = useMemo(() => baseColumns.map((col: any) => {
+    if (col.dataIndex === "icon") {
+      return { ...col, align: "center" as const, width: 80, render: (_: any, record: MenuRecord) => getAntdIcon(record.icon) || record.icon || "-" };
+    }
+    if (col.dataIndex === "menuType") {
+      return { ...col, valueEnum: menuTypeValueEnum };
+    }
+    if (col.dataIndex === "status") {
+      return { ...col, valueEnum: statusValueEnum };
+    }
+    return col;
+  }), [baseColumns, menuTypeValueEnum, statusValueEnum]);
 
   const formColumns: ProFormColumnsType<MenuRecord>[] = [
     {

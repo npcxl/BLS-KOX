@@ -1,64 +1,40 @@
 import CrudTablePage from "@/components/CrudTablePage";
 import { useDict } from "@/hooks/useDict";
+import { usePageConfig } from "@/hooks/usePageConfig";
 import { type LoginLogRecord } from "@/services/system/log";
 import type { ProColumns } from "@ant-design/pro-components";
 import { Tag } from "antd";
+import { useMemo } from "react";
 
 export default function LoginLogPage() {
   const { valueEnum: loginTypeValueEnum } = useDict("sys_login_type");
-  const { valueEnum: statusValueEnum } = useDict("sys_status");
+  const { valueEnum: successValueEnum } = useDict("sys_upload_status");
+  const { proColumns: baseColumns } = usePageConfig("system_log_login");
 
-  const columns: ProColumns<LoginLogRecord>[] = [
-    { title: "用户名", dataIndex: "username", copyable: true },
-    { title: "租户ID", dataIndex: "tenantId", search: false, copyable: true },
-    {
-      title: "登录类型",
-      dataIndex: "loginType",
-      valueType: "select",
-      valueEnum: loginTypeValueEnum,
-      render: (_, record) =>
-        loginTypeValueEnum?.[record.loginType ?? ""]?.text ??
-        record.loginType ??
-        "-",
-    },
-    {
-      title: "状态",
-      dataIndex: "loginStatus",
-      valueType: "select",
-      valueEnum: statusValueEnum,
-      render: (_, record) => (
-        <Tag color={statusValueEnum[record.loginStatus]?.color ?? 'default'}>
-          {statusValueEnum[record.loginStatus]?.text ?? record.loginStatus}
-        </Tag>
-      ),
-    },
-    {
-      title: "失败原因",
-      dataIndex: "failReason",
-      search: false,
-      ellipsis: true,
-    },
-    { title: "登录IP", dataIndex: "loginIp", search: true, copyable: true },
-    {
-      title: "requestId",
-      dataIndex: "requestId",
-      search: false,
-      copyable: true,
-    },
-    {
-      title: "userAgent",
-      dataIndex: "userAgent",
-      ellipsis: true,
-      search: false,
-      copyable: true,
-    },
-    {
-      title: "登录时间",
-      dataIndex: "loginTime",
-      valueType: "dateTime",
-      search: false,
-    },
-  ];
+  const columns: ProColumns<LoginLogRecord>[] = useMemo(() => baseColumns.map((col: any) => {
+    if (col.dataIndex === "loginType") {
+      return {
+        ...col,
+        valueEnum: loginTypeValueEnum,
+        render: (_: any, record: LoginLogRecord) =>
+          loginTypeValueEnum?.[record.loginType ?? ""]?.text ??
+          record.loginType ??
+          "-",
+      };
+    }
+    if (col.dataIndex === "loginStatus") {
+      return {
+        ...col,
+        valueEnum: successValueEnum,
+        render: (_: any, record: LoginLogRecord) => (
+          <Tag color={successValueEnum[record.loginStatus]?.color ?? 'default'}>
+            {successValueEnum[record.loginStatus]?.text ?? record.loginStatus}
+          </Tag>
+        ),
+      };
+    }
+    return col;
+  }), [baseColumns, loginTypeValueEnum, successValueEnum]);
 
   return (
     <CrudTablePage
@@ -68,7 +44,6 @@ export default function LoginLogPage() {
       columns={columns}
       formColumns={[]}
       modalWidth={760}
-      excelMetaKey="system-log-login"
       permissions={{
         import: "system:log:import",
         export: "system:log:export",

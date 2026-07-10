@@ -1,6 +1,7 @@
 import CrudTablePage from "@/components/CrudTablePage";
 import FileUploadModal from "@/components/FileUploadModal";
 import { useDict } from "@/hooks/useDict";
+import { usePageConfig } from "@/hooks/usePageConfig";
 import { CopyOutlined } from "@ant-design/icons";
 import type {
   ProColumns,
@@ -31,6 +32,7 @@ function FilePageInner() {
   const [open, setOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const { valueEnum: statusValueEnum } = useDict("sys_bucket_access_type");
+  const { proColumns: baseColumns } = usePageConfig("file_manager");
 
   const copyText = async (text?: string | null) => {
     if (!text) return;
@@ -61,78 +63,55 @@ function FilePageInner() {
     }
   };
 
-  const columns: ProColumns<FileRecord>[] = [
-    { title: "原始文件名", dataIndex: "originalName", ellipsis: true },
-    {
-      title: "存储文件名",
-      dataIndex: "fileName",
-      search: false,
-      ellipsis: true,
-    },
-    { title: "桶名称", dataIndex: "bucketName", search: false, ellipsis: true },
-    {
-      title: "对象路径",
-      dataIndex: "objectName",
-      search: false,
-      ellipsis: true,
-    },
-    { title: "模块", dataIndex: "moduleName", valueType: "text" },
-    {
-      title: "访问类型",
-      dataIndex: "accessType",
-      valueType: "select",
-      valueEnum: statusValueEnum,
-      render: (_, record) => (
-        <Tag color={statusValueEnum[record.accessType]?.color ?? 'default'}>
-          {statusValueEnum[record.accessType]?.text ?? record.accessType}
-        </Tag>
-      ),
-    },
-    { title: "文件大小", dataIndex: "fileSize", search: false },
-    {
-      title: "公共 URL",
-      dataIndex: "url",
-      search: false,
-      ellipsis: true,
-      onCell: () => ({ style: { height: 72 } }),
-      render: (_, record) => {
-        const url = record.url;
-        if (!url) return "-";
-        const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(url);
-        return (
-          <Space size={8} style={{ minWidth: 0, alignItems: "center" }}>
-            {isImage ? (
-              <Image
-                width={56}
-                height={56}
-                src={url}
-                style={{
-                  objectFit: "cover",
-                  borderRadius: 6,
-                  flex: "0 0 auto",
-                }}
-                preview={{ mask: "预览" }}
-              />
-            ) : null}
-            <Tooltip title="复制地址">
-              <Button
-                type="link"
-                size="small"
-                icon={<CopyOutlined />}
-                onClick={() => void copyText(url)}
-              />
-            </Tooltip>
-          </Space>
-        );
-      },
-    },
-    {
-      title: "创建时间",
-      dataIndex: "createTime",
-      valueType: "dateTime",
-      search: false,
-    },
-  ];
+  const columns: ProColumns<FileRecord>[] = useMemo(() => baseColumns.map((col: any) => {
+    if (col.dataIndex === "accessType") {
+      return {
+        ...col,
+        render: (_: any, record: FileRecord) => (
+          <Tag color={statusValueEnum[record.accessType]?.color ?? 'default'}>
+            {statusValueEnum[record.accessType]?.text ?? record.accessType}
+          </Tag>
+        ),
+      };
+    }
+    if (col.dataIndex === "url") {
+      return {
+        ...col,
+        onCell: () => ({ style: { height: 72 } }),
+        render: (_: any, record: FileRecord) => {
+          const url = record.url;
+          if (!url) return "-";
+          const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(url);
+          return (
+            <Space size={8} style={{ minWidth: 0, alignItems: "center" }}>
+              {isImage ? (
+                <Image
+                  width={56}
+                  height={56}
+                  src={url}
+                  style={{
+                    objectFit: "cover",
+                    borderRadius: 6,
+                    flex: "0 0 auto",
+                  }}
+                  preview={{ mask: "预览" }}
+                />
+              ) : null}
+              <Tooltip title="复制地址">
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={() => void copyText(url)}
+                />
+              </Tooltip>
+            </Space>
+          );
+        },
+      };
+    }
+    return col;
+  }), [baseColumns, statusValueEnum]);
 
   const formColumns: ProFormColumnsType<FileRecord>[] = [
     { title: "模块", dataIndex: "moduleName" },
@@ -177,7 +156,6 @@ function FilePageInner() {
           remove: false,
           status: false,
         }}
-        excelMetaKey="system-file"
         permissions={{
           import: "system:file:import",
           export: "system:file:export",

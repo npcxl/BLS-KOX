@@ -11,7 +11,7 @@ import {
   PageContainer,
   ProTable,
 } from "@ant-design/pro-components";
-import { Button, Space, Switch, Tooltip } from "antd";
+import { Button, Space, Switch, Tag, Tooltip } from "antd";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import ExcelToolbar from "@/components/ExcelToolbar";
@@ -68,7 +68,7 @@ function getStatusLabel(
   value: string
 ): string {
   if (!valueEnum || !Object.keys(valueEnum).length) {
-    return value === "0" ? "正常" : "停用";
+    return value;
   }
 
   const entry = valueEnum[value];
@@ -76,14 +76,38 @@ function getStatusLabel(
   if (typeof entry === "string") return entry;
   if (entry?.text) return entry.text;
 
-  return value === "0" ? "正常" : "停用";
+  return value;
+}
+
+/**
+ * 从字典的 valueEnum 中获取所有状态值列表
+ */
+function getStatusValues(valueEnum: Record<string, any> | undefined): string[] {
+  if (!valueEnum) return [];
+  return Object.keys(valueEnum).filter(
+    (key) => key !== "" && key !== "color" && key !== "status"
+  );
+}
+
+/**
+ * 根据当前值获取下一个状态值（循环切换）
+ */
+function getNextStatusValue(
+  valueEnum: Record<string, any> | undefined,
+  currentValue: string
+): string {
+  const values = getStatusValues(valueEnum);
+  if (values.length < 2) return currentValue;
+  const idx = values.indexOf(currentValue);
+  if (idx === -1) return values[0];
+  return values[(idx + 1) % values.length];
 }
 
 function getNextStatusLabel(
   valueEnum: Record<string, any> | undefined,
   currentValue: string
 ): string {
-  const nextValue = currentValue === "0" ? "1" : "0";
+  const nextValue = getNextStatusValue(valueEnum, currentValue);
   return getStatusLabel(valueEnum, nextValue);
 }
 
@@ -182,6 +206,26 @@ export default function CrudTablePage<T extends Record<string, any>>({
       return column;
     });
   }, [columnConfig, visibleColumns]);
+
+  /** valueEnum 列用 Tag 渲染而非默认的 Badge 圆点 */
+  const tagColumns = useMemo(() => {
+    return searchColumns.map((col) => {
+      const ve = col.valueEnum as Record<string, any> | undefined;
+      if (!ve || col.render || col.renderText) return col;
+      return {
+        ...col,
+        render: (_: any, record: T) => {
+          const v = (record as any)[String(col.dataIndex ?? "")];
+          if (v == null) return "-";
+          const entry = ve[String(v)];
+          if (!entry) return String(v);
+          const text = typeof entry === "string" ? entry : entry.text ?? String(v);
+          const color = typeof entry === "object" ? entry.color ?? entry.status : undefined;
+          return color ? <Tag color={color}>{text}</Tag> : <>{text}</>;
+        },
+      } as ProColumns<T>;
+    });
+  }, [searchColumns]);
 
   const formKey = `${String(resource.basePath)}-${crud.mode}-${
     crud.modalOpen ? String(crud.current?.[rowKey] ?? "new") : "closed"
@@ -287,10 +331,16 @@ export default function CrudTablePage<T extends Record<string, any>>({
           resource.status !== false && (
             <a
               onClick={() =>
-                crud.changeStatus(record, record[statusKey] === "0" ? "1" : "0")
+                crud.changeStatus(
+                  record,
+                  getNextStatusValue(
+                    statusValueEnum,
+                    String(record[statusKey])
+                  )
+                )
               }
             >
-              {getNextStatusLabel(statusValueEnum, record[statusKey] as string)}
+              {getNextStatusLabel(statusValueEnum, String(record[statusKey]))}
             </a>
           )}
 
@@ -310,7 +360,7 @@ export default function CrudTablePage<T extends Record<string, any>>({
       <ProTable<T>
         rowKey={String(rowKey)}
         actionRef={crud.actionRef}
-        columns={[...searchColumns, actionColumn]}
+        columns={[...tagColumns, actionColumn]}
         request={crud.request}
         search={{ labelWidth: 96 }}
         pagination={pagination}

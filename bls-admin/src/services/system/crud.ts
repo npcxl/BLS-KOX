@@ -52,7 +52,7 @@ export async function removeResource(resource: CrudResource, ids: string[]) {
   });
 }
 
-export async function changeResourceStatus(resource: CrudResource, data: { [key: string]: any; status: '0' | '1' }) {
+export async function changeResourceStatus(resource: CrudResource, data: { [key: string]: any }) {
   return request<API.ResponseResult>(buildUrl(resource, 'status'), {
     method: 'PUT',
     data,

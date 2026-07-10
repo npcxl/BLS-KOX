@@ -1,7 +1,6 @@
 import { Context, Next } from 'koa';
 import { SessionInvalidError, UnauthorizedError } from '../core/errors';
-import { AuthService } from '../modules/auth/auth.service';
-import { getStoredSession } from '../modules/auth/auth.session';
+import { AuthService, getStoredSession } from '../api/auth';
 import { parseBearerToken, verifyToken } from '../shared/utils/jwt';
 
 function isJwtExpiredError(error: unknown): boolean {

@@ -100,7 +100,17 @@ export const errorConfig: RequestConfig = {
               ...originalConfig.headers,
               Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
             };
-            return umiRequest(originalConfig);
+            // 用 umiRequest 重试，正确传递 URL 和 params
+            const url = originalConfig.url || '';
+            const retryConfig: any = {
+              method: originalConfig.method || 'GET',
+              headers: originalConfig.headers,
+              data: originalConfig.data,
+              params: originalConfig.params,
+              skipErrorHandler: true,
+              _retryAfterRefresh: true,
+            };
+            return umiRequest(url, retryConfig);
           }
           return;
         }

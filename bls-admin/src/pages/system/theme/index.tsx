@@ -1,5 +1,7 @@
-import type { ProColumns, ProFormColumnsType } from '@ant-design/pro-components';
+import type { ProFormColumnsType } from '@ant-design/pro-components';
 import { useDict } from '@/hooks/useDict';
+import { usePageConfig } from '@/hooks/usePageConfig';
+import { useMemo } from 'react';
 import CrudTablePage from '@/components/CrudTablePage';
 
 export type ThemeRecord = {
@@ -23,54 +25,19 @@ export type ThemeRecord = {
 
 function ThemePageInner() {
   const { valueEnum: statusValueEnum } = useDict('sys_status');
-  const statusFormEnum = Object.fromEntries(Object.entries(statusValueEnum).map(([k, v]) => [k, v.text]));
   const { valueEnum: yesNoValueEnum } = useDict('sys_yes_no');
   const { valueEnum: navThemeValueEnum } = useDict('sys_nav_theme');
   const { valueEnum: layoutValueEnum } = useDict('sys_layout_type');
   const { valueEnum: contentWidthValueEnum } = useDict('sys_content_width');
+  const { proColumns: baseColumns } = usePageConfig('system_theme');
 
-  const columns: ProColumns<ThemeRecord>[] = [
-    // { title: '标题', dataIndex: 'title', ellipsis: true },
-    { title: '租户ID', dataIndex: 'tenantId', search: false, copyable: true, ellipsis: true },
-    {
-      title: '导航主题',
-      dataIndex: 'navTheme',
-      valueType: 'select',
-      valueEnum: navThemeValueEnum,
-    },
-    { title: '主色', dataIndex: 'colorPrimary', search: false, copyable: true },
-    {
-      title: '布局',
-      dataIndex: 'layout',
-      valueType: 'select',
-      valueEnum: layoutValueEnum,
-    },
-    {
-      title: '固定头部',
-      dataIndex: 'fixedHeader',
-      search: false,
-      valueEnum: yesNoValueEnum,
-    },
-    {
-      title: '固定侧栏',
-      dataIndex: 'fixSiderbar',
-      search: false,
-      valueEnum: yesNoValueEnum,
-    },
-    {
-      title: '色弱模式',
-      dataIndex: 'colorWeak',
-      search: false,
-      valueEnum: yesNoValueEnum,
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      valueType: 'select',
-      valueEnum: statusValueEnum,
-    },
-    { title: '创建时间', dataIndex: 'createTime', valueType: 'dateTime', search: false },
-  ];
+  const columns = useMemo(() => baseColumns.map((col: any) => {
+    if (col.dataIndex === 'layout') return { ...col, valueEnum: layoutValueEnum };
+    if (col.dataIndex === 'fixedHeader') return { ...col, valueEnum: yesNoValueEnum };
+    if (col.dataIndex === 'fixSiderbar') return { ...col, valueEnum: yesNoValueEnum };
+    if (col.dataIndex === 'colorWeak') return { ...col, valueEnum: yesNoValueEnum };
+    return col;
+  }), [baseColumns, layoutValueEnum, yesNoValueEnum]);
 
   const formColumns: ProFormColumnsType<ThemeRecord>[] = [
     // { title: '标题', dataIndex: 'title', formItemProps: { rules: [{ required: true, message: '请输入系统标题' }] } },
@@ -102,7 +69,7 @@ function ThemePageInner() {
     { title: 'Logo', dataIndex: 'logo' },
     { title: 'Iconfont URL', dataIndex: 'iconfontUrl' },
     { title: 'Token JSON', dataIndex: 'tokenJson', valueType: 'textarea', tooltip: '可填写 Ant Design token JSON' },
-    { title: '状态', dataIndex: 'status', valueType: 'select', initialValue: '0', valueEnum: statusFormEnum },
+    { title: '状态', dataIndex: 'status', valueType: 'select', initialValue: '0', valueEnum: Object.fromEntries(Object.entries(statusValueEnum).map(([k, v]) => [k, v.text])) },
     { title: '备注', dataIndex: 'remark', valueType: 'textarea' },
   ];
 

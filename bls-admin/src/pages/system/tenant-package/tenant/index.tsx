@@ -1,6 +1,7 @@
-import type { ProColumns, ProFormColumnsType } from '@ant-design/pro-components';
+import type { ProFormColumnsType } from '@ant-design/pro-components';
 import { request } from '@umijs/max';
 import { useDict } from '@/hooks/useDict';
+import { usePageConfig } from '@/hooks/usePageConfig';
 import CrudTablePage from '@/components/CrudTablePage';
 
 export type TenantRecord = {
@@ -18,22 +19,7 @@ export type TenantRecord = {
 
 function TenantPageInner() {
   const { valueEnum: statusValueEnum } = useDict('sys_status');
-  const statusFormEnum = Object.fromEntries(Object.entries(statusValueEnum).map(([k, v]) => [k, v.text]));
-
-  const columns: ProColumns<TenantRecord>[] = [
-    { title: '租户名称', dataIndex: 'tenantName', ellipsis: true },
-    { title: '绑定域名', dataIndex: 'domainName', search: false, ellipsis: true },
-    { title: '联系人', dataIndex: 'contactUser', search: false },
-    { title: '联系电话', dataIndex: 'contactPhone', search: false },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      valueType: 'select',
-      valueEnum: statusValueEnum,
-    },
-    { title: '到期时间', dataIndex: 'expireTime', valueType: 'dateTime', search: false },
-    { title: '创建时间', dataIndex: 'createTime', valueType: 'dateTime', search: false },
-  ];
+  const { proColumns } = usePageConfig('system_tenant');
 
   const formColumns: ProFormColumnsType<TenantRecord>[] = [
     { title: '租户名称', dataIndex: 'tenantName', formItemProps: { rules: [{ required: true, message: '请输入租户名称' }] } },
@@ -56,7 +42,7 @@ function TenantPageInner() {
       dataIndex: 'status',
       valueType: 'select',
       initialValue: '0',
-      valueEnum: statusFormEnum,
+      valueEnum: Object.fromEntries(Object.entries(statusValueEnum).map(([k, v]) => [k, v.text])),
     },
     { title: '备注', dataIndex: 'remark', valueType: 'textarea' },
   ];
@@ -66,7 +52,7 @@ function TenantPageInner() {
       title="租户管理"
       rowKey="tenantId"
       resource={{ basePath: '/api/system/tenant' }}
-      columns={columns}
+      columns={proColumns}
       formColumns={formColumns}
       modalWidth={720}
       excelMetaKey="system-tenant"

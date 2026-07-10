@@ -105,11 +105,69 @@ CREATE TABLE `sys_dict_data` (
 -- Dumping data for table `sys_dict_data`
 --
 
-INSERT INTO `sys_dict_data` VALUES
+INSERT IGNORE INTO `sys_dict_data` VALUES
+-- sys_gender (000201)
+('000310','000201','男','0',1,'blue','0','男性','000000',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+('000311','000201','女','1',2,'pink','0','女性','000000',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+('000312','000201','未知','2',3,'default','0','未设置性别','000000',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+-- sys_status (000202)
+('000313','000202','正常','0',1,'green','0','正常状态','000000',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+('000318','000202','停用','1',2,'red','0','停用状态','000000',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+-- sys_menu_type (000203)
+('000321','000203','目录','0',1,'blue','0','目录类型菜单','000000',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+('000322','000203','菜单','1',2,'green','0','页面类型菜单','000000',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+('000323','000203','按钮','2',3,'default','0','按钮权限','000000',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+-- sys_yes_no (000204)
+('000319','000204','是','1',1,'blue','0','是','000000',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+('000320','000204','否','0',2,'default','0','否','000000',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+-- sys_config_type (000205)
+('000324','000205','系统配置','sys',1,'blue','0','系统级参数','000000',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+('000325','000205','主题配置','theme',2,'purple','0','主题相关参数','000000',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+('000326','000205','字典配置','dict',3,'cyan','0','字典相关参数','000000',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+-- sys_login_type (000206)
 ('000314','000206','密码登录','password',1,'blue','0','用户名密码登录','000000',0,'2026-06-16 09:28:16','2026-06-16 09:28:16'),
 ('000315','000206','刷新令牌','refresh',2,'lime','0','refreshToken 刷新','000000',0,'2026-06-16 09:28:16','2026-06-16 09:28:16'),
 ('000316','000206','验证码登录','sms',3,'orange','0','短信验证码登录','000000',0,'2026-06-16 09:28:16','2026-06-16 09:28:16'),
 ('000317','000206','单点登录','sso',4,'purple','0','SSO 登录','000000',0,'2026-06-16 09:28:16','2026-06-16 09:28:16'),
+-- sys_business_type (000207)
+('000327','000207','新增','ADD',1,'green','0','新增操作','000000',0,'2026-06-16 09:28:20','2026-06-16 09:28:20'),
+('000328','000207','修改','UPDATE',2,'blue','0','修改操作','000000',0,'2026-06-16 09:28:20','2026-06-16 09:28:20'),
+('000329','000207','删除','DELETE',3,'red','0','删除操作','000000',0,'2026-06-16 09:28:20','2026-06-16 09:28:20'),
+('000330','000207','上传','UPLOAD',4,'purple','0','上传操作','000000',0,'2026-06-16 09:28:20','2026-06-16 09:28:20'),
+('000331','000207','下载','DOWNLOAD',5,'cyan','0','下载操作','000000',0,'2026-06-16 09:28:20','2026-06-16 09:28:20'),
+('000332','000207','导出','EXPORT',6,'orange','0','导出操作','000000',0,'2026-06-16 09:28:20','2026-06-16 09:28:20'),
+('000333','000207','登录','LOGIN',7,'lime','0','登录操作','000000',0,'2026-06-16 09:28:20','2026-06-16 09:28:20'),
+('000334','000207','退出','LOGOUT',8,'gold','0','退出操作','000000',0,'2026-06-16 09:28:20','2026-06-16 09:28:20'),
+('000335','000207','保存','SAVE',9,'geekblue','0','保存操作','000000',0,'2026-06-16 09:28:20','2026-06-16 09:28:20'),
+('000336','000207','列表','LIST',10,'cyan','0','列表查询','000000',0,'2026-06-16 09:28:20','2026-06-16 09:28:20'),
+('000337','000207','导入','IMPORT',11,'volcano','0','导入操作','000000',0,'2026-06-16 09:28:20','2026-06-16 09:28:20'),
+('000338','000207','其他','OTHER',12,'default','0','其他操作','000000',0,'2026-06-16 09:28:20','2026-06-16 09:28:20'),
+-- sys_upload_status (000208)
+('000339','000208','成功','1',1,'green','0','上传/操作成功','000000',0,'2026-06-16 09:28:24','2026-06-16 09:28:24'),
+('000340','000208','失败','0',2,'red','0','上传/操作失败','000000',0,'2026-06-16 09:28:24','2026-06-16 09:28:24'),
+-- sys_access_type (000209)
+('000341','000209','公共访问','public',1,'cyan','0','公开可访问','000000',0,'2026-06-16 09:28:30','2026-06-16 09:28:30'),
+('000342','000209','私有访问','private',2,'orange','0','需鉴权访问','000000',0,'2026-06-16 09:28:30','2026-06-16 09:28:30'),
+-- sys_storage_type (324832179827904512)
+('000343','324832179827904512','MinIO','minio',1,'blue','0','MinIO 对象存储','000000',0,'2026-06-15 08:47:07','2026-06-15 08:47:07'),
+('000344','324832179827904512','阿里云OSS','aliyun_oss',2,'orange','0','阿里云对象存储','000000',0,'2026-06-15 08:47:07','2026-06-15 08:47:07'),
+('000345','324832179827904512','腾讯云COS','tencent_cos',3,'cyan','0','腾讯云对象存储','000000',0,'2026-06-15 08:47:07','2026-06-15 08:47:07'),
+('000346','324832179827904512','七牛云Kodo','qiniu_kodo',4,'green','0','七牛云对象存储','000000',0,'2026-06-15 08:47:07','2026-06-15 08:47:07'),
+('000347','324832179827904512','华为云OBS','huawei_obs',5,'red','0','华为云对象存储','000000',0,'2026-06-15 08:47:07','2026-06-15 08:47:07'),
+('000348','324832179827904512','AWS S3','aws_s3',6,'purple','0','AWS S3 存储','000000',0,'2026-06-15 08:47:07','2026-06-15 08:47:07'),
+('000349','324832179827904512','本地存储','local',7,'default','0','服务器本地存储','000000',0,'2026-06-15 08:47:07','2026-06-15 08:47:07'),
+-- sys_nav_theme (DT001)
+('000350','DT001','亮色菜单风格','light',1,'blue','0','亮色主题导航','000000',0,'2026-07-09 09:00:00','2026-07-09 09:00:00'),
+('000351','DT001','暗色菜单风格','dark',2,'volcano','0','暗色主题导航','000000',0,'2026-07-09 09:00:00','2026-07-09 09:00:00'),
+('000352','DT001','暗黑模式','realDark',3,'red','0','纯暗黑模式','000000',0,'2026-07-09 09:00:00','2026-07-09 09:00:00'),
+-- sys_layout_type (DT002)
+('000353','DT002','侧边菜单布局','side',1,'blue','0','侧边栏布局','000000',0,'2026-07-09 09:00:00','2026-07-09 09:00:00'),
+('000354','DT002','顶部菜单布局','top',2,'green','0','顶部栏布局','000000',0,'2026-07-09 09:00:00','2026-07-09 09:00:00'),
+('000355','DT002','混合布局','mix',3,'purple','0','混合布局模式','000000',0,'2026-07-09 09:00:00','2026-07-09 09:00:00'),
+-- sys_content_width (DT003)
+('000356','DT003','流式','Fluid',1,'cyan','0','自适应宽度','000000',0,'2026-07-09 09:00:00','2026-07-09 09:00:00'),
+('000357','DT003','定宽','Fixed',2,'orange','0','固定宽度','000000',0,'2026-07-09 09:00:00','2026-07-09 09:00:00'),
+-- sys_bucket_access_type (325153530858049536)
 ('325153647082213376','325153530858049536','公共桶','public',1,'cyan','0','公开可访问文件','000000',0,'2026-06-16 06:04:30','2026-06-16 06:04:30'),
 ('325153773272043520','325153530858049536','私有桶','private',2,'orange','0','需鉴权或签名访问文件','000000',0,'2026-06-16 06:05:00','2026-06-16 06:05:00');
 --
@@ -181,6 +239,217 @@ CREATE TABLE `sys_file` (
 --
 
 INSERT INTO `sys_file` VALUES ('325151909738582016','000000','000001','private-assets','头像/1781589455662_images.jpg','images.jpg','images.jpg','jpg','image/jpeg',5354,'private','头像',NULL,NULL,'2026-06-16 05:57:36',NULL,'2026-06-22 08:33:56',1),('325155265907396608','000000','000001','public-assets','头像/1781590255855_images.jpg','images.jpg','images.jpg','jpg','image/jpeg',5354,'public','头像','https://s3.minion.xlcig.cn/public-assets/头像/1781590255855_images.jpg',NULL,'2026-06-16 06:10:56',NULL,'2026-06-22 08:34:00',1),('325441325367431168','000000','000001','private-assets','头像/1781658458065_jaihao@2x.png','jaihao@2x.png','jaihao@2x.png','png','image/png',190,'private','头像',NULL,NULL,'2026-06-17 01:07:38',NULL,'2026-06-17 01:10:20',1),('325441335437955072','000000','000001','private-assets','头像/1781658460626_jaihao@2x.png','jaihao@2x.png','jaihao@2x.png','png','image/png',190,'private','头像',NULL,NULL,'2026-06-17 01:07:41',NULL,'2026-06-17 01:10:17',1),('325441758840360960','000000','000001','private-assets','头像/1781658561442_jaihao@2x.png','jaihao@2x.png','jaihao@2x.png','png','image/png',190,'private','头像',NULL,NULL,'2026-06-17 01:09:22',NULL,'2026-06-17 01:10:14',1),('325441924779610112','000000','000001','private-assets','头像/1781658600976_jaihao@2x.png','jaihao@2x.png','jaihao@2x.png','png','image/png',190,'private','头像',NULL,NULL,'2026-06-17 01:10:01',NULL,'2026-06-17 01:10:11',1),('325442039544156160','000000','000001','public-assets','头像/1781658628415_sanjiao@2x.png','sanjiao@2x.png','sanjiao@2x.png','png','image/png',454,'public','头像','https://s3.minion.xlcig.cn/public-assets/头像/1781658628415_sanjiao@2x.png',NULL,'2026-06-17 01:10:29',NULL,'2026-06-22 08:36:04',1),('325452100014313472','000000','000001','public-assets','头像/1781661026961_jian@2x.png','jian@2x.png','jian@2x.png','png','image/png',702,'public','头像','https://s3.minion.xlcig.cn/public-assets/头像/1781661026961_jian@2x.png',NULL,'2026-06-17 01:50:27',NULL,'2026-06-17 01:50:27',0),('325456136671203328','000000','000001','public-assets','avatar/1781661989382_images.jpg','images.jpg','images.jpg','jpg','image/jpeg',5354,'public','avatar','https://s3.minion.xlcig.cn/public-assets/avatar/1781661989382_images.jpg',NULL,'2026-06-17 02:06:30',NULL,'2026-06-17 02:06:30',0),('325456179692179456','000000','000001','public-assets','avatar/1781661999673_images.jpg','images.jpg','images.jpg','jpg','image/jpeg',5354,'public','avatar','https://s3.minion.xlcig.cn/public-assets/avatar/1781661999673_images.jpg',NULL,'2026-06-17 02:06:40',NULL,'2026-06-22 08:37:26',1),('327364300417142784','000000','000001','public-assets','Logo/1782116930943_icon-512x512.png','icon-512x512.png','icon-512x512.png','png','image/png',140523,'public','Logo','https://s3.minion.xlcig.cn/public-assets/Logo/1782116930943_icon-512x512.png',NULL,'2026-06-22 08:28:51',NULL,'2026-06-22 08:28:51',0),('327364429765283840','000000','000001','public-assets','Logo/1782116961918_icon-128x128.png','icon-128x128.png','icon-128x128.png','png','image/png',17728,'public','Logo','https://s3.minion.xlcig.cn/public-assets/Logo/1782116961918_icon-128x128.png',NULL,'2026-06-22 08:29:22',NULL,'2026-06-22 08:29:22',0),('327364614016864256','000000','000001','public-assets','avatar/1782117005845_icon-192x192.png','icon-192x192.png','icon-192x192.png','png','image/png',31774,'public','avatar','https://s3.minion.xlcig.cn/public-assets/avatar/1782117005845_icon-192x192.png',NULL,'2026-06-22 08:30:06',NULL,'2026-06-22 08:30:06',0),('327365894550458368','000000','000001','private-assets','test/1782117310918_13号馆图纸-2026.5.22给[1].png','13号馆图纸-2026.5.22给[1].png','13号馆图纸-2026.5.22给[1].png','png','image/png',396484,'private','test',NULL,NULL,'2026-06-22 08:35:11',NULL,'2026-06-22 08:35:20',1),('327367429577641984','000000','000001','private-assets','test/1782117676996_icon-512x512.png','icon-512x512.png','icon-512x512.png','png','image/png',140523,'private','test',NULL,NULL,'2026-06-22 08:41:17',NULL,'2026-06-22 08:41:17',0),('327367574755086336','000000','000001','public-assets','test/1782117711674_icon-512x512.png','icon-512x512.png','icon-512x512.png','png','image/png',140523,'public','test','https://s3.minion.xlcig.cn/public-assets/test/1782117711674_icon-512x512.png',NULL,'2026-06-22 08:41:52',NULL,'2026-06-22 08:41:52',0),('328371822036914176','000000','000001','public-assets','download-center/1782357142210_OneDrive_入门.pdf','OneDrive 入门.pdf','OneDrive_入门.pdf','pdf','application/pdf',1247350,'public','download-center','https://s3.minion.xlcig.cn/public-assets/download-center/1782357142210_OneDrive_入门.pdf',NULL,'2026-06-25 03:12:24',NULL,'2026-06-25 03:12:24',0),('328371907353251840','000000','000001','public-assets','download-center/1782357162853_Document.docx','Document.docx','Document.docx','docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',881540,'public','download-center','https://s3.minion.xlcig.cn/public-assets/download-center/1782357162853_Document.docx',NULL,'2026-06-25 03:12:45',NULL,'2026-06-25 03:12:45',0),('328372133178773504','000000','000001','public-assets','download-center/1782357217177_system-user-template.xlsx','system-user-template.xlsx','system-user-template.xlsx','xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',6637,'public','download-center','https://s3.minion.xlcig.cn/public-assets/download-center/1782357217177_system-user-template.xlsx',NULL,'2026-06-25 03:13:39',NULL,'2026-06-25 03:13:39',0);
+
+--
+-- Table structure for table `sys_page_config`
+--
+
+DROP TABLE IF EXISTS `sys_page_config`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sys_page_config` (
+  `page_config_id` varchar(32) NOT NULL COMMENT '页面配置ID',
+  `page_code` varchar(100) NOT NULL COMMENT '页面编码',
+  `page_name` varchar(100) NOT NULL COMMENT '页面名称',
+  `enabled` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+  `sort` int NOT NULL DEFAULT 0 COMMENT '排序',
+  `tenant_id` varchar(32) NOT NULL DEFAULT '000000' COMMENT '租户ID',
+  `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+  `deleted` tinyint NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`page_config_id`),
+  UNIQUE KEY `uk_page_code_tenant` (`tenant_id`,`page_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='页面配置表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `sys_page_column_config`
+--
+
+DROP TABLE IF EXISTS `sys_page_column_config`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sys_page_column_config` (
+  `column_id` varchar(32) NOT NULL COMMENT '列配置ID',
+  `page_code` varchar(100) NOT NULL COMMENT '页面编码',
+  `data_index` varchar(100) NOT NULL COMMENT '字段标识',
+  `title` varchar(100) NOT NULL COMMENT '列标题',
+  `order_num` int NOT NULL DEFAULT 0 COMMENT '排序',
+  `visible` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否可见',
+  `searchable` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否可搜索',
+  `editable` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否可编辑',
+  `copyable` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否可复制',
+  `ellipsis` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否省略',
+  `value_type` varchar(50) DEFAULT NULL COMMENT '值类型(text/select/dateTime/password/textarea/switch/treeSelect)',
+  `value_enum_code` varchar(100) DEFAULT NULL COMMENT '字典编码(如 sys_status)',
+  `placeholder` varchar(200) DEFAULT NULL COMMENT '占位提示',
+  `required` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否必填',
+  `tenant_id` varchar(32) NOT NULL DEFAULT '000000' COMMENT '租户ID',
+  `deleted` tinyint NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`column_id`),
+  KEY `idx_col_page_code` (`page_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='页面列配置表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `sys_page_config`
+--
+
+INSERT IGNORE INTO `sys_page_config` VALUES
+('P001','system_user','用户管理',1,10,'000000','用户管理页面配置',0,NOW(),NOW()),
+('P002','system_role','角色管理',1,20,'000000','角色管理页面配置',0,NOW(),NOW()),
+('P003','system_dept','部门管理',1,30,'000000','部门管理页面配置',0,NOW(),NOW()),
+('P004','system_menu','菜单管理',1,40,'000000','菜单管理页面配置',0,NOW(),NOW()),
+('P005','system_config','系统参数',1,50,'000000','系统参数页面配置',0,NOW(),NOW()),
+('P006','system_dict','字典管理',1,60,'000000','字典管理页面配置',0,NOW(),NOW()),
+('P007','system_theme','主题配置',1,70,'000000','主题配置页面配置',0,NOW(),NOW()),
+('P008','system_log','日志中心',1,80,'000000','日志中心页面配置',0,NOW(),NOW()),
+('P009','system_tenant','租户管理',1,90,'000000','租户管理页面配置',0,NOW(),NOW()),
+('P010','system_package','套餐管理',1,100,'000000','套餐管理页面配置',0,NOW(),NOW()),
+('P011','system_storage','存储配置',1,110,'000000','存储配置页面配置',0,NOW(),NOW()),
+('P012','file_manager','文件管理',1,120,'000000','文件管理页面配置',0,NOW(),NOW()),
+('P013','system_dict_type','字典类型管理',1,65,'000000','字典类型页面配置',0,NOW(),NOW()),
+('P014','system_dict_data','字典数据管理',1,66,'000000','字典数据页面配置',0,NOW(),NOW()),
+('P015','system_log_operation','操作审计',1,81,'000000','操作审计日志页面配置',0,NOW(),NOW()),
+('P016','system_log_upload','上传审计',1,82,'000000','上传审计日志页面配置',0,NOW(),NOW()),
+('P017','system_log_login','登录日志',1,83,'000000','登录日志页面配置',0,NOW(),NOW());
+
+--
+-- Dumping data for table `sys_page_column_config` (用户管理作为示例)
+--
+
+INSERT IGNORE INTO `sys_page_column_config` VALUES
+-- 用户管理 (system_user)
+('C001','system_user','username','用户名',1,1,1,1,1,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C002','system_user','nickname','昵称',2,1,0,1,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C003','system_user','realName','真实姓名',3,1,0,1,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C004','system_user','phone','手机号',4,1,0,1,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C005','system_user','email','邮箱',5,1,0,1,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C006','system_user','isAdmin','管理员',6,1,0,1,0,0,'select','sys_yes_no',NULL,0,'000000',0,NOW(),NOW()),
+('C007','system_user','status','状态',7,1,1,1,0,0,'select','sys_status',NULL,0,'000000',0,NOW(),NOW()),
+('C008','system_user','createTime','创建时间',8,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 系统参数 (system_config)
+('C009','system_config','configName','参数名称',1,1,1,1,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C010','system_config','configKey','参数键名',2,1,1,1,1,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C011','system_config','configValue','参数键值',3,1,0,1,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C012','system_config','configType','类型',4,1,1,1,0,0,'select','sys_config_type',NULL,0,'000000',0,NOW(),NOW()),
+('C013','system_config','status','状态',5,1,1,1,0,0,'select','sys_status',NULL,0,'000000',0,NOW(),NOW()),
+('C014','system_config','remark','备注',6,1,0,1,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C015','system_config','createTime','创建时间',7,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 角色管理 (system_role)
+('C016','system_role','roleName','角色名称',1,1,1,1,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C017','system_role','roleKey','角色标识',2,1,0,1,1,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C018','system_role','sortNum','排序',3,1,0,0,0,0,'digit',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C019','system_role','status','状态',4,1,1,1,0,0,'select','sys_status',NULL,0,'000000',0,NOW(),NOW()),
+('C020','system_role','remark','备注',5,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C021','system_role','createTime','创建时间',6,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 部门管理 (system_dept)
+('C022','system_dept','deptName','部门名称',1,1,1,1,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C023','system_dept','sortNum','排序',2,1,0,1,0,0,'digit',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C024','system_dept','status','状态',3,1,1,0,0,0,'select','sys_status',NULL,0,'000000',0,NOW(),NOW()),
+('C025','system_dept','createTime','创建时间',4,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 菜单管理 (system_menu)
+('C026','system_menu','menuName','菜单名称',1,1,1,1,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C027','system_menu','icon','图标',2,1,0,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C028','system_menu','path','路由地址',3,1,0,0,1,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C029','system_menu','component','组件路径',4,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C030','system_menu','perms','权限标识',5,1,0,0,1,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C031','system_menu','menuType','类型',6,1,1,1,0,0,'select','sys_menu_type',NULL,0,'000000',0,NOW(),NOW()),
+('C032','system_menu','status','状态',7,1,1,0,0,0,'select','sys_status',NULL,0,'000000',0,NOW(),NOW()),
+('C033','system_menu','sortNum','排序',8,1,0,0,0,0,'digit',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 字典类型 (system_dict_type)
+('C034','system_dict_type','dictName','字典名称',1,1,1,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C035','system_dict_type','dictType','字典类型',2,1,1,1,1,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C036','system_dict_type','status','状态',3,1,1,0,0,0,'select','sys_status',NULL,0,'000000',0,NOW(),NOW()),
+('C037','system_dict_type','remark','备注',4,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C038','system_dict_type','createTime','创建时间',5,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 字典数据 (system_dict_data)
+('C039','system_dict_data','dictLabel','字典标签',1,1,1,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C040','system_dict_data','dictValue','字典值',2,1,1,0,1,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C041','system_dict_data','dictSort','排序',3,1,0,0,0,0,'digit',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C042','system_dict_data','tag','标签颜色',4,1,0,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C043','system_dict_data','status','状态',5,1,1,0,0,0,'select','sys_status',NULL,0,'000000',0,NOW(),NOW()),
+('C044','system_dict_data','remark','备注',6,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 租户管理 (system_tenant)
+('C045','system_tenant','tenantName','租户名称',1,1,1,1,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C046','system_tenant','domainName','绑定域名',2,1,0,1,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C047','system_tenant','contactUser','联系人',3,1,0,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C048','system_tenant','contactPhone','联系电话',4,1,0,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C049','system_tenant','status','状态',5,1,1,1,0,0,'select','sys_status',NULL,0,'000000',0,NOW(),NOW()),
+('C050','system_tenant','expireTime','到期时间',6,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C051','system_tenant','createTime','创建时间',7,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 套餐管理 (system_package)
+('C052','system_package','packageName','套餐名称',1,1,1,1,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C053','system_package','status','状态',2,1,1,0,0,0,'select','sys_status',NULL,0,'000000',0,NOW(),NOW()),
+('C054','system_package','remark','备注',3,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C055','system_package','createTime','创建时间',4,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 存储配置 (system_storage)
+('C056','system_storage','storageName','存储名称',1,1,1,1,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C057','system_storage','storageType','存储类型',2,1,1,1,0,0,'select','sys_storage_type',NULL,0,'000000',0,NOW(),NOW()),
+('C058','system_storage','endpoint','Endpoint',3,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C059','system_storage','region','Region',4,1,0,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C060','system_storage','port','端口',5,1,0,0,0,0,'digit',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C061','system_storage','publicBucket','公共桶',6,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C062','system_storage','privateBucket','私有桶',7,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C063','system_storage','publicBaseUrl','公共地址',8,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C064','system_storage','isDefault','是否默认',9,1,0,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C065','system_storage','status','状态',10,1,1,1,0,0,'select','sys_status',NULL,0,'000000',0,NOW(),NOW()),
+('C066','system_storage','createTime','创建时间',11,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 文件管理 (file_manager)
+('C067','file_manager','originalName','原始文件名',1,1,1,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C068','file_manager','fileName','存储文件名',2,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C069','file_manager','bucketName','桶名称',3,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C070','file_manager','objectName','对象路径',4,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C071','file_manager','moduleName','模块',5,1,1,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C072','file_manager','accessType','访问类型',6,1,1,0,0,0,'select','sys_bucket_access_type',NULL,0,'000000',0,NOW(),NOW()),
+('C073','file_manager','fileSize','文件大小',7,1,0,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C074','file_manager','url','公共URL',8,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C075','file_manager','createTime','创建时间',9,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 主题配置 (system_theme)
+('C076','system_theme','tenantId','租户ID',1,1,0,0,1,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C077','system_theme','navTheme','导航主题',2,1,1,0,0,0,'select','sys_nav_theme',NULL,0,'000000',0,NOW(),NOW()),
+('C078','system_theme','colorPrimary','主色',3,1,0,0,1,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C079','system_theme','layout','布局',4,1,1,0,0,0,'select','sys_layout_type',NULL,0,'000000',0,NOW(),NOW()),
+('C080','system_theme','fixedHeader','固定头部',5,1,0,0,0,0,'select','sys_yes_no',NULL,0,'000000',0,NOW(),NOW()),
+('C081','system_theme','fixSiderbar','固定侧栏',6,1,0,0,0,0,'select','sys_yes_no',NULL,0,'000000',0,NOW(),NOW()),
+('C082','system_theme','colorWeak','色弱模式',7,1,0,0,0,0,'select','sys_yes_no',NULL,0,'000000',0,NOW(),NOW()),
+('C083','system_theme','status','状态',8,1,1,0,0,0,'select','sys_status',NULL,0,'000000',0,NOW(),NOW()),
+('C084','system_theme','createTime','创建时间',9,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 操作审计 (system_log_operation)
+('C085','system_log_operation','username','用户名',1,1,1,0,1,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C086','system_log_operation','moduleName','模块',2,1,1,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C087','system_log_operation','businessType','业务类型',3,1,1,0,0,0,'select','sys_business_type',NULL,0,'000000',0,NOW(),NOW()),
+('C088','system_log_operation','title','标题',4,1,1,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C089','system_log_operation','success','结果',5,1,1,0,0,0,'select','sys_upload_status',NULL,0,'000000',0,NOW(),NOW()),
+('C090','system_log_operation','requestMethod','请求方法',6,1,0,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C091','system_log_operation','requestUrl','请求地址',7,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C092','system_log_operation','clientIp','IP',8,1,1,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C093','system_log_operation','operatorTime','操作时间',9,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 上传审计 (system_log_upload)
+('C094','system_log_upload','username','用户名',1,1,1,0,1,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C095','system_log_upload','moduleName','模块',2,1,1,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C096','system_log_upload','originalName','文件名',3,1,1,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C097','system_log_upload','safeName','清洗名',4,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C098','system_log_upload','accessType','访问类型',5,1,1,0,0,0,'select','sys_access_type',NULL,0,'000000',0,NOW(),NOW()),
+('C099','system_log_upload','storageType','存储类型',6,1,0,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C100','system_log_upload','uploadStatus','上传状态',7,1,1,0,0,0,'select','sys_upload_status',NULL,0,'000000',0,NOW(),NOW()),
+('C101','system_log_upload','failReason','失败原因',8,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C102','system_log_upload','clientIp','IP',9,1,1,0,0,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C103','system_log_upload','requestId','requestId',10,1,0,0,1,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C104','system_log_upload','createTime','上传时间',11,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW()),
+-- 登录日志 (system_log_login)
+('C105','system_log_login','username','用户名',1,1,1,0,1,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C106','system_log_login','tenantId','租户ID',2,1,0,0,1,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C107','system_log_login','loginType','登录类型',3,1,1,0,0,0,'select','sys_login_type',NULL,0,'000000',0,NOW(),NOW()),
+('C108','system_log_login','loginStatus','结果',4,1,1,0,0,0,'select','sys_upload_status',NULL,0,'000000',0,NOW(),NOW()),
+('C109','system_log_login','failReason','失败原因',5,1,0,0,0,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C110','system_log_login','loginIp','登录IP',6,1,1,0,1,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C111','system_log_login','requestId','requestId',7,1,0,0,1,0,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C112','system_log_login','userAgent','userAgent',8,1,0,0,1,1,'text',NULL,NULL,0,'000000',0,NOW(),NOW()),
+('C113','system_log_login','loginTime','登录时间',9,1,0,0,0,0,'dateTime',NULL,NULL,0,'000000',0,NOW(),NOW());
 
 --
 -- Table structure for table `sys_global_search_config`

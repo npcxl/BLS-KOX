@@ -1,6 +1,7 @@
-import type { ProColumns, ProFormColumnsType } from '@ant-design/pro-components';
+import type { ProFormColumnsType } from '@ant-design/pro-components';
 import { message } from 'antd';
 import { useMultiDict } from '@/hooks/useDict';
+import { usePageConfig } from '@/hooks/usePageConfig';
 import { refreshGlobalSettings } from '@/services/system/settings';
 import CrudTablePage from '@/components/CrudTablePage';
 
@@ -18,31 +19,10 @@ export type ConfigRecord = {
 
 function ConfigPageInner() {
   const { sys_status, sys_config_type } = useMultiDict(['sys_status', 'sys_config_type']);
+  const { proColumns } = usePageConfig('system_config');
 
-  const statusValueEnum = sys_status?.valueEnum ?? {};
-  const configTypeValueEnum = sys_config_type?.valueEnum ?? {};
-  const statusFormEnum = Object.fromEntries(Object.entries(statusValueEnum).map(([k, v]) => [k, v.text]));
-  const configTypeFormEnum = Object.fromEntries(Object.entries(configTypeValueEnum).map(([k, v]) => [k, v.text]));
-
-  const columns: ProColumns<ConfigRecord>[] = [
-    { title: '参数名称', dataIndex: 'configName', ellipsis: true},
-    { title: '参数键名', dataIndex: 'configKey', copyable: true, ellipsis: true },
-    { title: '参数键值', dataIndex: 'configValue',width:100, search: false, ellipsis: true},
-    {
-      title: '类型',
-      dataIndex: 'configType',
-      valueType: 'select',
-      valueEnum: configTypeValueEnum,
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      valueType: 'select',
-      valueEnum: statusValueEnum,
-    },
-    { title: '备注', dataIndex: 'remark', search: false, ellipsis: true },
-    { title: '创建时间', dataIndex: 'createTime', valueType: 'dateTime', search: false },
-  ];
+  const statusFormEnum = Object.fromEntries(Object.entries(sys_status?.valueEnum ?? {}).map(([k, v]) => [k, v.text]));
+  const configTypeFormEnum = Object.fromEntries(Object.entries(sys_config_type?.valueEnum ?? {}).map(([k, v]) => [k, v.text]));
 
   const formColumns: ProFormColumnsType<ConfigRecord>[] = [
     { title: '参数名称', dataIndex: 'configName', formItemProps: { rules: [{ required: true, message: '请输入参数名称' }] } },
@@ -58,7 +38,7 @@ function ConfigPageInner() {
       title="系统参数"
       rowKey="configId"
       resource={{ basePath: '/api/system/config', remove: false, status: false }}
-      columns={columns}
+      columns={proColumns}
       formColumns={formColumns}
       modalWidth={760}
       excelMetaKey="system-config"
