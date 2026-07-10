@@ -1,59 +1,53 @@
 /**
  * Data Scope 中间件
- *
- * 自动注入 ctx.state.dataScope，供业务处理使用。
+ * 自动注入 ctx.state.dataScope
  */
 import type { Context, Next } from 'koa';
-import { resolveMaxScope, type DataScopeConfig } from './data-scope';
+import { resolveMaxScope, type DataScopeConfig, type DataScopeType } from './data-scope';
 import { getRequestContext } from '../../core/request-context';
 import { logger } from '../../core/logger';
 
-/**
- * 从上下文构建 DataScope 配置
- */
 export async function buildDataScope(ctx: Context): Promise<DataScopeConfig | null> {
   const reqCtx = getRequestContext();
-  const userId = reqCtx?.userId ?? ctx.state.user?.userId;
-  const tenantId = reqCtx?.tenantId ?? ctx.state.user?.tenantId;
+  const userId = reqCtx?.userId ?? ctx.state.user?.userId ?? '';
+  const tenantId = reqCtx?.tenantId ?? ctx.state.user?.tenantId ?? '';
   if (!userId || !tenantId) return null;
 
-  // 获取用户角色列表
-  const roles = ctx.state.user?.roles ?? [];
-  const scope = resolveMaxScope(roles);
+  // 从 ctx.state.user 获取角色和部门
+  const userRoles: { dataScope?: DataScopeType }[] = (ctx.state.user?.roles ?? []).map((r: any) =>
+    typeof r === 'string' ? { dataScope: 'TENANT' as DataScopeType } : r,
+  );
+  const scope = resolveMaxScope(userRoles);
 
-  // 获取用户部门（从 ctx.state.user 中）
-  const deptIds: string[] = ctx.state.user?.deptIds ?? ctx.state.user?.deptId ? [ctx.state.user.deptId] : [];
+  // 获取用户部门 ID
+  const deptIds: string[] = [];
+  if (ctx.state.user?.deptId) deptIds.push(String(ctx.state.user.deptId));
 
-  // DEPT_AND_CHILDREN 需要递归查询子部门
+  // DEPT_AND_CHILDREN: 递归查询子部门
   if (scope === 'DEPT_AND_CHILDREN' && deptIds.length > 0) {
     try {
       const { getDb } = require('../../core/database');
       const db = await getDb();
       const allDeptIds = [...deptIds];
-      let parents = deptIds;
+      let parents = [...deptIds];
       while (parents.length > 0) {
-        const children = await db
-          .selectFrom('sys_dept')
-          .select('dept_id')
-          .where('parent_id', 'in', parents)
-          .where('deleted', '=', 0)
-          .execute() as any[];
+        const children = (await db
+          .selectFrom('sys_dept').select('dept_id')
+          .where('parent_id', 'in', parents).where('deleted', '=', 0)
+          .execute()) as any[];
         if (children.length === 0) break;
         parents = children.map((c: any) => String(c.dept_id));
         allDeptIds.push(...parents);
       }
       return { userId, tenantId, deptIds: allDeptIds, scope };
     } catch (err) {
-      logger.warn('[data-scope] recursive dept query failed', { error: String(err) });
+      logger.warn('[data-scope] dept query failed', { error: String(err) });
     }
   }
 
   return { userId, tenantId, deptIds, scope };
 }
 
-/**
- * Data Scope 中间件
- */
 export function dataScope(options?: { required?: boolean }) {
   return async (ctx: Context, next: Next) => {
     const scope = await buildDataScope(ctx);
