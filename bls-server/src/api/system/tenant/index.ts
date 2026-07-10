@@ -12,8 +12,28 @@ router.get('/list', jwtAuth(), hasPerm('system:tenant:list'), async (ctx: Contex
   const db = (await getDb()) as any; const q: any = ctx.query;
   const p = Math.max(1, +q.pageNum||1); const s = Math.min(100, +q.pageSize||10);
   let b = db.selectFrom(T).selectAll();
-  if (q.keyword) b = b.where((eb:any)=>eb.or(['tenant_name','domain_name'].map(f=>eb(f,'like',`%${q.keyword}%`))));
-  if (q.status !== undefined && q.status !== '' && q.status !== null) b = b.where('status','=',String(q.status));
+
+  // 从动态列配置加载可搜索字段
+  const searchCols = await db.selectFrom('sys_page_column_config').select('data_index')
+    .where('page_code','=','system_tenant').where('searchable','=',1).where('deleted','=',0).execute();
+  const searchFields = searchCols.map((c:any) => c.data_index.replace(/[A-Z]/g, (m:string) => '_'+m.toLowerCase()));
+
+  if (q.keyword) {
+    if (searchFields.length) {
+      b = b.where((eb:any)=>eb.or(searchFields.map((f:string)=>eb(f,'like',`%${q.keyword}%`))));
+    } else {
+      b = b.where((eb:any)=>eb.or(['tenant_name','domain_name'].map((f:string)=>eb(f,'like',`%${q.keyword}%`))));
+    }
+  }
+
+  // 精确搜索：searchable=1 的字段自动支持 = 过滤
+  for (const c of searchCols) {
+    const field = c.data_index;
+    if (q[field] !== undefined && q[field] !== '' && q[field] !== null) {
+      b = b.where(field.replace(/[A-Z]/g, (m:string)=>'_'+m.toLowerCase()), '=', String(q[field]));
+    }
+  }
+
   const countRow = await (b as any).clearSelect().select((eb:any)=>eb.fn.countAll().as('total')).executeTakeFirst();
   ctx.body = { code: 200, data: await b.orderBy('create_time','desc').limit(s).offset((p-1)*s).execute(), total: Number(countRow?.total??0) };
 });

@@ -14,8 +14,28 @@ router.get('/list', jwtAuth(), hasPerm('system:role:list'), async (ctx: Context)
   const p = Math.max(1, +q.pageNum||1); const s = Math.min(100, +q.pageSize||10);
   let b = db.selectFrom(T).selectAll().where('deleted','=',0);
   const tid = getCurrentTenantId(); if (tid) b = b.where('tenant_id','=',tid);
-  if (q.keyword) b = b.where((eb:any)=>eb.or(['role_name','role_key'].map(f=>eb(f,'like',`%${q.keyword}%`))));
-  if (q.status !== undefined && q.status !== '' && q.status !== null) b = b.where('status','=',String(q.status));
+
+  // 从动态列配置加载可搜索字段
+  const searchCols = await db.selectFrom('sys_page_column_config').select('data_index')
+    .where('page_code','=','system_role').where('searchable','=',1).where('deleted','=',0).execute();
+  const searchFields = searchCols.map((c:any) => c.data_index.replace(/[A-Z]/g, (m:string) => '_'+m.toLowerCase()));
+
+  if (q.keyword) {
+    if (searchFields.length) {
+      b = b.where((eb:any)=>eb.or(searchFields.map((f:string)=>eb(f,'like',`%${q.keyword}%`))));
+    } else {
+      b = b.where((eb:any)=>eb.or(['role_name','role_key'].map((f:string)=>eb(f,'like',`%${q.keyword}%`))));
+    }
+  }
+
+  // 精确搜索：searchable=1 的字段自动支持 = 过滤
+  for (const c of searchCols) {
+    const field = c.data_index;
+    if (q[field] !== undefined && q[field] !== '' && q[field] !== null) {
+      b = b.where(field.replace(/[A-Z]/g, (m:string)=>'_'+m.toLowerCase()), '=', String(q[field]));
+    }
+  }
+
   const countRow = await (b as any).clearSelect().select((eb:any)=>eb.fn.countAll().as('total')).executeTakeFirst();
   ctx.body = { code: 200, data: await b.orderBy('sort_num','asc').limit(s).offset((p-1)*s).execute(), total: Number(countRow?.total??0) };
 });
