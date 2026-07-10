@@ -18,17 +18,33 @@ import * as AntIcons from "@ant-design/icons";
 import type { Settings as LayoutSettings } from "@ant-design/pro-components";
 import { SettingDrawer } from "@ant-design/pro-components";
 import type { RequestConfig, RunTimeLayoutConfig } from "@umijs/max";
-import { history, Link, useModel } from "@umijs/max";
+import { history, Link } from "@umijs/max";
 import { message } from "antd";
 import React from "react";
 import defaultSettings from "../config/defaultSettings";
 import { errorConfig } from "./requestErrorConfig";
-import { publicThemeConfig, themeCurrent, addTheme, updateTheme } from "@/services/ant-design-pro/api";
+import { ensureValidSession, redirectToLogin, setLoginPath } from "@/auth/auth-manager";
+import {
+  publicThemeConfig,
+  themeCurrent,
+  addTheme,
+  updateTheme,
+} from "@/services/ant-design-pro/api";
 import { GlobalSearchModal } from "./components/RightContent/GlobalSearchModal";
 import { GlobalRealtimeProvider } from "./components/GlobalRealtimeProvider";
+
 const isDev = process.env.NODE_ENV === "development";
 const loginPath = "/user/login";
 const currentUserPath = "/api/auth/profile";
+
+// 配置登录页路径，auth-manager 需要知道
+setLoginPath(loginPath);
+
+const PUBLIC_ROUTES = [loginPath, "/user/register", "/user/register-result"];
+
+function isPublicRoute(pathname: string): boolean {
+  return PUBLIC_ROUTES.includes(pathname);
+}
 
 const ANT_ICON_MAP = AntIcons as unknown as Record<string, React.ComponentType>;
 
@@ -101,12 +117,18 @@ function normalizeSelectedKeys(pathname: string) {
   return [pathname];
 }
 
-function getHeaderTitle(systemMap?: Record<string, string>) {
-  return systemMap?.title ?? defaultSettings.title;
+function getHeaderTitle(
+  settings?: Record<string, unknown>,
+  systemMap?: Record<string, string>,
+) {
+  return (settings?.title as string) ?? systemMap?.title ?? defaultSettings.title;
 }
 
-function getHeaderLogo(systemMap?: Record<string, string>) {
-  return systemMap?.logo?? defaultSettings.logo;
+function getHeaderLogo(
+  settings?: Record<string, unknown>,
+  systemMap?: Record<string, string>,
+) {
+  return (settings?.logo as string) ?? systemMap?.logo ?? defaultSettings.logo;
 }
 
 function buildSystemMap(systemList: API.SysConfig[]): Record<string, string> {
@@ -127,7 +149,6 @@ function toBoolean(value: unknown, defaultValue = false) {
   if (value === undefined || value === null || value === "") {
     return defaultValue;
   }
-
   return value === true || value === 1 || value === "1" || value === "true";
 }
 
@@ -196,7 +217,6 @@ export async function getInitialState(): Promise<{
   const fetchUserInfo = async () => {
     try {
       const msg = await queryCurrentUser({
-        skipErrorHandler: true,
         url: currentUserPath,
       });
       if (msg.data) {
@@ -214,8 +234,8 @@ export async function getInitialState(): Promise<{
 
   const fetchPublicSettings = async () => {
     const [themeRes, systemRes] = await Promise.all([
-      publicThemeConfig({ skipErrorHandler: true }),
-      publicSystemConfig({ skipErrorHandler: true }),
+      publicThemeConfig({ skipErrorMessage: true }),
+      publicSystemConfig({ skipErrorMessage: true }),
     ]);
 
     const theme = themeRes.data?.data ?? themeRes.data;
@@ -229,10 +249,11 @@ export async function getInitialState(): Promise<{
     };
   };
 
+  /** 鉴权设置：不走 skipErrorHandler，让 401 正常触发 Refresh */
   const fetchAuthSettings = async () => {
     const [themeRes, systemRes] = await Promise.all([
-      themeCurrent({ skipErrorHandler: true }),
-      systemCurrent({ skipErrorHandler: true }),
+      themeCurrent(),
+      systemCurrent(),
     ]);
 
     const theme = themeRes.data?.data ?? themeRes.data;
@@ -247,11 +268,7 @@ export async function getInitialState(): Promise<{
 
   const refreshSettings = async () => {
     const { location } = history;
-    const isLoggedIn = ![
-      loginPath,
-      "/user/register",
-      "/user/register-result",
-    ].includes(location.pathname);
+    const isLoggedIn = !isPublicRoute(location.pathname);
 
     let latest: {
       theme: ThemeLayoutSettings;
@@ -263,7 +280,8 @@ export async function getInitialState(): Promise<{
       try {
         latest = await fetchAuthSettings();
       } catch {
-        latest = await fetchPublicSettings();
+        // Auth Settings 失败不静默 fallback，只保留现有值
+        return {};
       }
     } else {
       latest = await fetchPublicSettings();
@@ -271,11 +289,10 @@ export async function getInitialState(): Promise<{
 
     const systemTitle = latest.systemMap["sys.app.name"];
     const systemLogo = latest.systemMap["sys.app.logo"];
-    console.log(systemTitle);
     const nextSettings = {
       ...defaultSettings,
       ...latest.theme,
-      title:systemTitle ?? defaultSettings.title,
+      title: systemTitle ?? defaultSettings.title,
       logo:
         latest.theme.logo ??
         systemLogo ??
@@ -290,66 +307,85 @@ export async function getInitialState(): Promise<{
 
   setRefreshGlobalSettingsHandler(refreshSettings);
   const { location } = history;
-  let systemMap: Record<string, string> = {};
 
-  const fetchInitialSettings = async () => {
-    const { location } = history;
-    const isLoggedIn = ![
-      loginPath,
-      "/user/register",
-      "/user/register-result",
-    ].includes(location.pathname);
+  // ====== 公开路由：直接加载 Public Settings ======
+  if (isPublicRoute(location.pathname)) {
+    const result = await fetchPublicSettings();
+    const systemMap = result.systemMap;
+    const mergedSettings = {
+      ...defaultSettings,
+      ...result.theme,
+      title: result.theme.title ?? systemMap["sys.app.name"] ?? defaultSettings.title,
+      logo:
+        result.theme.logo ??
+        systemMap["sys.app.logo"] ??
+        (defaultSettings.logo as string | false),
+    } as ThemeLayoutSettings;
 
-    if (isLoggedIn) {
-      try {
-        const result = await fetchAuthSettings();
-        systemMap = result.systemMap;
-        return result;
-      } catch {
-        const result = await fetchPublicSettings();
-        systemMap = result.systemMap;
-        return result;
-      }
-    } else {
-      const result = await fetchPublicSettings();
-      systemMap = result.systemMap;
-      return result;
-    }
+    return {
+      fetchUserInfo,
+      refreshSettings,
+      settings: mergedSettings,
+      themeMeta: result.themeMeta,
+      settingDrawerOpen: false,
+      systemMap,
+    };
+  }
+
+  // ====== 受保护路由：先恢复 Session ======
+  const authState = await ensureValidSession();
+
+  if (authState !== 'valid') {
+    redirectToLogin();
+    // 返回一个空的初始状态，避免页面渲染异常
+    return {
+      fetchUserInfo,
+      refreshSettings,
+      settings: defaultSettings,
+      settingDrawerOpen: false,
+      systemMap: {},
+    };
+  }
+
+  // Session 有效 → 加载受保护的初始数据
+  let initialTheme: {
+    theme: ThemeLayoutSettings;
+    themeMeta: ThemeMeta;
+    systemMap: Record<string, string>;
   };
 
-  const initialTheme = await fetchInitialSettings();
+  try {
+    initialTheme = await fetchAuthSettings();
+  } catch {
+    // Auth Settings 失败 → 直接跳登录（不 fallback public）
+    redirectToLogin();
+    return {
+      fetchUserInfo,
+      refreshSettings,
+      settings: defaultSettings,
+      settingDrawerOpen: false,
+      systemMap: {},
+    };
+  }
+
+  const systemMap = initialTheme.systemMap;
   const mergedSettings = {
     ...defaultSettings,
     ...initialTheme.theme,
-    title:
-      initialTheme.theme.title ??
-      systemMap["sys.app.name"] ??
-      defaultSettings.title,
+    title: initialTheme.theme.title ?? systemMap["sys.app.name"] ?? defaultSettings.title,
     logo:
       initialTheme.theme.logo ??
       systemMap["sys.app.logo"] ??
       (defaultSettings.logo as string | false),
   } as ThemeLayoutSettings;
 
-  if (
-    ![loginPath, "/user/register", "/user/register-result"].includes(
-      location.pathname
-    )
-  ) {
-    const currentUser = await fetchUserInfo();
-    return {
-      fetchUserInfo,
-      refreshSettings,
-      currentUser,
-      settings: mergedSettings,
-      themeMeta: initialTheme.themeMeta,
-      settingDrawerOpen: false,
-      systemMap,
-    };
-  }
+  // 加载用户信息
+  const currentUser = await fetchUserInfo();
+
   return {
     fetchUserInfo,
     refreshSettings,
+    currentUser,
     settings: mergedSettings,
     themeMeta: initialTheme.themeMeta,
     settingDrawerOpen: false,
@@ -362,7 +398,6 @@ export const layout: RunTimeLayoutConfig = ({
   setInitialState,
 }) => {
   const buildThemePayload = (settings: ThemeLayoutSettings) => ({
-
     navTheme: settings.navTheme,
     colorPrimary: settings.colorPrimary,
     layout: settings.layout,
@@ -381,24 +416,13 @@ export const layout: RunTimeLayoutConfig = ({
     tenantId: (settings.tenantId as string | undefined) ?? undefined,
   });
 
-  const headerTitle = getHeaderTitle(
-    initialState?.settings,
-    initialState?.systemMap
-  );
-  const headerLogo = getHeaderLogo(
-    initialState?.settings,
-    initialState?.systemMap
-  );
-
   return {
     ...initialState?.settings,
-    title: headerTitle,
-    logo: headerLogo,
-    menuDataRender: () => {
-      const dashboardTitle =
-        initialState?.systemMap?.['sys.dashboard.name'] || '仪表盘';
-      return mapBackendMenus(initialState?.currentUser?.menus, dashboardTitle);
-    },
+      menuDataRender: () => {
+        const dashboardTitle =
+          initialState?.systemMap?.['sys.dashboard.name'] || '仪表盘';
+        return mapBackendMenus(initialState?.currentUser?.menus, dashboardTitle);
+      },
     selectedKeys: normalizeSelectedKeys(history.location.pathname),
     menuItemRender: (item, dom) => {
       if (item.path) {
@@ -558,8 +582,10 @@ export const layout: RunTimeLayoutConfig = ({
   };
 };
 
+// ====== 请求配置 ======
+// 生产环境使用同源 Nginx 反代 /api，不暴露外部地址
 const requestConfig: RequestConfig = {
-  baseURL: isDev ? "" : "https://pro-api.ant-design-demo.workers.dev",
+  baseURL: isDev ? "" : "",
   ...errorConfig,
 };
 

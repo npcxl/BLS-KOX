@@ -6,8 +6,9 @@ import {
 import { history, useModel } from '@umijs/max';
 import type { MenuProps } from 'antd';
 import { Spin } from 'antd';
-import React, { startTransition } from 'react';
+import React, { startTransition, useCallback } from 'react';
 import { outLogin } from '@/services/ant-design-pro/api';
+import { resetSession } from '@/auth/auth-manager';
 import HeaderDropdown from '../HeaderDropdown';
 
 type GlobalHeaderRightProps = {
@@ -17,15 +18,13 @@ type GlobalHeaderRightProps = {
 export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
   children,
 }) => {
-  const loginOut = async () => {
+  const loginOut = useCallback(async () => {
     try {
       await outLogin();
     } catch (e) {
       console.log('outLogin error', e);
     }
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('currentUser');
+    resetSession();
 
     const { search, pathname } = window.location;
     const urlParams = new URL(window.location.href).searchParams;
@@ -39,7 +38,7 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
         search: searchParams.toString(),
       });
     }
-  };
+  }, []);
   const { initialState, setInitialState } = useModel('@@initialState');
 
   const onMenuClick: MenuProps['onClick'] = (event) => {

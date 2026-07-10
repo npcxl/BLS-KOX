@@ -128,7 +128,7 @@ export default function AccountSettingsPage() {
           remark: form.getFieldValue('remark')?.trim() ?? currentUser.remark,
         });
 
-        const resUser = await queryCurrentUser({ skipErrorHandler: true, url: '/api/auth/profile' });
+        const resUser = await queryCurrentUser({ url: '/api/auth/profile' });
         if (resUser.data) {
           localStorage.setItem('currentUser', JSON.stringify(resUser.data));
           setInitialState((state) => ({ ...state, currentUser: resUser.data }));
@@ -171,7 +171,7 @@ export default function AccountSettingsPage() {
         remark: values.remark?.trim() ?? currentUser.remark,
       });
 
-      const res = await queryCurrentUser({ skipErrorHandler: true, url: '/api/auth/profile' });
+      const res = await queryCurrentUser({ url: '/api/auth/profile' });
       if (res.data) {
         localStorage.setItem('currentUser', JSON.stringify(res.data));
         setInitialState((state) => ({ ...state, currentUser: res.data }));

@@ -2,9 +2,11 @@
 import type { RequestConfig } from '@umijs/max';
 import { getIntl, request as umiRequest } from '@umijs/max';
 import { message, notification, Modal } from 'antd';
-import { refreshToken as requestRefreshToken, outLogin } from '@/services/ant-design-pro/api';
+import { tokenStore } from '@/auth/token-store';
+import { handleAuthError, redirectToLogin } from '@/auth/auth-manager';
+import { isRefreshSkippedUrl } from '@/auth/refresh-manager';
 
-// 错误处理方案： 错误类型
+// 错误处理方案：错误类型
 enum ErrorShowType {
   SILENT = 0,
   WARN_MESSAGE = 1,
@@ -12,6 +14,7 @@ enum ErrorShowType {
   NOTIFICATION = 3,
   REDIRECT = 9,
 }
+
 // 与后端约定的响应数据格式
 interface ResponseStructure {
   success: boolean;
@@ -19,46 +22,6 @@ interface ResponseStructure {
   errorCode?: number;
   errorMessage?: string;
   showType?: ErrorShowType;
-}
-
-let refreshingPromise: Promise<string | null> | null = null;
-
-function isRefreshableRequest(url?: string): boolean {
-  return !!url && !url.includes('/auth/login') && !url.includes('/auth/refresh');
-}
-
-function isRetriedRequest(config: any): boolean {
-  return Boolean(config?._retryAfterRefresh);
-}
-
-async function refreshAccessToken() {
-  const rt = localStorage.getItem('refreshToken');
-  if (!rt) return null;
-  if (!refreshingPromise) {
-    refreshingPromise = requestRefreshToken({ refreshToken: rt })
-      .then((res) => {
-        const data = res as unknown as { data?: { token?: string; refreshToken?: string } };
-        if (!data?.data?.token) return null;
-        localStorage.setItem('token', data.data.token);
-        if (data.data.refreshToken) localStorage.setItem('refreshToken', data.data.refreshToken);
-        return data.data.token;
-      })
-      .catch(() => null)
-      .finally(() => {
-        refreshingPromise = null;
-      });
-  }
-  return refreshingPromise;
-}
-
-async function logoutAndRedirect() {
-  try {
-    await outLogin({ skipErrorHandler: true });
-  } catch {}
-  localStorage.removeItem('token');
-  localStorage.removeItem('refreshToken');
-  localStorage.removeItem('currentUser');
-  window.location.href = '/user/login';
 }
 
 export const errorConfig: RequestConfig = {
@@ -74,49 +37,64 @@ export const errorConfig: RequestConfig = {
       }
     },
     errorHandler: async (error: any, opts: any) => {
-      if (opts?.skipErrorHandler) throw error;
+      // 调用方明确标记 skipErrorMessage → 不弹错误提示，但仍走 Refresh 流程
+      const skipMessage =
+        opts?.skipErrorHandler === true || opts?.skipErrorMessage === true;
+
+      // HTTP 401 处理
       if (error?.response?.status === 401) {
         const responseCode = error?.response?.data?.code;
+
+        // Refresh 相关的 401（skipAuthRefresh 标记的请求）→ 直接跳登录
+        if (opts?.skipAuthRefresh || isRefreshSkippedUrl(error?.config?.url)) {
+          await redirectToLogin();
+          return;
+        }
+
+        // 会话失效（后端明确返回 40101）
         if (responseCode === 40101) {
           Modal.confirm({
-            title: '该账号在别处登录',
-            content: '请检查是否泄漏密码，重新登录',
+            title: '当前会话已失效',
+            content: '请重新登录',
             onOk: async () => {
-              await logoutAndRedirect();
+              await redirectToLogin();
             },
           });
           return;
         }
+
+        // 尝试 Refresh + Retry
         const originalConfig = error?.config;
-        if (isRetriedRequest(originalConfig)) {
-          await logoutAndRedirect();
-          return;
-        }
-        const token = await refreshAccessToken();
-        if (token) {
-          if (originalConfig?.url && isRefreshableRequest(originalConfig.url)) {
-            originalConfig._retryAfterRefresh = true;
-            originalConfig.headers = {
-              ...originalConfig.headers,
-              Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
-            };
-            // 用 umiRequest 重试，正确传递 URL 和 params
-            const url = originalConfig.url || '';
+        const retryResult = await handleAuthError(
+          originalConfig,
+          async (config) => {
+            const url = config.url || '';
             const retryConfig: any = {
-              method: originalConfig.method || 'GET',
-              headers: originalConfig.headers,
-              data: originalConfig.data,
-              params: originalConfig.params,
-              skipErrorHandler: true,
-              _retryAfterRefresh: true,
+              method: config.method || 'GET',
+              headers: config.headers,
+              data: config.data,
+              params: config.params,
+              skipAuthRefresh: true,
+              skipErrorMessage: true,
+              _authRetried: true,
             };
             return umiRequest(url, retryConfig);
-          }
-          return;
+          },
+        );
+
+        if (retryResult !== undefined) {
+          return retryResult;
         }
-        await logoutAndRedirect();
+
+        // Refresh 失败 → 跳登录
+        await redirectToLogin();
         return;
       }
+
+      // 如果调用方不想要错误提示，到此结束
+      if (skipMessage) return;
+
+      // 业务错误
       if (error.name === 'BizError') {
         const errorInfo: ResponseStructure | undefined = error.info;
         if (errorInfo) {
@@ -144,12 +122,19 @@ export const errorConfig: RequestConfig = {
         const responseData = error.response.data as
           | { message?: string; code?: number; errmsg?: string }
           | undefined;
-        message.error(responseData?.message || responseData?.errmsg || `Response status:${error.response.status}`);
+        message.error(
+          responseData?.message ||
+            responseData?.errmsg ||
+            `Response status:${error.response.status}`,
+        );
       } else if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        message.error(getIntl().formatMessage({
-          id: 'app.request.offline',
-          defaultMessage: 'Network unavailable. Please check your connection and try again.',
-        }));
+        message.error(
+          getIntl().formatMessage({
+            id: 'app.request.offline',
+            defaultMessage:
+              'Network unavailable. Please check your connection and try again.',
+          }),
+        );
       } else if (error.request) {
         message.error('None response! Please retry.');
       } else {
@@ -159,17 +144,20 @@ export const errorConfig: RequestConfig = {
   },
   requestInterceptors: [
     (config: RequestOptions) => {
-      const token = localStorage.getItem('token');
+      const token = tokenStore.getAccessToken();
       if (token) {
         config.headers = {
           ...config.headers,
           Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
         };
       }
-      // 自动添加防重放请求头
+      // 自动添加防重放请求头（Retry 时使用旧 headers 但这里会被覆盖）
       if (config.url) {
         const ts = String(Date.now());
-        const nonce = crypto.randomUUID?.()?.replace(/-/g, '') ?? Math.random().toString(36).substring(2) + Date.now().toString(36);
+        const nonce =
+          typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID().replace(/-/g, '')
+            : Math.random().toString(36).substring(2) + Date.now().toString(36);
         config.headers = {
           ...config.headers,
           'X-Timestamp': ts,

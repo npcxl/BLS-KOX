@@ -6,6 +6,7 @@ import { createStyles } from 'antd-style';
 import React, { startTransition, useEffect, useRef, useState } from 'react';
 import { Footer } from '@/components';
 import { login, tenantLoginOptions } from '@/services/ant-design-pro/api';
+import { tokenStore } from '@/auth/token-store';
 import Settings from '../../../../config/defaultSettings';
 
 const useStyles = createStyles(({ token }) => ({
@@ -118,10 +119,10 @@ const Login: React.FC = () => {
       const res = await login({ ...values, type: 'account' });
       const msg = res.data;
       if (res.code === 200 && msg?.token) {
-        localStorage.setItem('token', msg.token);
-        if (msg.refreshToken) {
-          localStorage.setItem('refreshToken', msg.refreshToken);
-        }
+        tokenStore.setTokenPair({
+          accessToken: msg.token,
+          refreshToken: msg.refreshToken ?? '',
+        });
         if (msg.user) {
           localStorage.setItem('currentUser', JSON.stringify(msg.user));
         }

@@ -2,6 +2,7 @@
 /* eslint-disable */
 import { request } from '@umijs/max';
 import md5 from 'md5';
+import { tokenStore } from '@/auth/token-store';
 
 /** 获取当前的用户 GET /api/auth/profile */
 export async function currentUser(options?: { [key: string]: any }) {
@@ -20,8 +21,10 @@ export async function outLogin(options?: { [key: string]: any }) {
   return request<Record<string, any>>('/api/auth/logout', {
     method: 'POST',
     data: {
-      refreshToken: localStorage.getItem('refreshToken') || undefined,
+      refreshToken: tokenStore.getRefreshToken() || undefined,
     },
+    skipAuthRefresh: true,
+    skipErrorMessage: true,
     ...(options || {}),
   });
 }
