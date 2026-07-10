@@ -154,3 +154,23 @@ export const websocketConnections = new Gauge({
   help: 'Active WebSocket connections',
   registers: [metricsRegistry],
 });
+
+// ========== P6: Queue / Worker ==========
+
+export const jobQueueWaiting = new Gauge({
+  name: 'bls_kox_job_queue_waiting',
+  help: 'Jobs waiting in queue',
+  registers: [metricsRegistry],
+});
+
+export const jobQueueFailedTotal = new Counter({
+  name: 'bls_kox_job_queue_failed_total',
+  help: 'Jobs that reached dead letter',
+  registers: [metricsRegistry],
+});
+
+export const jobQueueCompletedTotal = new Counter({
+  name: 'bls_kox_job_queue_completed_total',
+  help: 'Jobs completed successfully',
+  registers: [metricsRegistry],
+});
