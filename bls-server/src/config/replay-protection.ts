@@ -108,7 +108,7 @@ export const defaultReplayRules: ReplayRule[] = [
     methods: ['POST'],
     mode: 'nonce',
     windowSeconds: 60,
-    nonceTtlSeconds: 120,
+    nonceTtlSeconds: 150,  // >= window*2+30
   },
 
   // ===== 默认：写操作防重放 =====
@@ -117,7 +117,7 @@ export const defaultReplayRules: ReplayRule[] = [
     methods: ['POST', 'PUT', 'PATCH', 'DELETE'],
     mode: 'nonce',
     windowSeconds: 120,
-    nonceTtlSeconds: 180,
+    nonceTtlSeconds: 300,  // >= window*2+30
   },
 
   // ===== 默认：读操作不拦截 =====
