@@ -1,25 +1,28 @@
 /**
- * Outbox Publisher
+ * P7: Outbox Publisher
  *
- * 轮询 outbox_event 表，将 pending 事件分发到 Subscriber。
+ * - 轮询 pending 事件
+ * - 原子 claim (outbox.ts)
+ * - Graceful Shutdown Drain
+ * - Handler 失败 → retry/backoff
  */
-import { fetchPending, markPublished } from './outbox';
+import { fetchPending, markPublished, markFailed } from './outbox';
 import type { OutboxEvent } from './outbox';
 import { logger } from '../core/logger';
 
 const POLL_INTERVAL = 3_000;
-
-type EventHandler = (event: OutboxEvent) => Promise<void>;
+const DRAIN_TIMEOUT = 30_000;
 
 export class OutboxPublisher {
-  private subscribers = new Map<string, EventHandler[]>();
+  private subscribers = new Map<string, ((e: OutboxEvent) => Promise<void>)[]>();
   private running = false;
   private timer: NodeJS.Timeout | null = null;
+  private inflight = new Map<string, Promise<void>>();
 
-  on(eventType: string, handler: EventHandler): this {
-    const handlers = this.subscribers.get(eventType) ?? [];
-    handlers.push(handler);
-    this.subscribers.set(eventType, handlers);
+  on(eventType: string, handler: (e: OutboxEvent) => Promise<void>): this {
+    const list = this.subscribers.get(eventType) ?? [];
+    list.push(handler);
+    this.subscribers.set(eventType, list);
     return this;
   }
 
@@ -33,6 +36,10 @@ export class OutboxPublisher {
   async stop(): Promise<void> {
     this.running = false;
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    if (this.inflight.size > 0) {
+      logger.info('[outbox-publisher] draining', { inflight: this.inflight.size });
+      await Promise.race([Promise.allSettled(this.inflight.values()), new Promise(r => setTimeout(r, DRAIN_TIMEOUT))]);
+    }
     logger.info('[outbox-publisher] stopped');
   }
 
@@ -40,10 +47,11 @@ export class OutboxPublisher {
     while (this.running) {
       try {
         const event = await fetchPending();
-        if (event) { this.dispatch(event).catch(() => {}); }
-      } catch (err) {
-        logger.error('[outbox-publisher] poll error', { error: String(err) });
-      }
+        if (event) {
+          const p = this.dispatch(event).finally(() => this.inflight.delete(event.eventId));
+          this.inflight.set(event.eventId, p);
+        }
+      } catch (err) { logger.error('[outbox-publisher] poll error', { error: String(err) }); }
       await new Promise<void>((resolve) => {
         this.timer = setTimeout(() => { this.timer = null; resolve(); }, POLL_INTERVAL);
       });
@@ -52,16 +60,20 @@ export class OutboxPublisher {
 
   private async dispatch(event: OutboxEvent): Promise<void> {
     const handlers = this.subscribers.get(event.eventType) ?? [];
-    if (handlers.length === 0) {
-      await markPublished(event.eventId);
-      return;
-    }
+    if (handlers.length === 0) { await markPublished(event.eventId); return; }
+
+    let failed = false;
     for (const handler of handlers) {
       try { await handler(event); } catch (err: any) {
         logger.error('[outbox-publisher] handler error', { eventType: event.eventType, error: String(err) });
+        failed = true;
       }
     }
-    await markPublished(event.eventId);
+    if (failed) {
+      await markFailed(event.eventId, event, 'Handler execution failed');
+    } else {
+      await markPublished(event.eventId);
+    }
   }
 }
 
