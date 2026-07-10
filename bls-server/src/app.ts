@@ -14,6 +14,10 @@ import { httpMetricsMiddleware } from './middleware/http-metrics';
 import { requestContextMiddleware } from './core/request-context';
 import { rateLimitMiddleware } from './security/rate-limit/middleware';
 import { attachRealtimeWs } from './api/system/realtime/realtime.ws';
+import { worker } from './queue/worker';
+import { exportJob } from './queue/jobs/export.job';
+import { importJob } from './queue/jobs/import.job';
+import { notificationJob } from './queue/jobs/notification.job';
 
 export function createApp(): Koa {
   const app = new Koa();
@@ -61,6 +65,9 @@ if (require.main === module) {
     logger.info(`${env.appName} started`, { host: env.host, port: env.port, nodeEnv: env.nodeEnv });
   });
 
+  // P6: 注册并启动 Worker
+  worker.register(exportJob).register(importJob).register(notificationJob).start();
+
   // ========== Graceful Shutdown ==========
   let shuttingDown = false;
   const SHUTDOWN_TIMEOUT = 30_000;
@@ -102,11 +109,15 @@ if (require.main === module) {
     try { await closeHttpServer(server); } catch (e) { logger.error('HTTP server close error', { error: String(e) }); }
     logger.info('[shutdown] HTTP server closed');
 
-    // 2. Close WebSocket
+    // 2. Stop Worker
+    try { await worker.stop(); } catch {}
+    logger.info('[shutdown] Worker stopped');
+
+    // 3. Close WebSocket
     try { await closeWebSocketServer(wss); } catch {}
     logger.info('[shutdown] WebSocket closed');
 
-    // 3. Close Redis
+    // 4. Close Redis
     try {
       const { closeRedis } = require('./shared/utils/redis');
       await closeRedis();
