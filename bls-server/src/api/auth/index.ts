@@ -84,6 +84,7 @@ export class AuthService {
       const refreshJti = refreshPayload.jti;
       const accessJti = accessPayload.jti;
       if (!multi) {
+        // 清理 legacy session keys
         const key = `auth:user-sessions:${user.userId}`;
         const jtis = await client.smembers(key);
         if (jtis.length > 0) {
@@ -91,6 +92,8 @@ export class AuthService {
           await client.del(...jtis.map((j: string) => `auth:refresh:${j}`));
         }
         await client.del(key);
+        // Session Center：踢出所有旧设备
+        await sessionCenter.revokeAll(tenantId, user.userId);
       }
       await client.set(`auth:session:${accessJti}`, JSON.stringify({ userId: user.userId, accessJti, refreshJti, refreshHash }), 'EX', accessTtl);
       await client.sadd(`auth:user-sessions:${user.userId}`, accessJti);
@@ -100,7 +103,7 @@ export class AuthService {
       const ip = meta?.loginIp ?? getRequestContext()?.clientIp ?? 'unknown';
       const ua = meta?.userAgent ?? getRequestContext()?.userAgent ?? 'unknown';
       const now = Date.now();
-      const baseSession = { userId: user.userId, tenantId, ip, userAgent: ua, loginTime: now, lastActiveTime: now, status: 'active' as const, refreshTokenHash: refreshHash };
+      const baseSession = { userId: user.userId, tenantId, accessJti, refreshJti, ip, userAgent: ua, loginTime: now, lastActiveTime: now, status: 'active' as const, refreshTokenHash: refreshHash };
       await sessionCenter.create({ ...baseSession, sessionId: `acc:${accessJti}` }, refreshTtl);
       await sessionCenter.create({ ...baseSession, sessionId: `ref:${refreshJti}` }, refreshTtl);
     }
@@ -113,9 +116,18 @@ export class AuthService {
       try {
         const { verifyToken: vt } = await import('../../shared/utils/jwt.js');
         const p: any = vt(token.replace(/^Bearer\s+/i, ''));
+        // 读取 stored session 获取 refreshJti
+        const storedRaw = await client.get(sessionKey(p.jti));
+        const stored: StoredSession | null = storedRaw ? JSON.parse(storedRaw) : null;
+        const refreshJti = stored?.refreshJti;
+
+        // 清理 legacy keys
         await client.del(sessionKey(p.jti));
-        // Session Center：吊销 acc session
+        if (refreshJti) await client.del(`auth:refresh:${refreshJti}`);
+
+        // Session Center：吊销 acc + ref
         await sessionCenter.revoke(p.tenantId, p.userId, `acc:${p.jti}`);
+        if (refreshJti) await sessionCenter.revoke(p.tenantId, p.userId, `ref:${refreshJti}`);
       } catch { /* ignore */ }
     }
     return null;
@@ -209,7 +221,7 @@ export const refresh = async (ctx: Context) => {
     const ip = getRequestContext()?.clientIp ?? 'unknown';
     const ua = getRequestContext()?.userAgent ?? 'unknown';
     const now = Date.now();
-    const baseSession = { userId: user.userId, tenantId: user.tenantId, ip, userAgent: ua, loginTime: now, lastActiveTime: now, status: 'active' as const, refreshTokenHash: newHash };
+    const baseSession = { userId: user.userId, tenantId: user.tenantId, accessJti: accessPayload.jti, refreshJti: refreshPayload.jti, ip, userAgent: ua, loginTime: now, lastActiveTime: now, status: 'active' as const, refreshTokenHash: newHash };
     await sessionCenter.revoke(payload.tenantId, payload.userId, `ref:${payload.jti}`);
     await sessionCenter.create({ ...baseSession, sessionId: `acc:${accessPayload.jti}` }, refreshTtl);
     await sessionCenter.create({ ...baseSession, sessionId: `ref:${refreshPayload.jti}` }, refreshTtl);

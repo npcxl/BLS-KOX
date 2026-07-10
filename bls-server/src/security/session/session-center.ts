@@ -19,6 +19,8 @@ export interface UserSession {
   sessionId: string;
   userId: string;
   tenantId: string;
+  accessJti?: string;
+  refreshJti?: string;
   deviceId?: string;
   ip: string;
   userAgent: string;
