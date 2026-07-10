@@ -117,6 +117,11 @@ export default [
             component: "./system/log/audit",
           },
           {
+            path: "/system/log/security",
+            name: "安全日志",
+            component: "./system/log/security",
+          },
+          {
             path: "/system/log/login",
             name: "登录日志",
             component: "./system/log/login",

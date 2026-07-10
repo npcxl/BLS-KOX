@@ -166,6 +166,16 @@ export const errorConfig: RequestConfig = {
           Authorization: token.startsWith('Bearer ') ? token : `Bearer ${token}`,
         };
       }
+      // 自动添加防重放请求头
+      if (config.url) {
+        const ts = String(Date.now());
+        const nonce = crypto.randomUUID?.()?.replace(/-/g, '') ?? Math.random().toString(36).substring(2) + Date.now().toString(36);
+        config.headers = {
+          ...config.headers,
+          'X-Timestamp': ts,
+          'X-Nonce': nonce,
+        };
+      }
       return config;
     },
   ],

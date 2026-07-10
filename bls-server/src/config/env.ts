@@ -42,4 +42,12 @@ export const env = {
     database: process.env.DB_NAME ?? process.env.DB_DATABASE ?? 'bls',
     connectionLimit: numberEnv('DB_CONNECTION_LIMIT', 10),
   },
+  replay: {
+    enabled: (process.env.REPLAY_ENABLED ?? 'true') === 'true',
+    signSecret: process.env.API_SIGN_SECRET ?? '',
+    windowSeconds: numberEnv('REPLAY_WINDOW_SECONDS', 120),
+    nonceTtlSeconds: numberEnv('REPLAY_NONCE_TTL_SECONDS', 180),
+    defaultMode: (process.env.REPLAY_DEFAULT_MODE ?? 'nonce') as 'off' | 'timestamp' | 'nonce' | 'signature',
+    protectedMethods: (process.env.REPLAY_PROTECTED_METHODS ?? 'POST,PUT,PATCH,DELETE').split(',').map((s) => s.trim().toUpperCase()),
+  },
 };

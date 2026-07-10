@@ -9,6 +9,7 @@ import http from 'node:http';
 import { createRouter } from './core/router';
 import { errorHandler } from './middleware/error-handler';
 import { tenantMiddleware } from './middleware/tenant';
+import { replayProtectionMiddleware } from './middlewares/replayProtection';
 import { attachRealtimeWs } from './api/system/realtime/realtime.ws';
 
 function getLanUrls(port: number): string[] {
@@ -28,6 +29,7 @@ export function createApp(): Koa {
   app.use(koaBody({ multipart: true, formidable: { multiples: false } }));
   app.use(bodyParser({ enableTypes: ['json', 'form'] }));
   app.use(tenantMiddleware);
+  app.use(replayProtectionMiddleware());
   app.use(router.routes());
   app.use(router.allowedMethods());
   app.on('error', (error) => {
