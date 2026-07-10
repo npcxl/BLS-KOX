@@ -65,14 +65,25 @@ docker compose up -d mysql redis
 cd bls-server
 cp .env.example .env
 npm install
-npx tsx src/scripts/seed.ts   # 初始化数据（可选）
-npm run dev                    # http://localhost:6001
+mysql -u root -p -h 127.0.0.1 < sql/init.sql  # 初始化数据库（含演示数据）
+npm run dev                                    # http://localhost:6001
 
 # 4. 前端（新终端）
 cd ../bls-admin
 npm install
-npm start                      # http://localhost:8000
+npm start                                      # http://localhost:8000
 ```
+
+## 🔑 默认账号
+
+导入 `sql/init.sql` 后包含演示数据：
+
+| 项目 | 值 |
+|------|-----|
+| 默认租户 | `000000` |
+| 默认密码 | `123456` |
+
+> ⚠️ 生产环境务必修改默认密码和 `JWT_SECRET`。
 
 ## 📁 Project Structure
 
@@ -102,10 +113,10 @@ BLS-KOX/
 
 | 文档 | 说明 |
 |------|------|
-| [快速开始](./docs/getting-started.md) | 环境要求、安装、启动 |
+| [快速开始](./docs/getting-started.md) | 环境要求、安装、启动、演示账号 |
 | [架构设计](./docs/architecture.md) | 请求链路、中间件 |
 | [多租户](./docs/multi-tenant.md) | 数据隔离、权限守卫 |
-| [认证体系](./docs/auth.md) | Token、Session Center |
+| [认证体系](./docs/auth.md) | Token、Session Center、时序图 |
 | [RBAC 权限](./docs/rbac.md) | 角色-菜单-按钮 |
 | [CRUD 工厂](./docs/crud.md) | 一行配置生成接口 |
 | [安全能力](./docs/security.md) | 防重放、限流、审计 |
