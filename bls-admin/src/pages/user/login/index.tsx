@@ -46,9 +46,7 @@ const Login: React.FC = () => {
   const [tenantOptions, setTenantOptions] = useState<API.TenantOption[]>([]);
   const [defaultTenantId, setDefaultTenantId] = useState<string | undefined>(undefined);
   const formRef = useRef<any>(null);
-  const rememberPasswordKey = 'rememberLoginCredentials';
-  const usernameKey = 'rememberLoginUsername';
-  const passwordKey = 'rememberLoginPassword';
+  const rememberUsernameKey = 'rememberLoginUsername';
   const { initialState, setInitialState } = useModel('@@initialState');
   const { styles } = useStyles();
   const { message } = App.useApp();
@@ -68,15 +66,13 @@ const Login: React.FC = () => {
         const savedTenantId = localStorage.getItem('lastTenantId') ?? undefined;
         const firstTenantId = list.find((item) => item.tenantId === savedTenantId)?.tenantId ?? list[0]?.tenantId;
         setDefaultTenantId(firstTenantId);
-        const rememberPassword = localStorage.getItem(rememberPasswordKey) === 'true';
-        const rememberedUsername = localStorage.getItem(usernameKey) ?? undefined;
-        const rememberedPassword = rememberPassword ? (localStorage.getItem(passwordKey) ?? undefined) : undefined;
+        // 仅记住用户名，不存储密码（安全考量）
+        const rememberedUsername = localStorage.getItem(rememberUsernameKey) ?? undefined;
         if (firstTenantId !== undefined) {
           formRef.current?.setFieldsValue({
             tenantId: firstTenantId,
             username: rememberedUsername,
-            password: rememberedPassword,
-            rememberPassword,
+            rememberPassword: !!rememberedUsername,
           });
         }
       } catch {
@@ -131,17 +127,11 @@ const Login: React.FC = () => {
           localStorage.setItem('lastTenantId', String(tenantId));
         }
         if (values.rememberPassword) {
-          localStorage.setItem(rememberPasswordKey, 'true');
           if (values.username) {
-            localStorage.setItem(usernameKey, values.username);
-          }
-          if (values.password) {
-            localStorage.setItem(passwordKey, values.password);
+            localStorage.setItem(rememberUsernameKey, values.username);
           }
         } else {
-          localStorage.removeItem(rememberPasswordKey);
-          localStorage.removeItem(usernameKey);
-          localStorage.removeItem(passwordKey);
+          localStorage.removeItem(rememberUsernameKey);
         }
         message.success(
           intl.formatMessage({ id: 'pages.login.success', defaultMessage: '登录成功！' }),
@@ -244,7 +234,7 @@ const Login: React.FC = () => {
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
             <ProFormCheckbox name="rememberPassword" noStyle>
-              记住密码
+              记住用户名
             </ProFormCheckbox>
             <a href="#" onClick={(e) => e.preventDefault()}>
               <FormattedMessage id="pages.login.forgotPassword" defaultMessage="忘记密码" />

@@ -31,13 +31,10 @@ interface RealtimeContextValue {
 
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
 
-function getRealtimeWsUrl() {
-  return '/ws/realtime';
-}
-
 export function GlobalRealtimeProvider({ children }: { children: React.ReactNode }) {
   const { connected, connecting, errorText, lastMessage, reconnect } = useWebSocket<RealtimeMessage>({
-    url: getRealtimeWsUrl(),
+    url: '/ws/realtime',
+    autoReauth: true,
     onMessage: () => {},
   });
 

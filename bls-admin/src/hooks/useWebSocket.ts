@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { tokenStore } from '@/auth/token-store';
+import { authEvents } from '@/auth/auth-events';
 
 export interface WebSocketState<TMessage> {
   connected: boolean;
@@ -9,31 +11,51 @@ export interface WebSocketState<TMessage> {
 }
 
 export interface UseWebSocketOptions<TMessage> {
+  /** WebSocket 相对路径，如 '/ws/realtime'，自动拼接 ws:// 或 wss:// */
   url: string;
   heartbeatIntervalMs?: number;
   reconnectDelayMs?: number;
   maxReconnectAttempts?: number;
-  tokenStorageKey?: string;
+  /** 是否在 Token 刷新后自动重新认证 */
+  autoReauth?: boolean;
   enabled?: boolean;
   onOpen?: (socket: WebSocket) => void;
   onMessage?: (message: TMessage) => void;
 }
 
+/**
+ * 构造 WebSocket URL
+ *   - 开发环境：使用 dev proxy 目标
+ *   - 生产环境：使用同源 wss://
+ */
+function buildWsUrl(path: string): string {
+  if (typeof window === 'undefined') return '';
 
+  const { protocol, hostname } = window.location;
+
+  // 开发环境：Umi 代理到 localhost:6001
+  if (process.env.NODE_ENV === 'development') {
+    return `ws://localhost:6001${path}`;
+  }
+
+  // 生产环境：同源
+  const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${wsProtocol}//${hostname}${path}`;
+}
 
 export function useWebSocket<TMessage = unknown>({
   url,
   heartbeatIntervalMs = 15000,
   reconnectDelayMs = 3000,
   maxReconnectAttempts = 5,
-  tokenStorageKey = 'token',
+  autoReauth = true,
   enabled = true,
   onOpen,
   onMessage,
 }: UseWebSocketOptions<TMessage>): WebSocketState<TMessage> {
   const socketRef = useRef<WebSocket | null>(null);
-  const retryTimerRef = useRef<number | null>(null);
-  const heartbeatTimerRef = useRef<number | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const manualCloseRef = useRef(false);
   const [connected, setConnected] = useState(false);
@@ -41,21 +63,34 @@ export function useWebSocket<TMessage = unknown>({
   const [errorText, setErrorText] = useState<string | null>(null);
   const [lastMessage, setLastMessage] = useState<TMessage | null>(null);
 
-  const clearTimers = () => {
+  const wsUrl = buildWsUrl(url);
+
+  const clearTimers = useCallback(() => {
     if (retryTimerRef.current) window.clearTimeout(retryTimerRef.current);
     if (heartbeatTimerRef.current) window.clearInterval(heartbeatTimerRef.current);
     retryTimerRef.current = null;
     heartbeatTimerRef.current = null;
-  };
+  }, []);
 
-  const closeSocket = () => {
+  const closeSocket = useCallback(() => {
     manualCloseRef.current = true;
     clearTimers();
-    socketRef.current?.close();
+    const sock = socketRef.current;
     socketRef.current = null;
-  };
+    if (sock && sock.readyState !== WebSocket.CLOSED) {
+      sock.close();
+    }
+  }, [clearTimers]);
 
-  const connect = () => {
+  const sendAuth = useCallback((socket: WebSocket) => {
+    const token = tokenStore.getAccessToken();
+    if (token && socket.readyState === WebSocket.OPEN) {
+      const bareToken = token.startsWith('Bearer ') ? token.slice(7) : token;
+      socket.send(JSON.stringify({ type: 'auth', token: bareToken }));
+    }
+  }, []);
+
+  const connect = useCallback(() => {
     if (!enabled) {
       closeSocket();
       setConnected(false);
@@ -67,7 +102,6 @@ export function useWebSocket<TMessage = unknown>({
     clearTimers();
     setConnecting(true);
     setErrorText(null);
-    const wsUrl = 'ws://localhost:6001/ws/realtime';
 
     const socket = new WebSocket(wsUrl);
     socketRef.current = socket;
@@ -78,17 +112,15 @@ export function useWebSocket<TMessage = unknown>({
       setConnected(true);
       setConnecting(false);
       setErrorText(null);
-      const rawToken = window.localStorage.getItem(tokenStorageKey);
-      const token = rawToken?.startsWith('Bearer ') ? rawToken.slice(7) : rawToken;
-      if (token) {
-        socket.send(JSON.stringify({ type: 'auth', token }));
-      }
+      sendAuth(socket);
       onOpen?.(socket);
+
       heartbeatTimerRef.current = window.setInterval(() => {
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
         }
       }, heartbeatIntervalMs);
+
       console.info('[ws] connected', { url: wsUrl, heartbeatIntervalMs });
     };
 
@@ -126,14 +158,41 @@ export function useWebSocket<TMessage = unknown>({
         console.error('[ws] message parse failed', { url: wsUrl, data: event.data, error });
       }
     };
-  };
+  }, [url, enabled, wsUrl, heartbeatIntervalMs, reconnectDelayMs, maxReconnectAttempts, sendAuth, closeSocket, clearTimers, onOpen, onMessage]);
 
+  // Token 刷新后自动重新认证（不发重连，只发 auth 消息）
+  useEffect(() => {
+    if (!autoReauth) return;
+    const handleTokenRefreshed = () => {
+      const socket = socketRef.current;
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        sendAuth(socket);
+      }
+    };
+    authEvents.on('token-refreshed', handleTokenRefreshed);
+    return () => {
+      authEvents.off('token-refreshed', handleTokenRefreshed);
+    };
+  }, [autoReauth, sendAuth]);
+
+  // 登出时关闭 WebSocket
+  useEffect(() => {
+    const handleLogout = () => {
+      closeSocket();
+    };
+    authEvents.on('logout', handleLogout);
+    return () => {
+      authEvents.off('logout', handleLogout);
+    };
+  }, [closeSocket]);
+
+  // 初始连接
   useEffect(() => {
     connect();
     return () => {
       closeSocket();
     };
-  }, [url, enabled]);
+  }, [connect, closeSocket]);
 
   return { connected, connecting, errorText, lastMessage, reconnect: connect };
 }
