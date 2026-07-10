@@ -1,309 +1,14 @@
-# BLS 系统总览文档
+# BLS 系统文档
 
-BLS 是一套面向多租户企业管理场景的后台系统，整体由前端管理端、后端服务端、数据库与运维支撑能力组成。系统围绕“平台统一治理、租户独立运营”的设计目标，提供权限控制、基础资料管理、业务管理、日志审计、文件存储、页面配置与实时能力等模块。
+BLS 是一套面向多租户企业管理场景的后台系统，由 `bls-admin`（前端，基于 Ant Design Pro + TypeScript）和 `bls-server`（后端，基于 Koa + TypeScript + MySQL / Kysely）组成。
 
-## 1. 系统目标
-
-BLS 的核心目标是为企业提供一套可持续扩展的后台管理底座，支持多租户模式下的统一建设与差异化运营。
-
-系统重点解决以下问题：
-
-- 多租户之间的数据隔离与权限隔离
-- 平台管理员、租户管理员、普通用户的角色区分
-- 常见后台管理能力的标准化复用
-- 业务模块快速接入与统一规范维护
-- 具备可扩展的实时能力、导出能力和全局搜索能力
-
-### 1.1 截图预览
-
-#### 文件管理页
-
-![文件管理页](img/1.png)
-
-#### 上传弹窗
-
-![上传弹窗](img/2.png)
-
-#### 系统设置页
-
-![系统设置页](img/3.png)
-
-#### 其他界面
-
-![其他界面](img/4.png)
-
-
-### 1.3 多租户策略
-
-系统没按照传统的 *** 来获取所有权限,根据超管的绝对权限去给自己配置所有权限，以防sql注入的安全性
-也就是说，只有你登陆了超管账号才能正常赋予自己权限以及赋予其他子级子租户权限。所以每次的新菜单需要给超管
-显示权限，因为接口层已经给超管开绿灯了，前端是权限xxx:xxx:xxx控制显隐
-
-## 2. 系统组成
-
-BLS 当前主要分为两个应用：
-
-### 2.1 `bls-admin`
-
-后台管理前端，基于 Ant Design Pro 构建，提供统一的系统入口和业务管理界面。
-
-主要职责：
-
-- 登录与权限展示
-- 系统配置管理
-- 用户、角色、部门、菜单管理
-- 租户与套餐管理
-- 文件、存储、日志管理
-- 业务模块管理
-- 页面配置与实时看板能力
-
-### 2.2 `bls-server`
-
-后端服务，基于 Koa + TypeScript + MySQL 构建，负责提供业务 API、鉴权、租户隔离、数据访问和系统支撑能力。
-
-主要职责：
-
-- JWT 登录与用户上下文
-- 多租户请求处理
-- RBAC 权限控制
-- CRUD 接口与业务服务
-- 全局搜索与实时消息
-- 文件/Excel 等通用能力
-- 数据库访问与事务处理
-
-## 3. 技术栈
-
-### 前端
-
-- Ant Design Pro
-- Ant Design
-- TypeScript
-- Umi / 相关企业级后台工程体系
-
-### 后端
-
-- Koa
-- TypeScript
-- MySQL
-- Kysely（新业务优先使用）
-- JWT
-- WebSocket（实时能力）
-
-### 数据与支撑
-
-- MySQL 作为主数据库
-- 租户上下文贯穿请求链路
-- 统一日志与审计记录
-- 文件存储与导入导出能力
-
-## 4. 核心设计原则
-
-### 4.1 多租户优先
-
-系统默认按租户维度进行数据隔离。只要属于业务数据表，通常都需要考虑：
-
-- `tenant_id` 过滤
-- 平台管理员与租户用户的访问边界
-- 共享数据与租户私有数据的区分
-
-### 4.2 分层清晰
-
-后端保持较明确的分层：
-
-- `Controller`：接收请求、做参数校验、返回响应
-- `Service`：负责业务逻辑与流程编排
-- `Repository`：负责数据库访问
-- `Model`：定义分页、表配置、DTO 等基础类型
-
-### 4.3 新旧代码并行演进
-
-系统历史上存在多种实现方式。当前策略是：
-
-- 既有稳定模块保持原实现
-- 新业务优先使用更现代的写法，例如 `Kysely`
-- 统一通过约定逐步收敛实现风格
-
-### 4.4 统一治理
-
-系统尽量把通用能力收敛到公共模块中，包括：
-
-- 鉴权
-- 租户处理
-- 错误处理
-- 请求响应封装
-- 审计日志
-- 文件上传与导出
-- 实时能力
-
-## 5. 主要功能模块
-
-### 5.1 基础系统模块
-
-这部分是后台系统的核心管理能力，主要包括：
-
-- 用户管理
-- 角色管理
-- 菜单管理
-- 部门管理
-- 字典管理
-- 系统配置
-- 主题配置
-- 文件管理
-- 存储配置
-- 日志中心
-
-### 5.2 租户与套餐模块
-
-用于支撑多租户运营体系：
-
-- 租户管理
-- 租户套餐管理
-- 租户状态控制
-- 租户数据范围控制
-
-### 5.3 业务模块
-
-系统已扩展出业务场景相关模块，例如：
-
-- 生产线
-- 产品
-- 订单
-- 财务记录
-- 销售记录
-- 库存
-
-这些模块通常遵循统一 CRUD 模式，并结合导入导出、页面配置、实时刷新等能力。
-
-### 5.4 页面配置模块
-
-页面配置用于统一管理前端页面的字段、展示方式和列表/表单配置，便于不同业务页面复用同一套配置逻辑。
-
-### 5.5 全局搜索模块
-
-提供跨模块检索能力，便于管理员快速定位系统中的关键数据或配置项。
-
-### 5.6 实时能力
-
-系统支持实时连接与状态同步，适合用于：
-
-- 实时看板
-- 状态更新
-- 后台通知
-- 运行态监控
-
-### 5.7 通用工具能力
-
-后端还提供了若干通用支撑能力，例如：
-
-- Excel 导入导出
-- 请求元数据记录
-- IP 与访问上下文处理
-- 统一缓存/会话支撑
-
-## 6. 前后端协作方式
-
-### 6.1 前端职责
-
-前端负责：
-
-- 路由与页面布局
-- 表单、表格、弹窗等交互
-- 权限菜单展示
-- 接口调用与结果展示
-- 页面配置和实时看板渲染
-
-### 6.2 后端职责
-
-后端负责：
-
-- 提供 REST API
-- 执行权限校验与租户隔离
-- 维护数据一致性
-- 处理导入导出、日志、实时消息
-- 统一错误和响应格式
-
-### 6.3 接口风格
-
-接口通常遵循后台管理常见风格：
-
-- 列表查询
-- 详情查询
-- 新增
-- 编辑
-- 删除
-- 状态更新
-- 导入/导出
-
-## 7. 数据访问与开发规范
-
-### 7.1 数据库访问
-
-- 现有连接池和事务封装保持稳定
-- 新业务优先使用 `Kysely`
-- 旧模块可以逐步迁移，不要求一次性重构
-
-### 7.2 查询规范
-
-业务查询需要考虑：
-
-- 软删除条件
-- 租户条件
-- 分页与排序
-- 模糊搜索
-- 条件过滤
-
-### 7.3 代码组织规范
-
-建议新功能按以下结构扩展：
-
-- `controller`：接口入口
-- `service`：业务逻辑
-- `repository`：数据库访问
-- `model`：类型定义
-- `routes`：路由注册
-
-## 8. 部署与运行概览
-
-系统通常包含以下运行步骤：
-
-1. 安装依赖
-2. 配置环境变量
-3. 初始化数据库
-4. 启动后端服务
-5. 启动前端管理端
-6. 通过浏览器登录并验证权限与模块
-
-## 9. 适用角色
-
-BLS 主要面向以下角色：
-
-- 平台管理员
-- 租户管理员
-- 业务管理员
-- 系统维护人员
-- 开发与测试人员
-
-## 10. 文档使用建议
-
-如果你是系统维护人员，建议优先阅读：
-
-1. 本文档：了解系统整体结构
-2. `bls-server/README.md`：了解后端开发与接入规范
-3. `bls-admin/README.md`：了解前端页面组织与能力范围
-
-如果你是开发人员，建议按模块继续补充更细的专题文档，例如：
-
-- 接口文档
-- 部署文档
-- 权限模型文档
-- 多租户设计文档
-- 业务模块接入文档
+核心能力：多租户数据隔离、RBAC 权限控制、泛型 CRUD 快速生成、Excel 导入导出、WebSocket 实时能力、页面动态配置。
 
 ---
 
-## 10. 后端核心模块（动态配置）
+## 1. 后端核心模块（动态配置）
 
-### 10.1 `defineCrudModule` — 泛型 CRUD 工厂
+### 1.1 `defineCrudModule` — 泛型 CRUD 工厂
 
 **文件**：`bls-server/src/core/crud.ts`
 
@@ -353,7 +58,7 @@ export default defineCrudModule({
 - 主键自动生成 Snowflake ID
 - 分页参数 `pageNum` / `pageSize`（最大 100 条/页）
 
-### 10.2 自动路由注册 `createRouter`
+### 1.2 自动路由注册 `createRouter`
 
 **文件**：`bls-server/src/core/router.ts`
 
@@ -367,7 +72,7 @@ export default defineCrudModule({
 - 自动包裹 `jwtAuth()` 中间件，`public*` / `login` 等方法除外
 - 统一 `snake_case` → `camelCase` 响应
 
-### 10.3 统一响应封装
+### 1.3 统一响应封装
 
 **文件**：`bls-server/src/core/response.ts`
 
@@ -381,7 +86,7 @@ pageSuccess(ctx, rows, total, '查询成功');
 // => { code: 200, message: '查询成功', data: [...], total: 100 }
 ```
 
-### 10.4 错误体系
+### 1.4 错误体系
 
 **文件**：`bls-server/src/core/errors.ts`
 
@@ -394,7 +99,7 @@ pageSuccess(ctx, rows, total, '查询成功');
 | `NotFoundError` | 404 | 资源不存在 |
 | `ValidationError` | 400 | 参数校验错误（支持 Zod issues） |
 
-### 10.5 数据库访问
+### 1.5 数据库访问
 
 **文件**：`bls-server/src/core/database.ts`
 
@@ -406,7 +111,7 @@ pageSuccess(ctx, rows, total, '查询成功');
 - `transaction(runner)` — 事务执行，自动 commit/rollback
 - **自动重试**：遇到 `ECONNRESET` 等连接错误自动重试（最多 3 次，指数退避）
 
-### 10.6 审计日志
+### 1.6 审计日志
 
 **文件**：`bls-server/src/core/audit.ts`
 
@@ -417,28 +122,280 @@ pageSuccess(ctx, rows, total, '查询成功');
 | `writeUploadAudit(input)` | 写入上传审计日志（`sys_upload_audit`） |
 | `writeLoginLog(input)` | 写入登录日志（`sys_login_log`） |
 
-### 10.7 SQL 辅助
+### 1.8 复杂业务模块编写方式
 
-**文件**：`bls-server/src/core/sql.ts`
+当简单配置不够用（树形结构、多表关联、自定义查询逻辑等），有两种方式：
+
+#### 方式 A：混合模式（推荐）—— 同时导出 config + Router
+
+**同时导出** `config` 对象和自定义 `Router`，自定义 Router 中的路由优先匹配（可覆盖标准 CRUD），未覆盖的标准路由由 `defineCrudModule` 自动兜底。
 
 ```ts
-// 拼接 WHERE 条件
-joinConditions([...])
+// bls-server/src/api/system/dept/index.ts
+import Router from 'koa-router';
+import { getDb, generateSnowflakeId, getCurrentTenantId, jwtAuth, hasPerm } from '...';
 
-// LIKE 条件（自动处理空值）
-likeCondition('name', 'name', value)
-// => { sql: "name LIKE :name", params: { name: "%xxx%" } }
+// 导出自定义 Router（覆盖 GET /list 返回树形数据）
+const router = new Router({ prefix: '/system/dept' });
+const T = 'sys_dept';
 
-// 等值条件（自动处理空值）
-eqCondition('status', 'status', value)
-// => { sql: "status = :status", params: { status: 1 } }
+function buildTree(rows: any[]) { /* ... */ }
+
+// 自定义 GET /list → 覆盖默认 CRUD 的 /list，返回树形数据
+router.get('/list', jwtAuth(), hasPerm('system:dept:list'), async (ctx) => {
+  const rows = await (await getDb()).selectFrom(T).selectAll()
+    .where('deleted', '=', 0).orderBy('sort_num', 'asc').execute();
+  ctx.body = { code: 200, data: buildTree(rows) };
+});
+
+export default router;
+
+// 导出 config → POST /add、PUT /edit、DELETE /remove、PUT /status 自动生成
+export const config = {
+  table: 'sys_dept',
+  pkField: 'dept_id',
+  searchFields: ['dept_name'],
+  name: '部门',
+  permPrefix: 'system:dept',
+};
 ```
+
+**规则**：自定义 Router 先挂载（优先匹配），CRUD 后挂载（兜底）。
+
+| 路由 | 来源 |
+|------|------|
+| `GET /list` → 树形数据 | 自定义 Router（覆盖） |
+| `POST /add` | defineCrudModule（自动生成） |
+| `PUT /edit` | defineCrudModule（自动生成） |
+| `DELETE /remove` | defineCrudModule（自动生成） |
+| `PUT /status` | defineCrudModule（自动生成） |
+
+> 也就是说，你只需要写需要定制的路由，其余的 CRUD 接口自动补全。
+
+#### 方式 B：纯自定义模式 —— 只导出 Router（不导出 config）
+
+如果你的模块逻辑完全自定义，不需要任何标准 CRUD，就**只导出 Router** 不放 `config`。
 
 ---
 
-## 11. 前端核心组件
+以下按常见场景介绍具体写法，**推荐使用方式 A（混合模式）**。
 
-### 11.1 `CrudTablePage` — 泛型 CRUD 表格页面
+#### 模式一：树形结构（覆盖 GET /list）
+
+**典型场景**：部门、菜单等需要返回树形数据。使用混合模式，只覆盖 `GET /list`。
+
+**树构建函数**（在应用层构建，O(n) 复杂度）：
+
+```ts
+function buildTree(rows: any[]) {
+  const get = (r: any, k: string, ck: string) => String(r[ck] ?? r[k] ?? '');
+  const map = new Map<string, any>();
+  const roots: any[] = [];
+
+  for (const r of rows) {
+    map.set(get(r, 'dept_id', 'deptId'), {
+      deptId: get(r, 'dept_id', 'deptId'),
+      parentId: get(r, 'parent_id', 'parentId'),
+      deptName: r.deptName ?? r.dept_name,
+      sortNum: r.sortNum ?? r.sort_num,
+      status: r.status,
+      children: [],
+    });
+  }
+  map.forEach((node) => {
+    if (node.parentId === '0' || !map.has(node.parentId)) roots.push(node);
+    else map.get(node.parentId).children.push(node);
+  });
+  return roots;
+}
+
+#### 模式二：多表关联操作（角色-菜单分配）
+
+**典型场景**：角色管理中存在 `sys_role` ↔ `sys_role_menu` 的多对多关系。
+
+```ts
+const router = new Router({ prefix: '/system/role' });
+const T = 'sys_role', RM = 'sys_role_menu';
+
+// 获取角色已分配的菜单
+router.get('/:roleId/menus', jwtAuth(), hasPerm('system:role:list'), async (ctx) => {
+  const rows = await (await getDb()).selectFrom(RM).select('menu_id')
+    .where('role_id', '=', ctx.params.roleId).execute();
+  ctx.body = { code: 200, data: rows.map((r: any) => r.menu_id) };
+});
+
+// 分配菜单：先删后插（原子操作）
+router.put('/:roleId/menus', jwtAuth(), hasPerm('system:role:assignMenu'), async (ctx) => {
+  const db = await getDb();
+  const roleId = ctx.params.roleId;
+  const menuIds: string[] = ctx.request.body?.menuIds ?? [];
+
+  await db.deleteFrom(RM).where('role_id', '=', roleId).execute();       // 清空旧关联
+  if (menuIds.length > 0) {
+    await db.insertInto(RM)
+      .values(menuIds.map(id => ({ role_id: roleId, menu_id: id })))
+      .execute();                                                        // 批量插入新关联
+  }
+  ctx.body = { code: 200, message: '分配成功' };
+});
+```
+
+**关键点**：
+- 使用 Restful 子资源路由 `/:roleId/menus`
+- 多对多关系采用"先删后插"模式
+- 批量插入使用 `Array.map` 生成多条 values
+- **别忘了也导出 `config`**，这样 `GET /list`、`POST /add` 等标准 CRUD 自动生成
+
+#### 模式三：动态列配置驱动搜索
+
+**典型场景**：搜索字段不硬编码，而是从 `sys_page_column_config` 表加载 `searchable=1` 的字段。
+
+```ts
+router.get('/list', jwtAuth(), hasPerm('system:role:list'), async (ctx) => {
+  const db = await getDb();
+  const q = ctx.query as any;
+  const p = Math.max(1, +q.pageNum || 1);
+  const s = Math.min(100, +q.pageSize || 10);
+
+  let b = db.selectFrom('sys_role').selectAll().where('deleted', '=', 0);
+  const tid = getCurrentTenantId();
+  if (tid) b = b.where('tenant_id', '=', tid);
+
+  // 从动态列配置加载可搜索字段
+  const searchCols = await db.selectFrom('sys_page_column_config')
+    .select('data_index')
+    .where('page_code', '=', 'system_role')
+    .where('searchable', '=', 1)
+    .where('deleted', '=', 0)
+    .execute();
+  const searchFields = searchCols.map((c: any) =>
+    c.data_index.replace(/[A-Z]/g, (m: string) => '_' + m.toLowerCase())
+  );
+
+  // keyword 模糊搜索：OR 拼接所有 searchable 字段
+  if (q.keyword) {
+    if (searchFields.length) {
+      b = b.where((eb: any) =>
+        eb.or(searchFields.map((f: string) => eb(f, 'like', `%${q.keyword}%`)))
+      );
+    } else {
+      // 回退到硬编码字段
+      b = b.where((eb: any) =>
+        eb.or(['role_name', 'role_key'].map((f) => eb(f, 'like', `%${q.keyword}%`)))
+      );
+    }
+  }
+
+  // searchable=1 的字段自动支持精确 = 过滤
+  for (const c of searchCols) {
+    const field = c.data_index;
+    if (q[field] !== undefined && q[field] !== '' && q[field] !== null) {
+      b = b.where(
+        field.replace(/[A-Z]/g, (m: string) => '_' + m.toLowerCase()),
+        '=',
+        String(q[field])
+      );
+    }
+  }
+
+  const countRow = await b.clearSelect()
+    .select((eb: any) => eb.fn.countAll().as('total'))
+    .executeTakeFirst();
+
+  ctx.body = {
+    code: 200,
+    data: await b.orderBy('sort_num', 'asc').limit(s).offset((p - 1) * s).execute(),
+    total: Number(countRow?.total ?? 0),
+  };
+});
+```
+
+**关键点**：
+- 搜索字段来自数据库配置，页面配置人员无需改代码即可调整
+- `camelCase` 自动转 `snake_case` 匹配数据库列名
+- 有 fallback 机制防止配置为空
+- **也导出 `config`**，这样除了自定义的 `GET /list`，其余 CRUD 自动生成
+
+#### 模式四：Excel 导入导出
+
+**典型场景**：使用 `exceljs` 库实现模板下载、数据导出和批量导入。
+
+```ts
+// 1. 注册数据实体映射
+const EXCEL_METAS: Record<string, { tableName: string; pageCode: string }> = {
+  'system-user': { tableName: 'sys_user', pageCode: 'system_user' },
+  'system-role': { tableName: 'sys_role', pageCode: 'system_role' },
+  // ... 更多实体
+};
+
+// 2. 导出：POST /common/excel/export
+//    - 根据 metaKey 查配置表获取列信息
+//    - 字典值自动转中文标签
+//    - 支持 keyword 搜索过滤 + 导出条数限制
+
+// 3. 模板下载：GET /common/excel/template
+//    - 自动生成含字典下拉验证的 Excel 模板
+//    - 必填列标红、下拉列显示可选值
+
+// 4. 导入：POST /common/excel/import
+//    - 上传 .xlsx 文件，按列标题匹配字段
+//    - 字典列中文标签自动转原始值
+//    - 自动去重（同名记录存在则更新，否则新增）
+//    - 返回 successCount / failedCount / errorRows
+```
+
+**前端只需传 `excelMetaKey`**，`CrudTablePage` 自动渲染导入导出工具栏：
+
+```tsx
+<CrudTablePage<OrderRow>
+  excelMetaKey="orders"   // 对应后端的 EXCEL_METAS 注册
+  ...
+/>
+```
+
+#### 模式五：自定义 Service 层
+
+对于特别复杂的业务逻辑，可以按以下结构拆分：
+
+```
+api/
+└── system/
+    └── order/
+        ├── index.ts          # Router 定义（路由 + 中间件）
+        ├── order.model.ts    # 类型定义（DTO、分页请求等）
+        ├── order.service.ts  # 业务逻辑（多表事务、复杂校验）
+        └── order.repository.ts # 数据访问（Kysely 查询）
+```
+
+**index.ts 示例**：
+```ts
+import { addOrder, listOrders } from './order.service';
+
+router.post('/add', jwtAuth(), hasPerm('order:add'), async (ctx) => {
+  const result = await addOrder(ctx.request.body, getCurrentTenantId());
+  ctx.body = { code: 200, data: result };
+});
+```
+
+**关键点**：
+- Router 文件负责路由 + 中间件 + 返回格式
+- Service 文件负责业务逻辑和数据校验
+- Repository 文件负责纯数据库查询
+
+#### 选择指南
+
+| 场景 | 方案 |
+|------|------|
+| 标准单表 CRUD | 只导出 `config`（纯配置，全自动） |
+| 自定义某个接口（如 list 返回树） | **混合模式**：导出 `config` + `Router`（只写需要覆盖的） |
+| 自定义接口 + 标准 CRUD 都要 | **混合模式**：导出 `config` + `Router` |
+| 完全自定义（不需要标准 CRUD） | 只导出 `Router`（不导出 `config`） |
+| 导入导出 | 注册 `EXCEL_METAS` + ExcelJS |
+| 复杂业务流程 | Router + Service + Repository 分层 |
+
+## 2. 前端核心组件
+
+### 2.1 `CrudTablePage` — 泛型 CRUD 表格页面
 
 **文件**：`bls-admin/src/components/CrudTablePage/index.tsx`
 
@@ -503,7 +460,7 @@ export default function OrderPage() {
 - **权限控制**：通过 `usePermission` 控制各按钮显隐
 - **搜索模式**：模糊模式合并所有字段为 `keyword`，精确模式按字段原样传参
 
-### 11.2 `ExcelToolbar` — 导入导出工具栏
+### 2.2 `ExcelToolbar` — 导入导出工具栏
 
 **文件**：`bls-admin/src/components/ExcelToolbar/index.tsx`
 
@@ -518,7 +475,7 @@ export default function OrderPage() {
 - 导入数据 → `POST /api/common/excel/import`（拖拽上传 .xlsx/.xls）
 - 导入结果展示成功/失败统计和错误详情
 
-### 11.3 `ErrorBoundary` — 错误边界
+### 2.3 `ErrorBoundary` — 错误边界
 
 **文件**：`bls-admin/src/components/ErrorBoundary/index.tsx`
 
@@ -533,7 +490,7 @@ export default function OrderPage() {
 - Chunk 错误离线检测：网络恢复时自动重试
 - 提供 Retry、Reload、Back Home 操作
 
-### 11.4 `IconPicker` — 图标选择器
+### 2.4 `IconPicker` — 图标选择器
 
 **文件**：`bls-admin/src/components/IconPicker/index.tsx`
 
@@ -550,7 +507,7 @@ export default function OrderPage() {
 
 功能：搜索 Ant Design Outlined 图标，网格展示，支持清空和确认。
 
-### 11.5 `FileUploadModal` — 文件上传弹窗
+### 2.5 `FileUploadModal` — 文件上传弹窗
 
 **文件**：`bls-admin/src/components/FileUploadModal/index.tsx`
 
@@ -572,13 +529,13 @@ export default function OrderPage() {
 | `accept` | `string` | - | 文件类型限制 |
 | `extraData` | `Record<string, string>` | - | 额外参数 |
 
-### 11.6 `RichTextEditor` — 富文本编辑器
+### 2.6 `RichTextEditor` — 富文本编辑器
 
 **文件**：`bls-admin/src/components/RichTextEditor/index.tsx`
 
 基于 wangeditor，支持受控/非受控模式、图片上传、只读模式。
 
-### 11.7 其他组件
+### 2.7 其他组件
 
 | 组件 | 说明 |
 |------|------|
@@ -587,11 +544,63 @@ export default function OrderPage() {
 | `OfflineBanner` | 离线状态提示横幅 |
 | `VersionDropdown` | 版本切换下拉 |
 
+### 2.8 `GlobalSearchModal` — 全局搜索
+
+> **入口**：顶部导航栏右侧 **🔍 搜索图标**（或快捷键 `Ctrl + K`）
+>
+> **后端文件**：`bls-server/src/api/system/global-search/index.ts`
+> **前端文件**：`bls-admin/src/components/RightContent/GlobalSearchModal.tsx`
+
+全局搜索支持跨模块模糊搜索，覆盖用户、角色、菜单、部门、字典、系统参数、租户、套餐、页面配置、文件管理、登录日志、操作日志等模块。
+
+**使用方式**：
+1. 点击顶部搜索图标或按 `Ctrl + K`
+2. 输入关键字（至少 2 个字符）
+3. 自动按模块分组展示匹配结果
+4. 点击结果项跳转到对应页面
+
+**数据来源**：`sys_search_index` 统一索引表，通过数据源表实时同步。
+
+**索引管理**：系统参数页 → 工具栏「重建索引」→ 勾选需要重建的模块（默认全选）→ 开始重建。
+
+**重建流程**：
+```
+系统参数 → 点击 [重建索引] → 弹窗勾选模块 → 开始重建
+→ 从业务表重新读取数据 → REPLACE INTO sys_search_index → 完成
+```
+
+**后端接口**：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/system/global-search/search?keyword=xxx` | 搜索索引 |
+| `GET` | `/api/system/global-search/index/modules` | 获取可用模块列表 |
+| `POST` | `/api/system/global-search/index/rebuild` | 重建索引 `{ moduleKeys: ['GS_USER', ...] }` |
+
+**配置存储**：`sys_global_search_config` 表定义了每个模块的数据源表、标题字段、内容字段、状态字段等元信息。
+
+### 2.9 `RebuildIndexModal` — 索引重建弹窗
+
+> **前端文件**：`bls-admin/src/components/RebuildIndexModal/index.tsx`
+
+配合全局搜索使用，提供一键重建搜索索引的功能：
+- 自动加载所有启用的搜索模块
+- 支持全选 / 单独勾选需要重建的模块
+- 带进度条和完成结果展示（每个模块的索引条数）
+
+```tsx
+// 在任意工具栏中使用
+<Button icon={<ReloadOutlined />} onClick={() => setRebuildOpen(true)}>
+  重建索引
+</Button>
+<RebuildIndexModal open={rebuildOpen} onClose={() => setRebuildOpen(false)} />
+```
+
 ---
 
-## 12. 前端 Hooks
+## 3. 前端 Hooks
 
-### 12.1 `useCrudTable` — CRUD 状态管理 Hook
+### 3.1 `useCrudTable` — CRUD 状态管理 Hook
 
 **文件**：`bls-admin/src/hooks/useCrudTable.ts`
 
@@ -631,7 +640,7 @@ const crud = useCrudTable<UserRow>(resource, 'id', {
 | `remove(records)` | `void` | 删除（含确认弹窗） |
 | `changeStatus(record, status)` | `Promise<void>` | 切换状态 |
 
-### 12.2 `usePermission` — 权限控制 Hook
+### 3.2 `usePermission` — 权限控制 Hook
 
 **文件**：`bls-admin/src/hooks/usePermission.ts`
 
@@ -657,7 +666,7 @@ can(['user:create', 'user:edit'], 'any');  // 任一满足
 | `hasPermission` | `boolean` | 是否拥有指定权限 |
 | `can(perm, mode?)` | `boolean` | 动态权限判断 |
 
-### 12.3 `useDict` — 字典数据 Hook
+### 3.3 `useDict` — 字典数据 Hook
 
 **文件**：`bls-admin/src/hooks/useDict.ts`
 
@@ -680,7 +689,7 @@ const result = useMultiDict(['sys_yes_no', 'order_status'] as const);
 | `getLabel(value)` | `string` | 根据 value 获取 label |
 | `refresh()` | `void` | 清除缓存并重新加载 |
 
-### 12.4 `usePageConfig` — 页面动态配置 Hook
+### 3.4 `usePageConfig` — 页面动态配置 Hook
 
 **文件**：`bls-admin/src/hooks/usePageConfig.ts`
 
@@ -699,7 +708,7 @@ const { proColumns, formColumns, loading } = usePageConfig('order_page');
 | `formColumns` | `ProFormColumnsType[]` | 适配表单的列（自动过滤 editable=false） |
 | `loading` | `boolean` | 加载状态 |
 
-### 12.5 `useFileUpload` — 文件上传 Hook
+### 3.5 `useFileUpload` — 文件上传 Hook
 
 **文件**：`bls-admin/src/hooks/useFileUpload.ts`
 
@@ -729,7 +738,7 @@ await upload({ file: blob, filename: 'photo.png', data: { accessType: 'private' 
 | `uploading` | `boolean` | 上传中状态 |
 | `upload({file, filename, data})` | `Promise<NormalizedUploadResult>` | 执行上传 |
 
-### 12.6 `useWebSocket` — WebSocket 实时连接 Hook
+### 3.6 `useWebSocket` — WebSocket 实时连接 Hook
 
 **文件**：`bls-admin/src/hooks/useWebSocket.ts`
 
@@ -765,7 +774,7 @@ const { connected, connecting, lastMessage, errorText, reconnect } = useWebSocke
 
 ---
 
-## 13. 快速接入指南
+## 4. 快速接入指南
 
 ### 新增一个 CRUD 模块的步骤
 

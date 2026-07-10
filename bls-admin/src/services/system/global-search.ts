@@ -17,7 +17,7 @@ export interface GlobalSearchGroup {
 }
 
 export async function globalSearch(keyword: string, options?: { [key: string]: any }) {
-  return request<API.ResponseResult<GlobalSearchGroup[]>>('/api/global-search', {
+  return request<API.ResponseResult<GlobalSearchGroup[]>>('/api/system/global-search/search', {
     method: 'GET',
     params: { keyword },
     ...(options || {}),

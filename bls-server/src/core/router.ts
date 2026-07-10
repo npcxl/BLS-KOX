@@ -58,8 +58,22 @@ function scanAndRegister(baseDir: string, currentDir: string, apiRouter: Router)
     try {
       const mod = require(join(currentDir, indexFile));
 
-      // 导出 Router → 直接挂载（自动 camelCase）
+      // 导出 Router → 挂载自定义路由
       if (mod.default?.routes && mod.default?.allowedMethods) {
+        // 检查是否同时有 config（混合模式：自定义 Router + 标准 CRUD）
+        const mixedCfg = mod.config ?? (mod.default?.table && mod.default?.pkField ? mod.default : null);
+
+        if (mixedCfg?.table && mixedCfg?.pkField) {
+          // 混合模式：自定义 Router 先挂载（优先匹配，覆盖特定路由）
+          //           CRUD 后挂载（作为兜底，补充未覆盖的标准路由）
+          apiRouter.use(wrapCamel(mod.default).routes(), wrapCamel(mod.default).allowedMethods());
+          const { defineCrudModule } = require("./crud");
+          const cr = defineCrudModule({ ...mixedCfg, prefix });
+          apiRouter.use(cr.routes(), cr.allowedMethods());
+          return;
+        }
+
+        // 纯自定义模式：没有 config，只挂载自定义 Router
         apiRouter.use(wrapCamel(mod.default).routes(), wrapCamel(mod.default).allowedMethods());
         return;
       }
