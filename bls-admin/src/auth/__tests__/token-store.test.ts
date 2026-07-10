@@ -1,22 +1,27 @@
 /**
  * Token Store 单元测试
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
+import type { TokenStore } from '@/auth/token-store';
 
 // Mock localStorage
 const store = new Map<string, string>();
 
-beforeEach(() => {
-  store.clear();
+let tokenStore: TokenStore;
+
+beforeAll(async () => {
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => store.get(key) ?? null,
     setItem: (key: string, value: string) => { store.set(key, value); },
     removeItem: (key: string) => { store.delete(key); },
   });
+  const mod = await import('@/auth/token-store');
+  tokenStore = mod.tokenStore;
 });
 
-// 动态导入以确保 mock 先生效
-const { tokenStore } = await import('@/auth/token-store');
+beforeEach(() => {
+  store.clear();
+});
 
 describe('tokenStore', () => {
   it('getAccessToken returns null when not set', () => {
