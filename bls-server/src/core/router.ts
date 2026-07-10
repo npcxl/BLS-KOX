@@ -145,7 +145,30 @@ function registerFunctions(prefix: string, mod: any, apiRouter: Router): void {
 
 export function createRouter(): Router {
   const router = new Router({ prefix: "/api" });
-  router.get("/health", (ctx) => { ctx.body = { code: 200, message: "ok" }; });
+  router.get("/health", (ctx) => { ctx.body = { status: "ok" }; });
+
+  router.get("/ready", async (ctx) => {
+    const services: Record<string, string> = {};
+
+    // MySQL
+    try {
+      const { getDb } = require("./database");
+      const db = await getDb();
+      await db.selectFrom('sys_config').select('config_id').limit(1).execute();
+      services.mysql = "up";
+    } catch { services.mysql = "down"; }
+
+    // Redis
+    try {
+      const { getRedisClient } = require("../shared/utils/redis");
+      const r = getRedisClient();
+      if (r) { await r.ping(); services.redis = "up"; } else { services.redis = "disabled"; }
+    } catch { services.redis = "down"; }
+
+    const allUp = Object.values(services).every((s) => s === "up" || s === "disabled");
+    ctx.status = allUp ? 200 : 503;
+    ctx.body = { status: allUp ? "ready" : "not_ready", services };
+  });
   scanAndRegister(join(__dirname, "..", "api"), join(__dirname, "..", "api"), router);
   return router;
 }

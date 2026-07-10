@@ -57,4 +57,40 @@ if (require.main === module) {
   server.listen(env.port, env.host, () => {
     logger.info(`${env.appName} started`, { host: env.host, port: env.port, nodeEnv: env.nodeEnv });
   });
+
+  // ========== Graceful Shutdown ==========
+  let shuttingDown = false;
+  const SHUTDOWN_TIMEOUT = 30_000;
+
+  async function shutdown(signal: string) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info(`Received ${signal}, shutting down gracefully...`);
+
+    // 1. Stop accepting new connections
+    server.close((err) => {
+      if (err) logger.error('Server close error', { error: String(err) });
+    });
+
+    // 2. Close WebSocket connections
+
+    // 3. Close Redis
+    try {
+      const { closeRedis } = require('./shared/utils/redis');
+      await closeRedis();
+    } catch {}
+
+    // 4. MySQL pool closes automatically on process exit
+
+    // Force exit after timeout
+    setTimeout(() => {
+      logger.error('Graceful shutdown timeout, forcing exit');
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT).unref();
+
+    process.exit(0);
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
