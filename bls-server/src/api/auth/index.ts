@@ -176,7 +176,7 @@ export const refresh = async (ctx: Context) => {
       const wasUsed = await client.exists(markerKey);
       if (wasUsed) {
         await writeSecurityLog({
-          eventType: SecurityEventType.TOKEN_INVALID,
+          eventType: SecurityEventType.REFRESH_TOKEN_REUSE,
           riskLevel: RiskLevel.CRITICAL,
           title: `Refresh Token 复用检测：${payload.username ?? 'unknown'}`,
           detail: { userId: payload.userId, tenantId: payload.tenantId, jti: payload.jti },

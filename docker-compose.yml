@@ -81,9 +81,11 @@ services:
     image: mysql:8.0
     container_name: bls-mysql
     restart: unless-stopped
+    command: --default-time-zone=+08:00 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
       - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-}
       - MYSQL_DATABASE=${DB_NAME:-bls}
+      - TZ=Asia/Shanghai
     volumes:
       - mysql-data:/var/lib/mysql
       - ./bls-server/sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro

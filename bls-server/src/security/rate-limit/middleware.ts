@@ -33,7 +33,7 @@ export function rateLimitMiddleware() {
         ctx.state.metricsRoute = routeKey; // 提前返回路径写入标准化 route
         ctx.status = 429;
         ctx.set('Retry-After', String(result.retryAfter));
-        rateLimitRejectedTotal.inc({ path: result.routeKey ?? ctx.path, dimension: result.dimension ?? 'default' });
+        rateLimitRejectedTotal.inc({ route: routeKey, dimension: rule.dimensions[0] ?? 'default' });
         ctx.body = { code: 42901, message: '请求过于频繁，请稍后再试', data: null };
         return;
       }

@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import { createPool as createMysqlPool } from 'mysql2';
 import { env } from '../config/env';
+import { dbQueryDurationSeconds, dbQueryErrorsTotal } from '../observability/metrics';
 
 console.log('[db] config loaded', {
   host: env.db.host,
@@ -102,6 +103,19 @@ kyselyPool.on('enqueue', () => {
 });
 
 // ========== 连接错误检测（ECONNRESET 等） ==========
+/** P5: 统一 DB 操作观测包装 */
+async function observeDbOperation<T>(operation: string, fn: () => Promise<T>): Promise<T> {
+  const end = dbQueryDurationSeconds.startTimer({ operation });
+  try {
+    return await fn();
+  } catch (error) {
+    dbQueryErrorsTotal.inc({ operation });
+    throw error;
+  } finally {
+    end();
+  }
+}
+
 function isConnectionResetError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   return (
@@ -190,12 +204,14 @@ function wrapQueryBuilder(builder: any): any {
     get(target, prop, receiver) {
       const original = Reflect.get(target, prop, receiver);
 
-      // 拦截 execute / executeTakeFirst / executeTakeFirstOrThrow，添加重试
+      // 拦截 execute / executeTakeFirst / executeTakeFirstOrThrow，添加重试 + 指标
       if (typeof prop === 'string' && executeRetryMethods.has(prop)) {
         return (...args: any[]) => {
-          return withRetry(
-            () => original.apply(target, args),
-            `kysely.${prop}`,
+          const op = prop === 'executeTakeFirst' ? 'kysely_execute_take_first'
+            : prop === 'executeTakeFirstOrThrow' ? 'kysely_execute_take_first_or_throw'
+            : 'kysely_execute';
+          return observeDbOperation(op, () =>
+            withRetry(() => original.apply(target, args), `kysely.${prop}`)
           );
         };
       }
@@ -256,53 +272,55 @@ export async function query<T>(
   sql: string,
   params?: QueryParams,
 ): Promise<T[]> {
-  return withRetry(async () => {
-    const [rows] = await pool.query(sql, params as any);
-    return rows as T[];
-  }, 'query');
+  return observeDbOperation('query', () =>
+    withRetry(async () => {
+      const [rows] = await pool.query(sql, params as any);
+      return rows as T[];
+    }, 'query')
+  );
 }
 
 export async function queryOne<T>(
   sql: string,
   params?: QueryParams,
 ): Promise<T | null> {
-  return withRetry(async () => {
-    const [rows] = await pool.query(sql, params as any);
-    return (rows as T[])[0] ?? null;
-  }, 'queryOne');
+  return observeDbOperation('query_one', () =>
+    withRetry(async () => {
+      const [rows] = await pool.query(sql, params as any);
+      return (rows as T[])[0] ?? null;
+    }, 'queryOne')
+  );
 }
 
 export async function execute(
   sql: string,
   params?: QueryParams,
 ): Promise<mysql.ResultSetHeader> {
-  return withRetry(async () => {
-    const [result] = await pool.execute(sql, params as any);
-    return result as mysql.ResultSetHeader;
-  }, 'execute');
+  return observeDbOperation('execute', () =>
+    withRetry(async () => {
+      const [result] = await pool.execute(sql, params as any);
+      return result as mysql.ResultSetHeader;
+    }, 'execute')
+  );
 }
 
 export async function transaction<T>(
   runner: (conn: mysql.PoolConnection) => Promise<T>,
 ): Promise<T> {
-  return withRetry(async () => {
-    const conn = await pool.getConnection();
-
-    try {
-      await conn.beginTransaction();
-      const result = await runner(conn);
-      await conn.commit();
-      return result;
-    } catch (error) {
+  return observeDbOperation('transaction', () =>
+    withRetry(async () => {
+      const conn = await pool.getConnection();
       try {
-        await conn.rollback();
-      } catch (rollbackError) {
-        console.error('[db] rollback failed', rollbackError);
+        await conn.beginTransaction();
+        const result = await runner(conn);
+        await conn.commit();
+        return result;
+      } catch (error) {
+        try { await conn.rollback(); } catch (rollbackError) { console.error('[db] rollback failed', rollbackError); }
+        throw error;
+      } finally {
+        conn.release();
       }
-
-      throw error;
-    } finally {
-      conn.release();
-    }
-  }, 'transaction');
+    }, 'transaction')
+  );
 }

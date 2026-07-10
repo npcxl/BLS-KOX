@@ -130,6 +130,23 @@ export const activeSessions = new Gauge({
   name: 'bls_kox_active_sessions',
   help: 'Active user sessions',
   registers: [metricsRegistry],
+  async collect() {
+    // 每次 Prometheus 抓取时统计 Redis 中活跃 session-index 数量
+    try {
+      const { getRedisClient } = require('../shared/utils/redis');
+      const client = getRedisClient();
+      if (client) {
+        const keys = await client.keys('session-index:*');
+        let total = 0;
+        for (const k of keys) {
+          total += await client.scard(k);
+        }
+        this.set(total);
+      }
+    } catch {
+      // Redis 不可用时保持上次值
+    }
+  },
 });
 
 export const websocketConnections = new Gauge({

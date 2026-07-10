@@ -36,6 +36,7 @@ export const SecurityEventType = {
   BATCH_EXPORT:          'BATCH_EXPORT',
   ROLE_CHANGE:           'ROLE_CHANGE',
   PERM_CHANGE:           'PERM_CHANGE',
+  REFRESH_TOKEN_REUSE:   'REFRESH_TOKEN_REUSE',
   API_KEY_CREATED:       'API_KEY_CREATED',
   API_KEY_REVOKED:       'API_KEY_REVOKED',
   SENSITIVE_DATA_ACCESS: 'SENSITIVE_DATA_ACCESS',
@@ -163,7 +164,7 @@ export async function writeSecurityLog(input: SecurityLogInput): Promise<void> {
     securityEventsTotal.inc({ event_type: input.eventType, risk_level: riskLevel });
     if (input.eventType === SecurityEventType.CROSS_TENANT_ACCESS) crossTenantAccessTotal.inc();
     if (input.eventType === SecurityEventType.LOGIN_FAILED) loginFailedTotal.inc();
-    if (input.eventType === SecurityEventType.TOKEN_INVALID && input.title?.includes('Refresh Token 复用')) refreshReuseDetectedTotal.inc();
+    if (input.eventType === SecurityEventType.REFRESH_TOKEN_REUSE) refreshReuseDetectedTotal.inc();
   } catch (error) {
     logger.error('安全审计日志写入失败', {
       event: 'security_audit_write_failed',

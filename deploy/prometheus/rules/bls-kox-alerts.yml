@@ -1,0 +1,78 @@
+groups:
+  - name: bls-kox-critical
+    rules:
+      # 1. 5xx Error Rate > 5%
+      - alert: BLSKOXHigh5xxErrorRate
+        expr: |
+          (
+            sum(rate(bls_kox_http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(bls_kox_http_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "BLS-KOX 5xx 错误率超过 5%"
+          description: "过去 5 分钟 5xx 比率 {{ $value | humanizePercentage }}"
+
+      # 2. P95 Latency > 1s
+      - alert: BLSKOXHighP95Latency
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(bls_kox_http_request_duration_seconds_bucket[5m]))
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "BLS-KOX P95 延迟超过 1 秒"
+          description: "P95 延迟 {{ $value }}s"
+
+      # 3. DB Errors Increasing
+      - alert: BLSKOXDatabaseErrorsIncreasing
+        expr: increase(bls_kox_db_query_errors_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "BLS-KOX 数据库错误持续增长"
+          description: "过去 5 分钟新增 {{ $value }} 个数据库错误"
+
+      # 4. Redis Errors Increasing
+      - alert: BLSKOXRedisErrorsIncreasing
+        expr: increase(bls_kox_redis_operation_errors_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "BLS-KOX Redis 错误持续增长"
+          description: "过去 5 分钟新增 {{ $value }} 个 Redis 错误"
+
+      # 5. Refresh Token Reuse Detected
+      - alert: BLSKOXRefreshReuseDetected
+        expr: increase(bls_kox_refresh_reuse_detected_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "BLS-KOX 检测到 Refresh Token 复用"
+          description: "可能存在 Token 泄露或攻击行为"
+
+      # 6. Cross Tenant Access Detected
+      - alert: BLSKOXCrossTenantAccessDetected
+        expr: increase(bls_kox_cross_tenant_access_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "BLS-KOX 检测到跨租户访问"
+          description: "可能存在越权访问行为"
+
+      # 7. Rate Limit Reject Spike
+      - alert: BLSKOXHighRateLimitRejectRate
+        expr: rate(bls_kox_rate_limit_rejected_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "BLS-KOX 限流拒绝率飙升"
+          description: "每秒 {{ $value }} 个请求被限流拒绝"
