@@ -8,6 +8,7 @@
 import { execute } from './database';
 import { generateSnowflakeId } from '../shared/utils/snowflake';
 import type { AuditActor } from './audit';
+import { logger } from './logger';
 
 // ========== 事件类型 ==========
 

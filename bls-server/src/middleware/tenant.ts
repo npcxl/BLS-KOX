@@ -1,50 +1,32 @@
-import { AsyncLocalStorage } from "node:async_hooks";
 import { Context, Next } from "koa";
 import { parseBearerToken, verifyToken } from "../shared/utils/jwt";
 import { normalizeTenantId, TENANT_ID_FIELD } from "../shared/constants/tenant";
-
-interface TenantStore {
-  tenantId: string | null;
-}
-
-export const TenantStorage = new AsyncLocalStorage<TenantStore>();
+import { getRequestContext, setAuthContext } from "../core/request-context";
 
 export function getCurrentTenantId(): string | null {
-  return TenantStorage.getStore()?.tenantId ?? null;
+  return getRequestContext()?.tenantId ?? null;
 }
 
-export function setCurrentTenantId(tenantId: string): void {
-  const store = TenantStorage.getStore();
-  if (store) {
-    store.tenantId = normalizeTenantId(tenantId);
-  }
-}
-
-export async function tenantMiddleware(
-  ctx: Context,
-  next: Next,
-): Promise<void> {
+export async function tenantMiddleware(ctx: Context, next: Next): Promise<void> {
   const rawToken = parseBearerToken(ctx.headers.authorization);
-  const rawTenantId = rawToken
-    ? (() => {
-        try {
-          return verifyToken(rawToken).tenantId;
-        } catch {
-          return null;
-        }
-      })()
-    : null;
-  const tenantId =
-    rawTenantId === null || rawTenantId === undefined || rawTenantId === ""
-      ? null
-      : normalizeTenantId(rawTenantId);
+  let tenantId: string | null = null;
 
-  console.log("[tenantMiddleware] user:", ctx.state.user);
-  console.log("[tenantMiddleware] tenantId:", tenantId);
+  if (rawToken) {
+    try {
+      const payload = verifyToken(rawToken);
+      tenantId = payload.tenantId;
+      // 将 JWT 信息写入请求上下文
+      setAuthContext({ userId: payload.userId, tenantId: payload.tenantId, username: payload.username });
+    } catch {
+      // JWT 解析失败，tenantId 保持 null
+    }
+  }
 
-  await TenantStorage.run({ tenantId }, async () => {
-    await next();
-  });
+  // 更新上下文中的 tenantId
+  const ctx2 = getRequestContext();
+  if (ctx2) ctx2.tenantId = tenantId;
+
+  await next();
 }
 
 export function tenantWhere(
@@ -67,9 +49,7 @@ export function tenantWhere(
 
   return {
     sql: `${column} = :tenantId`,
-    params: {
-      tenantId,
-    },
+    params: { tenantId },
   };
 }
 

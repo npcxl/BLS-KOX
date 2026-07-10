@@ -10,6 +10,7 @@ import { createRouter } from './core/router';
 import { errorHandler } from './middleware/error-handler';
 import { tenantMiddleware } from './middleware/tenant';
 import { replayProtectionMiddleware } from './middlewares/replayProtection';
+import { requestContextMiddleware } from './core/request-context';
 import { attachRealtimeWs } from './api/system/realtime/realtime.ws';
 
 function getLanUrls(port: number): string[] {
@@ -25,9 +26,23 @@ export function createApp(): Koa {
 
   app.use(errorHandler);
   app.use(helmet());
-  app.use(cors({ origin: env.corsOrigin, credentials: true }));
+  app.use(cors({
+    credentials: true,
+    origin: (ctx) => {
+      const origin = ctx.get('Origin');
+      if (!origin) return '';
+      // 生产环境白名单检查
+      if (env.isProduction && env.corsOrigins.length > 0) {
+        if (env.corsOrigins.some((o: string) => o === origin || o === '*')) return origin;
+        return '';
+      }
+      // 开发环境或未配置白名单时用 corsOrigin
+      return env.corsOrigin === '*' ? origin : env.corsOrigin;
+    },
+  }));
   app.use(koaBody({ multipart: true, formidable: { multiples: false } }));
   app.use(bodyParser({ enableTypes: ['json', 'form'] }));
+  app.use(requestContextMiddleware);
   app.use(tenantMiddleware);
   app.use(replayProtectionMiddleware());
   app.use(router.routes());
