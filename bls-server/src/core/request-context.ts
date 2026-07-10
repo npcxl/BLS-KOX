@@ -43,11 +43,17 @@ export function getRequestId(): string {
   return ctxStorage.getStore()?.requestId ?? 'unknown';
 }
 
+/** 校验并规范化 Request ID（长度8-64，仅字母数字-_） */
+function normalizeRequestId(value?: string): string {
+  if (value && /^[A-Za-z0-9_-]{8,64}$/.test(value)) return value;
+  return randomUUID().replace(/-/g, '').slice(0, 16);
+}
+
 /** 中间件：初始化请求上下文 */
 export async function requestContextMiddleware(ctx: any, next: () => Promise<void>) {
   const store: RequestContext = {
-    requestId: (ctx.headers['x-request-id'] as string) || randomUUID().replace(/-/g, '').slice(0, 16),
-    traceId: (ctx.headers['x-trace-id'] as string) || undefined,
+    requestId: normalizeRequestId(ctx.headers['x-request-id'] as string),
+    traceId: normalizeRequestId(ctx.headers['x-trace-id'] as string),
     tenantId: null,
     userId: null,
     clientIp: (ctx.ip as string) || (ctx.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || 'unknown',

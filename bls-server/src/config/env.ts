@@ -21,26 +21,34 @@ function requiredEnv(name: string, defaultValue?: string): string {
   return value;
 }
 
+const isProduction = (process.env.NODE_ENV ?? '') === 'production';
+
 /** 生产环境强校验 JWT_SECRET */
 const jwtSecret = requiredEnv('JWT_SECRET', 'please_change_me_dev_only');
-if (process.env.NODE_ENV === 'production' && jwtSecret === 'please_change_me_dev_only') {
-  throw new Error('Production must set a strong JWT_SECRET');
-}
+if (isProduction && jwtSecret === 'please_change_me_dev_only') throw new Error('Production must set a strong JWT_SECRET');
 
 /** 生产环境强校验 DB_PASSWORD */
 const dbPassword = requiredEnv('DB_PASSWORD', '');
-if (process.env.NODE_ENV === 'production' && !dbPassword) {
-  throw new Error('Production must set DB_PASSWORD');
-}
+if (isProduction && !dbPassword) throw new Error('Production must set DB_PASSWORD');
+
+/** 生产环境强校验 CORS 白名单 */
+const corsOrigins = (process.env.CORS_ORIGINS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+if (isProduction && corsOrigins.length === 0) throw new Error('Production must configure CORS_ORIGINS');
+if (isProduction && corsOrigins.includes('*')) throw new Error('Wildcard CORS origin is not allowed in production');
+
+/** API_SIGN_SECRET：生产环境 + Replay 启用时必填 */
+const replayEnabled = (process.env.REPLAY_ENABLED ?? 'true') === 'true';
+const apiSignSecret = process.env.API_SIGN_SECRET?.trim() ?? '';
+if (isProduction && replayEnabled && !apiSignSecret) throw new Error('API_SIGN_SECRET is required when replay protection is enabled in production');
 
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
-  isProduction: (process.env.NODE_ENV ?? 'development') === 'production',
+  isProduction,
   appName: process.env.APP_NAME ?? 'bls-server',
   host: process.env.APP_HOST ?? '0.0.0.0',
   port: numberEnv('APP_PORT', numberEnv('PORT', 6001)),
   corsOrigin: process.env.CORS_ORIGIN ?? '*',
-  corsOrigins: (process.env.CORS_ORIGINS ?? '').split(',').map(s => s.trim()).filter(Boolean),
+  corsOrigins,
   ws: {
     enabled: (process.env.WS_ENABLED ?? 'true') === 'true',
     path: process.env.WS_PATH ?? '/ws/realtime',
@@ -69,8 +77,8 @@ export const env = {
     connectionLimit: numberEnv('DB_CONNECTION_LIMIT', 10),
   },
   replay: {
-    enabled: (process.env.REPLAY_ENABLED ?? 'true') === 'true',
-    signSecret: process.env.API_SIGN_SECRET ?? (process.env.NODE_ENV === 'production' ? '' : ''),
+    enabled: replayEnabled,
+    signSecret: apiSignSecret,
     windowSeconds: numberEnv('REPLAY_WINDOW_SECONDS', 120),
     nonceTtlSeconds: numberEnv('REPLAY_NONCE_TTL_SECONDS', 180),
     defaultMode: (process.env.REPLAY_DEFAULT_MODE ?? 'nonce') as 'off' | 'timestamp' | 'nonce' | 'signature',

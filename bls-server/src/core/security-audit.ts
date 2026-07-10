@@ -9,6 +9,7 @@ import { execute } from './database';
 import { generateSnowflakeId } from '../shared/utils/snowflake';
 import type { AuditActor } from './audit';
 import { logger } from './logger';
+import { getRequestContext } from './request-context';
 
 // ========== 事件类型 ==========
 
@@ -155,20 +156,26 @@ export async function writeSecurityLog(input: SecurityLogInput): Promise<void> {
         source: input.source ?? 'system',
       },
     );
-  } catch {
-    // 安全日志写入失败不阻塞主流程
+  } catch (error) {
+    logger.error('安全审计日志写入失败', {
+      event: 'security_audit_write_failed',
+      eventType: input.eventType,
+      error: error instanceof Error ? { name: error.name, message: error.message } : String(error),
+    });
   }
 }
 
 /** 从 Koa Context 快速构造 actor */
 export function actorFromCtx(ctx: any): Partial<AuditActor> {
+  // 使用统一 Request Context（verified JWT），不信任客户端传入的 x-tenant-id
+  const reqCtx = getRequestContext();
   return {
-    tenantId: ctx?.state?.user?.tenantId ?? ctx?.headers?.['x-tenant-id'] ?? '000000',
-    userId: ctx?.state?.user?.userId ?? null,
-    username: ctx?.state?.user?.username ?? null,
-    clientIp: ctx?.ip ?? ctx?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() ?? null,
-    userAgent: ctx?.headers?.['user-agent'] ?? null,
-    requestId: ctx?.headers?.['x-request-id'] ?? ctx?.state?.requestId ?? null,
+    tenantId: reqCtx?.tenantId ?? '000000',
+    userId: reqCtx?.userId ?? null,
+    username: reqCtx?.username ?? null,
+    clientIp: reqCtx?.clientIp ?? ctx?.ip ?? null,
+    userAgent: reqCtx?.userAgent ?? null,
+    requestId: reqCtx?.requestId ?? null,
   };
 }
 
