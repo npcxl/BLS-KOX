@@ -5,6 +5,7 @@ import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { getCurrentTenantId } from '../../../middleware/tenant';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
+import { assertTenantResource } from '../../../security/ownership';
 
 const router = new Router({ prefix: '/system/dept' });
 const T = 'sys_dept';
@@ -34,13 +35,15 @@ router.post('/add', jwtAuth(), hasPerm('system:dept:add'), async (ctx: Context) 
 });
 router.put('/edit', jwtAuth(), hasPerm('system:dept:edit'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;
-  await db.updateTable(T).set({parent_id:b.parentId, dept_name:b.deptName, sort_num:b.sortNum, status:b.status}).where('dept_id','=',b.deptId).execute();
+  await assertTenantResource('sys_dept', 'dept_id', b.deptId);
+  const tid = getCurrentTenantId();
+  await db.updateTable(T).set({parent_id:b.parentId, dept_name:b.deptName, sort_num:b.sortNum, status:b.status}).where('dept_id','=',b.deptId).where('tenant_id','=',tid).execute();
   ctx.body = { code: 200, message: '修改成功' };
 });
 router.delete('/remove', jwtAuth(), hasPerm('system:dept:remove'), async (ctx: Context) => {
-  const db = (await getDb()) as any;
-  const ids = ((ctx.request.body as any)?.ids??[]).map(String);
-  await db.updateTable(T).set({deleted:1}).where('dept_id','in',ids).execute();
+  const db = (await getDb()) as any; const ids = ((ctx.request.body as any)?.ids??[]).map(String);
+  const tid = getCurrentTenantId();
+  await db.updateTable(T).set({deleted:1}).where('dept_id','in',ids).where('tenant_id','=',tid).execute();
   ctx.body = { code: 200, message: '删除成功' };
 });
 

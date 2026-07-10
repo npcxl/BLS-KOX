@@ -2,7 +2,6 @@
   "name": "bls-server",
   "version": "0.1.0",
   "private": true,
-  
   "description": "Koa + TypeScript + MySQL multi-tenant SaaS backend for Ant Design Pro.",
   "scripts": {
     "dev": "tsx watch src/app.ts",
@@ -43,7 +42,8 @@
     "@types/node": "latest",
     "@types/ws": "^8.18.1",
     "tsx": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=18.18.0"

@@ -1,14 +1,16 @@
 import { Context } from 'koa';
 import { createHash } from 'crypto';
 import { getRedisClient } from '../../shared/utils/redis';
-import { TokenPayload, signToken, signRefreshToken, verifyToken, verifyRefreshToken } from '../../shared/utils/jwt';
+import { signToken, signRefreshToken, verifyToken, verifyRefreshToken } from '../../shared/utils/jwt';
 import { UnauthorizedError } from '../../core/errors';
 import { getDb, query, queryOne } from '../../core/database';
-import { getCurrentTenantId } from '../../middleware/tenant';
-import { PLATFORM_TENANT_ID } from '../../shared/constants/tenant';
 import { buildRequestMeta } from '../../shared/utils/request-meta';
 import { buildMenuTree } from '../../shared/utils/menu-tree';
 import { ConfigService } from '../system/config/index';
+import { sessionCenter } from '../../security/session/session-center';
+import { getRequestContext } from '../../core/request-context';
+import { writeSecurityLog, actorFromCtx, SecurityEventType, RiskLevel } from '../../core/security-audit';
+import { logger } from '../../core/logger';
 
 // ============ Session ============
 const SESSION_PREFIX = 'auth:session:';
@@ -58,7 +60,7 @@ export class AuthService {
   }
 
   async loginByTenant(tenantId: string, username: string, password: string, meta?: any) {
-    const db = (await getDb()) as any;
+    await getDb(); // ensure connection pool is initialized
     const user = await queryOne<any>(
       `SELECT user_id AS userId, username, nickname, password, tenant_id AS tenantId, is_admin AS isAdmin, status
        FROM sys_user WHERE username = :un AND tenant_id = :tid AND deleted = 0`, { un: username, tid: tenantId });
@@ -79,6 +81,7 @@ export class AuthService {
       const accessTtl = Math.max(accessPayload.exp ? accessPayload.exp - Math.floor(Date.now()/1000) : 0, 1);
       const refreshTtl = refreshPayload.exp ? refreshPayload.exp - Math.floor(Date.now()/1000) : 7*24*60*60;
       const refreshHash = hashToken(refreshToken);
+      const refreshJti = refreshPayload.jti;
       if (!multi) {
         const key = `auth:user-sessions:${user.userId}`;
         const jtis = await client.smembers(key);
@@ -88,9 +91,25 @@ export class AuthService {
         }
         await client.del(key);
       }
-      await client.set(`auth:session:${accessPayload.jti}`, JSON.stringify({ userId: user.userId, accessJti: accessPayload.jti, refreshJti: refreshPayload.jti, refreshHash }), 'EX', accessTtl);
+      await client.set(`auth:session:${accessPayload.jti}`, JSON.stringify({ userId: user.userId, accessJti: accessPayload.jti, refreshJti, refreshHash }), 'EX', accessTtl);
       await client.sadd(`auth:user-sessions:${user.userId}`, accessPayload.jti);
-      await client.set(`auth:refresh:${refreshPayload.jti}`, refreshHash, 'EX', refreshTtl);
+      await client.set(`auth:refresh:${refreshJti}`, refreshHash, 'EX', refreshTtl);
+
+      // Session Center 双写
+      const sessionId = `jti:${accessPayload.jti}`;
+      const ip = meta?.loginIp ?? getRequestContext()?.clientIp ?? 'unknown';
+      const ua = meta?.userAgent ?? getRequestContext()?.userAgent ?? 'unknown';
+      await sessionCenter.create({
+        sessionId,
+        userId: user.userId,
+        tenantId,
+        ip,
+        userAgent: ua,
+        loginTime: Date.now(),
+        lastActiveTime: Date.now(),
+        status: 'active',
+        refreshTokenHash: refreshHash,
+      }, refreshTtl);
     }
     return { token: accessToken, refreshToken, user: profile };
   }
@@ -145,9 +164,28 @@ export const refresh = async (ctx: Context) => {
 
     const storedHash = await client.get(`auth:refresh:${payload.jti}`);
     if (!storedHash || storedHash !== hashToken(rt)) {
+      // Refresh Token Reuse Detection
+      const markerKey = `auth:refresh-used:${payload.jti}`;
+      const wasUsed = await client.exists(markerKey);
+      if (wasUsed) {
+        await writeSecurityLog({
+          eventType: SecurityEventType.TOKEN_INVALID,
+          riskLevel: RiskLevel.CRITICAL,
+          title: `Refresh Token 复用检测：${payload.username ?? 'unknown'}`,
+          detail: { userId: payload.userId, tenantId: payload.tenantId, jti: payload.jti },
+          actor: actorFromCtx(ctx),
+          route: ctx.path, method: ctx.method, source: 'auth',
+        });
+        // Revoke all sessions for this user
+        await sessionCenter.revokeAll(payload.tenantId, payload.userId);
+        logger.warn('Refresh token reuse detected, all sessions revoked', { userId: payload.userId });
+      }
       ctx.body = { code: 401, message: 'refreshToken无效' };
       return;
     }
+
+    // 标记旧 refresh token 已被消费（Reuse Detection）
+    await client.set(`auth:refresh-used:${payload.jti}`, '1', 'EX', 7 * 24 * 60 * 60);
 
     // 获取用户信息
     const user = await queryOne<any>(
@@ -156,21 +194,36 @@ export const refresh = async (ctx: Context) => {
     );
     if (!user) { ctx.body = { code: 401, message: '用户不存在' }; return; }
 
-    // 签发新 token
+    // 签发新 token（Rotation）
     const newAccessToken = signToken({ userId: user.userId, tenantId: user.tenantId, username: user.username });
     const newRefreshToken = signRefreshToken({ userId: user.userId, tenantId: user.tenantId, username: user.username });
 
-    // 更新 Redis session
+    // 更新 Redis
     const accessPayload: any = verifyToken(newAccessToken.replace(/^Bearer\s+/i, ''));
     const refreshPayload: any = verifyRefreshToken(newRefreshToken);
     const accessTtl = Math.max(accessPayload.exp ? accessPayload.exp - Math.floor(Date.now()/1000) : 900, 60);
     const refreshTtl = refreshPayload.exp ? refreshPayload.exp - Math.floor(Date.now()/1000) : 7*24*60*60;
     const newHash = hashToken(newRefreshToken);
 
-    // 删除旧的 refresh jti
+    // 删除旧 session keys
     await client.del(`auth:refresh:${payload.jti}`);
     await client.set(sessionKey(accessPayload.jti), JSON.stringify({ userId: user.userId, accessJti: accessPayload.jti, refreshJti: refreshPayload.jti, refreshHash: newHash }), 'EX', accessTtl);
     await client.set(`auth:refresh:${refreshPayload.jti}`, newHash, 'EX', refreshTtl);
+
+    // Session Center：创建新 session
+    const ip = getRequestContext()?.clientIp ?? 'unknown';
+    const ua = getRequestContext()?.userAgent ?? 'unknown';
+    await sessionCenter.create({
+      sessionId: `jti:${accessPayload.jti}`,
+      userId: user.userId,
+      tenantId: user.tenantId,
+      ip, userAgent: ua,
+      loginTime: Date.now(), lastActiveTime: Date.now(),
+      status: 'active',
+      refreshTokenHash: newHash,
+    }, refreshTtl);
+    // 吊销旧 session
+    await sessionCenter.revoke(payload.tenantId, payload.userId, `jti:${payload.jti}`);
 
     ctx.body = { code: 200, data: { token: newAccessToken, refreshToken: newRefreshToken }, message: '操作成功' };
   } catch (err: any) {

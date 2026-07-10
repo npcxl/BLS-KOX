@@ -5,6 +5,7 @@ import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { getCurrentTenantId } from '../../../middleware/tenant';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
+import { assertTenantResource } from '../../../security/ownership';
 
 const router = new Router({ prefix: '/system/role' });
 const T = 'sys_role', RM = 'sys_role_menu';
@@ -52,7 +53,9 @@ router.post('/add', jwtAuth(), hasPerm('system:role:add'), async (ctx: Context) 
 });
 router.put('/edit', jwtAuth(), hasPerm('system:role:edit'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;
-  await db.updateTable(T).set({role_name:b.roleName, role_key:b.roleKey, sort_num:b.sortNum, status:b.status, remark:b.remark}).where('role_id','=',b.roleId).execute();
+  await assertTenantResource('sys_role', 'role_id', b.roleId);
+  const tid = getCurrentTenantId();
+  await db.updateTable(T).set({role_name:b.roleName, role_key:b.roleKey, sort_num:b.sortNum, status:b.status, remark:b.remark}).where('role_id','=',b.roleId).where('tenant_id','=',tid).execute();
   ctx.body = { code: 200, message: '修改成功' };
 });
 router.put('/:roleId/menus', jwtAuth(), hasPerm('system:role:assignMenu'), async (ctx: Context) => {
@@ -64,9 +67,9 @@ router.put('/:roleId/menus', jwtAuth(), hasPerm('system:role:assignMenu'), async
   ctx.body = { code: 200, message: '分配成功' };
 });
 router.delete('/remove', jwtAuth(), hasPerm('system:role:remove'), async (ctx: Context) => {
-  const db = (await getDb()) as any;
-  const ids = ((ctx.request.body as any)?.ids??[]).map(String);
-  await db.updateTable(T).set({deleted:1}).where('role_id','in',ids).execute();
+  const db = (await getDb()) as any; const ids = ((ctx.request.body as any)?.ids??[]).map(String);
+  const tid = getCurrentTenantId();
+  await db.updateTable(T).set({deleted:1}).where('role_id','in',ids).where('tenant_id','=',tid).execute();
   ctx.body = { code: 200, message: '删除成功' };
 });
 

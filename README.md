@@ -1,3 +1,56 @@
+# BLS-KOX 企业级多租户后台管理系统
+
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)](https://www.typescriptlang.org/)
+[![Koa](https://img.shields.io/badge/Koa-2.x-333)](https://koajs.com/)
+[![Ant Design Pro](https://img.shields.io/badge/Ant%20Design%20Pro-5.x-1677ff)](https://pro.ant.design/)
+
+> 一套面向 **多租户** 场景的 **企业级后台管理系统**，自带安全防线（防重放、限流、安全审计）、动态配置页面列、一行配置生成 CRUD 接口。
+
+## 技术栈
+
+| 层 | 技术 |
+|----|------|
+| 前端 | React 18 + Ant Design Pro + Umi 4 + TypeScript |
+| 后端 | Koa 2 + TypeScript + Kysely ORM + Zod 校验 |
+| 数据库 | MySQL 8.0 |
+| 缓存 | Redis 7 |
+| 部署 | Docker Compose + Nginx 反向代理 |
+
+## 核心能力
+
+- **多租户数据隔离** — 自动 tenant_id 注入，跨租户访问告警
+- **RBAC 权限控制** — 角色 → 菜单 → 按钮 三级权限
+- **动态列配置** — 页面列可见/可搜/可编辑 运行时配置，免改代码
+- **泛型 CRUD 工厂** — `defineCrudModule()` 一行配置生成 list/add/edit/remove/status
+- **防重放攻击** — Timestamp + Nonce + HMAC 签名 + 幂等 Key 四层防护
+- **频率限制** — IP + 账号 多维度 Redis 滑动窗口限流
+- **安全审计日志** — 登录失败、权限拒绝、重放检测、签名校验失败 全记录
+- **全局搜索** — sys_search_index 统一索引，跨模块模糊搜索
+- **Excel 导入导出** — 动态列模板、去重更新、失败明细
+- **WebSocket 实时** — 看板数据实时推送
+- **Docker 一键部署** — `docker compose up -d`
+
+## 快速开始
+
+```bash
+# 1. 安装依赖
+cd bls-server && npm install
+cd bls-admin && npm install
+
+# 2. 数据库初始化
+mysql -u root -p < bls-server/sql/init.sql
+
+# 3. 配置环境变量
+cp .env.example .env
+
+# 4. 启动后端
+cd bls-server && npm run dev
+
+# 5. 启动前端
+cd bls-admin && npm start
+
+
 # BLS 系统文档
 
 BLS 是一套面向多租户企业管理场景的后台系统，由 `bls-admin`（前端，基于 Ant Design Pro + TypeScript）和 `bls-server`（后端，基于 Koa + TypeScript + MySQL / Kysely）组成。

@@ -63,3 +63,9 @@ export function setAuthContext(user: { userId: string; tenantId: string; usernam
   const store = ctxStorage.getStore();
   if (store) { store.userId = user.userId; store.tenantId = user.tenantId; store.username = user.username; }
 }
+
+/** 部分更新上下文 */
+export function setRequestContext(partial: Partial<Pick<RequestContext, 'userId' | 'tenantId' | 'username'>>) {
+  const store = ctxStorage.getStore();
+  if (store) Object.assign(store, partial);
+}

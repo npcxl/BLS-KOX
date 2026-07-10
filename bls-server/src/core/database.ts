@@ -238,6 +238,18 @@ export async function getDb() {
   return dbPromise;
 }
 
+/** Graceful Shutdown：关闭所有数据库连接池 */
+export async function closeDatabase(): Promise<void> {
+  const results = await Promise.allSettled([
+    (async () => { await pool.end(); })(),
+    (async () => { await new Promise<void>((resolve, reject) => { (kyselyPool as any).end((err?: Error) => { if (err) reject(err); else resolve(); }); }); })(),
+  ]);
+  const failures = results.filter((r) => r.status === 'rejected');
+  if (failures.length > 0) {
+    console.error('[db] close pool errors:', failures.map((r: any) => r.reason?.message).join(', '));
+  }
+}
+
 export type QueryParams = Record<string, unknown> | unknown[];
 
 export async function query<T>(

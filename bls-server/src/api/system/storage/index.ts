@@ -5,6 +5,8 @@ import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { getCurrentTenantId } from '../../../middleware/tenant';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
+import { getRequestContext } from '../../../core/request-context';
+import { assertTenantResource } from '../../../security/ownership';
 import { createStorageProvider } from './storage.factory';
 import type { StorageConfig } from './storage.model';
 import fs from 'fs';
@@ -22,13 +24,15 @@ router.post('/add', jwtAuth(), hasPerm('system:storage:add'), async (ctx: Contex
 });
 router.put('/edit', jwtAuth(), hasPerm('system:storage:edit'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;
-  await db.updateTable('sys_storage_config').set(b).where('storage_id','=',b.storageId).execute();
+  await assertTenantResource('sys_storage_config', 'storage_id', b.storageId);
+  const tid = getRequestContext()?.tenantId;
+  await db.updateTable('sys_storage_config').set(b).where('storage_id','=',b.storageId).where('tenant_id','=',tid).execute();
   ctx.body = { code: 200, message: '修改成功' };
 });
 router.delete('/remove', jwtAuth(), hasPerm('system:storage:remove'), async (ctx: Context) => {
-  const db = (await getDb()) as any;
-  const ids = ((ctx.request.body as any)?.ids??[]).map(String);
-  await db.updateTable('sys_storage_config').set({deleted:1}).where('storage_id','in',ids).execute();
+  const db = (await getDb()) as any; const ids = ((ctx.request.body as any)?.ids??[]).map(String);
+  const tid = getRequestContext()?.tenantId;
+  await db.updateTable('sys_storage_config').set({deleted:1}).where('storage_id','in',ids).where('tenant_id','=',tid).execute();
   ctx.body = { code: 200, message: '删除成功' };
 });
 

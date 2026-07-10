@@ -23,7 +23,7 @@ router.get('/list', jwtAuth(), hasPerm('system:user:list'), async (ctx: Context)
   const db = (await getDb()) as any; const q: any = ctx.query;
   const p = Math.max(1, +q.pageNum||1); const s = Math.min(100, +q.pageSize||10);
   let b = db.selectFrom(T).selectAll().where('deleted','=',0);
-  const tid = getRequestContext()?.tenantId; if (tid) b = b.where('tenant_id','=',tid);
+  b = b.where('tenant_id','=',tenantId());
 
   const searchCols = await db.selectFrom('sys_page_column_config').select('data_index')
     .where('page_code','=','system_user').where('searchable','=',1).where('deleted','=',0).execute();
@@ -49,7 +49,7 @@ router.get('/list', jwtAuth(), hasPerm('system:user:list'), async (ctx: Context)
 router.get('/profile', jwtAuth(), async (ctx: Context) => {
   const u = ctx.state.user as any;
   const db = (await getDb()) as any;
-  const row = await db.selectFrom(T).selectAll().where('user_id','=',u.userId).where('deleted','=',0).executeTakeFirst();
+  const row = await db.selectFrom(T).selectAll().where('user_id','=',u.userId).where('tenant_id','=',u.tenantId).where('deleted','=',0).executeTakeFirst();
   ctx.body = { code: 200, data: row };
 });
 
@@ -57,7 +57,7 @@ router.put('/profile', jwtAuth(), async (ctx: Context) => {
   const u = ctx.state.user as any;
   const data = pickAllowed((ctx.request.body ?? {}) as any, USER_PROFILE_FIELDS);
   if (Object.keys(data).length === 0) { ctx.body = { code: 400, message: '没有可更新字段' }; return; }
-  await (await getDb()).updateTable(T).set(data as any).where('user_id','=',u.userId).execute();
+  await (await getDb()).updateTable(T).set(data as any).where('user_id','=',u.userId).where('tenant_id','=',u.tenantId).execute();
   ctx.body = { code: 200, message: '修改成功' };
 });
 

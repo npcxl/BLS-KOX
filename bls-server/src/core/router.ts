@@ -148,22 +148,34 @@ export function createRouter(): Router {
   router.get("/health", (ctx) => { ctx.body = { status: "ok" }; });
 
   router.get("/ready", async (ctx) => {
+    const READY_TIMEOUT = 2_000;
     const services: Record<string, string> = {};
+
+    const withTimeout = <T>(label: string, fn: () => Promise<T>): Promise<T> =>
+      Promise.race([fn(), new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timeout`)), READY_TIMEOUT))]);
 
     // MySQL
     try {
-      const { getDb } = require("./database");
-      const db = await getDb();
-      await db.selectFrom('sys_config').select('config_id').limit(1).execute();
+      await withTimeout('mysql', async () => {
+        const { getDb } = require("./database");
+        const db = await getDb();
+        await db.selectFrom('sys_config').select('config_id').limit(1).execute();
+      });
       services.mysql = "up";
     } catch { services.mysql = "down"; }
 
     // Redis
     try {
+      await withTimeout('redis', async () => {
+        const { getRedisClient } = require("../shared/utils/redis");
+        const r = getRedisClient();
+        if (r) await r.ping(); else throw new Error('disabled');
+      });
+      services.redis = "up";
+    } catch {
       const { getRedisClient } = require("../shared/utils/redis");
-      const r = getRedisClient();
-      if (r) { await r.ping(); services.redis = "up"; } else { services.redis = "disabled"; }
-    } catch { services.redis = "down"; }
+      services.redis = getRedisClient() ? "down" : "disabled";
+    }
 
     const allUp = Object.values(services).every((s) => s === "up" || s === "disabled");
     ctx.status = allUp ? 200 : 503;

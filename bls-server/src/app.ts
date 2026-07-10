@@ -1,17 +1,17 @@
 import Koa from 'koa';
-import cors from '@koa/cors';
+import http from 'http';
 import helmet from 'koa-helmet';
-import bodyParser from 'koa-bodyparser';
+import cors from '@koa/cors';
 import koaBody from 'koa-body';
+import bodyParser from 'koa-bodyparser';
 import { env } from './config/env';
-import http from 'node:http';
 import { createRouter } from './core/router';
 import { errorHandler } from './middleware/error-handler';
+import { logger } from './core/logger';
 import { tenantMiddleware } from './middleware/tenant';
 import { replayProtectionMiddleware } from './middlewares/replayProtection';
 import { requestContextMiddleware } from './core/request-context';
 import { rateLimitMiddleware } from './security/rate-limit/middleware';
-import { logger } from './core/logger';
 import { attachRealtimeWs } from './api/system/realtime/realtime.ws';
 
 export function createApp(): Koa {
@@ -23,7 +23,7 @@ export function createApp(): Koa {
   const router = createRouter();
 
   app.use(errorHandler);
-  app.use(helmet());
+  app.use(helmet({ contentSecurityPolicy: false }));
   app.use(cors({
     credentials: true,
     origin: (ctx) => {
@@ -53,7 +53,8 @@ export function createApp(): Koa {
 if (require.main === module) {
   const app = createApp();
   const server = http.createServer(app.callback());
-  attachRealtimeWs(server, app);
+  const wss = attachRealtimeWs(server, app);
+
   server.listen(env.port, env.host, () => {
     logger.info(`${env.appName} started`, { host: env.host, port: env.port, nodeEnv: env.nodeEnv });
   });
@@ -62,34 +63,64 @@ if (require.main === module) {
   let shuttingDown = false;
   const SHUTDOWN_TIMEOUT = 30_000;
 
+  /** 等待 HTTP Server 真正关闭 */
+  function closeHttpServer(srv: http.Server): Promise<void> {
+    return new Promise((resolve, reject) => {
+      srv.close((error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+  }
+
+  /** 关闭 WebSocket Server */
+  async function closeWebSocketServer(ws: ReturnType<typeof attachRealtimeWs>): Promise<void> {
+    if (!ws) return;
+    await new Promise<void>((resolve) => {
+      // 通知所有客户端关闭
+      for (const client of (ws as any).clients || []) {
+        try { client.close(1001, 'Server shutting down'); } catch {}
+      }
+      ws.close(() => resolve());
+    });
+  }
+
   async function shutdown(signal: string) {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info(`Received ${signal}, shutting down gracefully...`);
 
-    // 1. Stop accepting new connections
-    server.close((err) => {
-      if (err) logger.error('Server close error', { error: String(err) });
-    });
+    // 1. Stop accepting new HTTP connections
+    try { await closeHttpServer(server); } catch (e) { logger.error('HTTP server close error', { error: String(e) }); }
+    logger.info('[shutdown] HTTP server closed');
 
-    // 2. Close WebSocket connections
+    // 2. Close WebSocket
+    try { await closeWebSocketServer(wss); } catch {}
+    logger.info('[shutdown] WebSocket closed');
 
     // 3. Close Redis
     try {
       const { closeRedis } = require('./shared/utils/redis');
       await closeRedis();
+      logger.info('[shutdown] Redis closed');
     } catch {}
 
-    // 4. MySQL pool closes automatically on process exit
+    // 4. Close MySQL pools
+    try {
+      const { closeDatabase } = require('./core/database');
+      await closeDatabase();
+      logger.info('[shutdown] MySQL pools closed');
+    } catch {}
 
-    // Force exit after timeout
-    setTimeout(() => {
-      logger.error('Graceful shutdown timeout, forcing exit');
-      process.exit(1);
-    }, SHUTDOWN_TIMEOUT).unref();
-
+    logger.info('[shutdown] Graceful shutdown complete');
     process.exit(0);
   }
+
+  // Force exit after timeout
+  setTimeout(() => {
+    logger.error('Graceful shutdown timeout, forcing exit');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT).unref();
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
