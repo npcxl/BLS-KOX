@@ -90,6 +90,12 @@ if (require.main === module) {
     shuttingDown = true;
     logger.info(`Received ${signal}, shutting down gracefully...`);
 
+    // 超时保护：必须在 shutdown() 内启动，确保仅初始调用方持有
+    const forceExit = setTimeout(() => {
+      logger.error('Graceful shutdown timeout, forcing exit');
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT).unref();
+
     // 1. Stop accepting new HTTP connections
     try { await closeHttpServer(server); } catch (e) { logger.error('HTTP server close error', { error: String(e) }); }
     logger.info('[shutdown] HTTP server closed');
@@ -112,15 +118,10 @@ if (require.main === module) {
       logger.info('[shutdown] MySQL pools closed');
     } catch {}
 
+    clearTimeout(forceExit);
     logger.info('[shutdown] Graceful shutdown complete');
     process.exit(0);
   }
-
-  // Force exit after timeout
-  setTimeout(() => {
-    logger.error('Graceful shutdown timeout, forcing exit');
-    process.exit(1);
-  }, SHUTDOWN_TIMEOUT).unref();
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));

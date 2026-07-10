@@ -57,6 +57,18 @@ export const GlobalSearchModal: React.FC = () => {
     }
   };
 
+  // Ctrl+K / Cmd+K 快捷键打开全局搜索
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const runDebounced = (value: string) => {
     if (debounceTimerRef.current !== null) {
       window.clearTimeout(debounceTimerRef.current);
@@ -121,10 +133,7 @@ export const GlobalSearchModal: React.FC = () => {
 
   return (
     <>
-      <Tooltip
-        title="全局搜索，只有新增或修改后产生新的索引数据才会显示。
-      详情参见后端函数xxx.repository.ts的syncUserSearchIndex函数。"
-      >
+      <Tooltip title="全局搜索（Ctrl+K）&#10;数据来源：sys_search_index 索引表。&#10;如需更新索引，前往「系统参数」→「重建索引」">
         <SearchOutlined
           className={styles.trigger}
           onClick={() => setOpen(true)}

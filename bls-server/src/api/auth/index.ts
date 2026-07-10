@@ -82,6 +82,7 @@ export class AuthService {
       const refreshTtl = refreshPayload.exp ? refreshPayload.exp - Math.floor(Date.now()/1000) : 7*24*60*60;
       const refreshHash = hashToken(refreshToken);
       const refreshJti = refreshPayload.jti;
+      const accessJti = accessPayload.jti;
       if (!multi) {
         const key = `auth:user-sessions:${user.userId}`;
         const jtis = await client.smembers(key);
@@ -91,25 +92,17 @@ export class AuthService {
         }
         await client.del(key);
       }
-      await client.set(`auth:session:${accessPayload.jti}`, JSON.stringify({ userId: user.userId, accessJti: accessPayload.jti, refreshJti, refreshHash }), 'EX', accessTtl);
-      await client.sadd(`auth:user-sessions:${user.userId}`, accessPayload.jti);
+      await client.set(`auth:session:${accessJti}`, JSON.stringify({ userId: user.userId, accessJti, refreshJti, refreshHash }), 'EX', accessTtl);
+      await client.sadd(`auth:user-sessions:${user.userId}`, accessJti);
       await client.set(`auth:refresh:${refreshJti}`, refreshHash, 'EX', refreshTtl);
 
-      // Session Center 双写
-      const sessionId = `jti:${accessPayload.jti}`;
+      // Session Center：acc:{accessJti} 用于 auth 校验，ref:{refreshJti} 用于 refresh 吊销
       const ip = meta?.loginIp ?? getRequestContext()?.clientIp ?? 'unknown';
       const ua = meta?.userAgent ?? getRequestContext()?.userAgent ?? 'unknown';
-      await sessionCenter.create({
-        sessionId,
-        userId: user.userId,
-        tenantId,
-        ip,
-        userAgent: ua,
-        loginTime: Date.now(),
-        lastActiveTime: Date.now(),
-        status: 'active',
-        refreshTokenHash: refreshHash,
-      }, refreshTtl);
+      const now = Date.now();
+      const baseSession = { userId: user.userId, tenantId, ip, userAgent: ua, loginTime: now, lastActiveTime: now, status: 'active' as const, refreshTokenHash: refreshHash };
+      await sessionCenter.create({ ...baseSession, sessionId: `acc:${accessJti}` }, refreshTtl);
+      await sessionCenter.create({ ...baseSession, sessionId: `ref:${refreshJti}` }, refreshTtl);
     }
     return { token: accessToken, refreshToken, user: profile };
   }
@@ -121,6 +114,8 @@ export class AuthService {
         const { verifyToken: vt } = await import('../../shared/utils/jwt.js');
         const p: any = vt(token.replace(/^Bearer\s+/i, ''));
         await client.del(sessionKey(p.jti));
+        // Session Center：吊销 acc session
+        await sessionCenter.revoke(p.tenantId, p.userId, `acc:${p.jti}`);
       } catch { /* ignore */ }
     }
     return null;
@@ -210,20 +205,14 @@ export const refresh = async (ctx: Context) => {
     await client.set(sessionKey(accessPayload.jti), JSON.stringify({ userId: user.userId, accessJti: accessPayload.jti, refreshJti: refreshPayload.jti, refreshHash: newHash }), 'EX', accessTtl);
     await client.set(`auth:refresh:${refreshPayload.jti}`, newHash, 'EX', refreshTtl);
 
-    // Session Center：创建新 session
+    // Session Center：吊销旧 ref + 创建新 acc/ref
     const ip = getRequestContext()?.clientIp ?? 'unknown';
     const ua = getRequestContext()?.userAgent ?? 'unknown';
-    await sessionCenter.create({
-      sessionId: `jti:${accessPayload.jti}`,
-      userId: user.userId,
-      tenantId: user.tenantId,
-      ip, userAgent: ua,
-      loginTime: Date.now(), lastActiveTime: Date.now(),
-      status: 'active',
-      refreshTokenHash: newHash,
-    }, refreshTtl);
-    // 吊销旧 session
-    await sessionCenter.revoke(payload.tenantId, payload.userId, `jti:${payload.jti}`);
+    const now = Date.now();
+    const baseSession = { userId: user.userId, tenantId: user.tenantId, ip, userAgent: ua, loginTime: now, lastActiveTime: now, status: 'active' as const, refreshTokenHash: newHash };
+    await sessionCenter.revoke(payload.tenantId, payload.userId, `ref:${payload.jti}`);
+    await sessionCenter.create({ ...baseSession, sessionId: `acc:${accessPayload.jti}` }, refreshTtl);
+    await sessionCenter.create({ ...baseSession, sessionId: `ref:${refreshPayload.jti}` }, refreshTtl);
 
     ctx.body = { code: 200, data: { token: newAccessToken, refreshToken: newRefreshToken }, message: '操作成功' };
   } catch (err: any) {

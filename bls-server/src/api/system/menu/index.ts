@@ -10,7 +10,33 @@ const router = new Router({ prefix: '/system/menu' });
 const T = 'sys_menu';
 
 router.get('/list', jwtAuth(), hasPerm('system:menu:list'), async (ctx: Context) => {
-  const rows = await (await getDb()).selectFrom(T).selectAll().orderBy('sort_num','asc').execute();
+  const q: any = ctx.query;
+  let rows = await (await getDb()).selectFrom(T).selectAll().orderBy('sort_num','asc').execute();
+
+  // 关键字搜索：模糊匹配 menuName
+  const keyword = (q.keyword || q.menuName || '').trim();
+  if (keyword) {
+    const matchedIds = new Set<string>();
+    const map = new Map<string, { menuId: string; parentId: string }>();
+    for (const r of rows) {
+      const id = String(r.menu_id ?? r.menuId ?? '');
+      const pid = String(r.parent_id ?? r.parentId ?? '0');
+      map.set(id, { menuId: id, parentId: pid });
+    }
+    for (const r of rows) {
+      const name = String(r.menu_name ?? r.menuName ?? '');
+      if (name.includes(keyword)) {
+        let current = String(r.menu_id ?? r.menuId ?? '');
+        while (current && current !== '0') {
+          matchedIds.add(current);
+          const node = map.get(current);
+          current = node?.parentId ?? '0';
+        }
+      }
+    }
+    rows = rows.filter((r: any) => matchedIds.has(String(r.menu_id ?? r.menuId ?? '')));
+  }
+
   ctx.body = { code: 200, data: buildMenuTree(rows) };
 });
 router.get('/package-tree', jwtAuth(), async (ctx: Context) => {

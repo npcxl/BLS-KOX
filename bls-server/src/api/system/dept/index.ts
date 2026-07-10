@@ -24,8 +24,36 @@ function buildTree(rows: any[]) {
 }
 
 router.get('/list', jwtAuth(), hasPerm('system:dept:list'), async (ctx: Context) => {
-  const rows = await (await getDb()).selectFrom(T).selectAll()
-    .where('deleted','=',0).orderBy('sort_num','asc').execute();
+  const tid = getCurrentTenantId();
+  const q: any = ctx.query;
+  let rows = await (await getDb()).selectFrom(T).selectAll()
+    .where('deleted','=',0).where('tenant_id','=',tid).orderBy('sort_num','asc').execute();
+
+  // 关键字搜索：模糊匹配 deptName
+  const keyword = (q.keyword || q.deptName || '').trim();
+  if (keyword) {
+    const matchedIds = new Set<string>();
+    const map = new Map<string, { deptId: string; parentId: string }>();
+    for (const r of rows) {
+      const id = String(r.dept_id ?? r.deptId ?? '');
+      const pid = String(r.parent_id ?? r.parentId ?? '0');
+      map.set(id, { deptId: id, parentId: pid });
+    }
+    // 找到匹配的节点及其所有祖先（保持树结构）
+    for (const r of rows) {
+      const name = String(r.dept_name ?? r.deptName ?? '');
+      if (name.includes(keyword)) {
+        let current = String(r.dept_id ?? r.deptId ?? '');
+        while (current && current !== '0') {
+          matchedIds.add(current);
+          const node = map.get(current);
+          current = node?.parentId ?? '0';
+        }
+      }
+    }
+    rows = rows.filter((r: any) => matchedIds.has(String(r.dept_id ?? r.deptId ?? '')));
+  }
+
   ctx.body = { code: 200, data: buildTree(rows) };
 });
 router.post('/add', jwtAuth(), hasPerm('system:dept:add'), async (ctx: Context) => {

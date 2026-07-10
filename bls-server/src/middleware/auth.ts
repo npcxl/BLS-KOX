@@ -1,6 +1,6 @@
 import { Context, Next } from 'koa';
 import { SessionInvalidError, UnauthorizedError } from '../core/errors';
-import { AuthService, getStoredSession } from '../api/auth';
+import { AuthService } from '../api/auth';
 import { parseBearerToken, verifyToken } from '../shared/utils/jwt';
 import { writeSecurityLog, actorFromCtx, SecurityEventType } from '../core/security-audit';
 import { sessionCenter } from '../security/session/session-center';
@@ -21,38 +21,20 @@ export function jwtAuth(options: { optional?: boolean } = {}) {
   return async (ctx: Context, next: Next): Promise<void> => {
     const rawToken = parseBearerToken(ctx.headers.authorization);
     if (!rawToken) {
-      if (options.optional) {
-        await next();
-        return;
-      }
+      if (options.optional) { await next(); return; }
       throw new UnauthorizedError();
     }
 
     try {
       const payload = verifyToken(rawToken);
 
-      // 通过 Session Center 校验 session
-      if (payload.jti && payload.userId && payload.tenantId) {
-        const valid = await sessionCenter.validate(payload.tenantId, payload.userId, `jti:${payload.jti}`);
-        if (!valid) {
-          await writeSecurityLog({
-            eventType: SecurityEventType.TOKEN_INVALID,
-            title: `会话失效：${payload.username ?? 'unknown'}`,
-            detail: { userId: payload.userId, tenantId: payload.tenantId, reason: 'session_invalid' },
-            actor: { ...actorFromCtx(ctx), userId: payload.userId, tenantId: payload.tenantId, username: payload.username },
-            route: ctx.path, method: ctx.method, source: 'auth',
-          }).catch(() => {});
-          throw new SessionInvalidError();
-        }
-      }
-
-      // 回退：使用旧 session 校验
-      const session = await getStoredSession(payload.jti);
-      if (!session || session.userId !== payload.userId) {
+      // Session Center 校验（唯一真相源）
+      const valid = await sessionCenter.validate(payload.tenantId, payload.userId, `acc:${payload.jti}`);
+      if (!valid) {
         await writeSecurityLog({
           eventType: SecurityEventType.TOKEN_INVALID,
           title: `会话失效：${payload.username ?? 'unknown'}`,
-          detail: { userId: payload.userId, tenantId: payload.tenantId, reason: 'session_mismatch' },
+          detail: { userId: payload.userId, tenantId: payload.tenantId, reason: 'session_not_active' },
           actor: { ...actorFromCtx(ctx), userId: payload.userId, tenantId: payload.tenantId, username: payload.username },
           route: ctx.path, method: ctx.method, source: 'auth',
         }).catch(() => {});
@@ -61,12 +43,8 @@ export function jwtAuth(options: { optional?: boolean } = {}) {
 
       ctx.state.user = await authService.profile(payload.userId, payload.tenantId);
 
-      // 更新 Request Context 为可信 JWT 信息
-      setRequestContext({
-        tenantId: payload.tenantId,
-        userId: payload.userId,
-        username: payload.username,
-      });
+      // 更新 Request Context
+      setRequestContext({ tenantId: payload.tenantId, userId: payload.userId, username: payload.username });
     } catch (error) {
       if (isJwtExpiredError(error)) {
         const payload = parseJwtPayload(rawToken);
@@ -102,7 +80,5 @@ function parseJwtPayload(rawToken?: string): { userId?: string; tenantId?: strin
   try {
     const jwt = require('jsonwebtoken');
     return jwt.decode(rawToken) as any;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }

@@ -42,6 +42,7 @@ router.get('/list', jwtAuth(), hasPerm('system:role:list'), async (ctx: Context)
 });
 
 router.get('/:roleId/menus', jwtAuth(), hasPerm('system:role:list'), async (ctx: Context) => {
+  await assertTenantResource('sys_role', 'role_id', ctx.params.roleId);
   const rows = await (await getDb()).selectFrom(RM).select('menu_id').where('role_id','=',ctx.params.roleId).execute();
   ctx.body = { code: 200, data: rows.map((r: any) => r.menu_id) };
 });
@@ -60,6 +61,7 @@ router.put('/edit', jwtAuth(), hasPerm('system:role:edit'), async (ctx: Context)
 });
 router.put('/:roleId/menus', jwtAuth(), hasPerm('system:role:assignMenu'), async (ctx: Context) => {
   const db = (await getDb()) as any; const roleId = ctx.params.roleId; const menuIds: string[] = (ctx.request.body as any)?.menuIds??[];
+  await assertTenantResource('sys_role', 'role_id', roleId);
   await db.deleteFrom(RM).where('role_id','=',roleId).execute();
   if (menuIds.length > 0) {
     await db.insertInto(RM).values(menuIds.map(id=>({role_id:roleId, menu_id:id}))).execute();
