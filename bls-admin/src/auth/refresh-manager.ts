@@ -20,7 +20,9 @@ let refreshPromise: Promise<TokenPair | null> | null = null;
 function doRefresh(): Promise<TokenPair | null> {
   const rt = tokenStore.getRefreshToken();
   if (!rt) {
-    return Promise.resolve(null);
+    return Promise.resolve(null).finally(() => {
+      refreshPromise = null;
+    });
   }
 
   return requestRefreshToken(

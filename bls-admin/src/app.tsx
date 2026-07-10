@@ -32,6 +32,7 @@ import {
 } from "@/services/ant-design-pro/api";
 import { GlobalSearchModal } from "./components/RightContent/GlobalSearchModal";
 import { GlobalRealtimeProvider } from "./components/GlobalRealtimeProvider";
+import { TokenRefreshGuard } from "./components/TokenRefreshGuard";
 
 const isDev = process.env.NODE_ENV === "development";
 const loginPath = "/user/login";
@@ -596,7 +597,9 @@ export function rootContainer(container: React.ReactNode) {
     <>
       <OfflineBanner />
       <ErrorBoundary>
-        <GlobalRealtimeProvider>{container}</GlobalRealtimeProvider>
+        <TokenRefreshGuard>
+          <GlobalRealtimeProvider>{container}</GlobalRealtimeProvider>
+        </TokenRefreshGuard>
       </ErrorBoundary>
     </>
   );
