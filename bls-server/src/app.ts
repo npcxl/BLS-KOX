@@ -18,6 +18,7 @@ import { worker } from './queue/worker';
 import { exportJob } from './queue/jobs/export.job';
 import { importJob } from './queue/jobs/import.job';
 import { notificationJob } from './queue/jobs/notification.job';
+import { outboxPublisher } from './outbox/outbox-publisher';
 
 export function createApp(): Koa {
   const app = new Koa();
@@ -68,6 +69,9 @@ if (require.main === module) {
   // P6: 注册并启动 Worker
   worker.register(exportJob).register(importJob).register(notificationJob).start();
 
+  // P7: 启动 Outbox Publisher
+  outboxPublisher.start();
+
   // ========== Graceful Shutdown ==========
   let shuttingDown = false;
   const SHUTDOWN_TIMEOUT = 30_000;
@@ -112,6 +116,10 @@ if (require.main === module) {
     // 2. Stop Worker
     try { await worker.stop(); } catch {}
     logger.info('[shutdown] Worker stopped');
+
+    // 2b. Stop Outbox Publisher
+    try { await outboxPublisher.stop(); } catch {}
+    logger.info('[shutdown] Outbox Publisher stopped');
 
     // 3. Close WebSocket
     try { await closeWebSocketServer(wss); } catch {}
