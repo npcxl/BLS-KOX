@@ -4,6 +4,7 @@ import { getDb } from '../../../core/database';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
 import { getCurrentTenantId } from '../../../middleware/tenant';
+import { pickAllowed, USER_PROFILE_FIELDS, USER_CREATE_FIELDS, USER_EDIT_FIELDS } from '../../../shared/utils/mass-assignment';
 
 const router = new Router({ prefix: '/system/user' });
 const T = 'sys_user';
@@ -49,18 +50,21 @@ router.get('/profile', jwtAuth(), async (ctx: Context) => {
 
 router.put('/profile', jwtAuth(), async (ctx: Context) => {
   const u = ctx.state.user as any;
-  await (await getDb()).updateTable(T).set(ctx.request.body as any).where('user_id','=',u.userId).execute();
+  const data = pickAllowed((ctx.request.body ?? {}) as any, USER_PROFILE_FIELDS);
+  await (await getDb()).updateTable(T).set(data as any).where('user_id','=',u.userId).execute();
   ctx.body = { code: 200, message: '修改成功' };
 });
 
 router.post('/add', jwtAuth(), hasPerm('system:user:add'), async (ctx: Context) => {
-  const db = (await getDb()) as any; const b: any = ctx.request.body;
-  await db.insertInto(T).values({...b, tenant_id: getCurrentTenantId()??'000000', deleted:0});
+  const db = (await getDb()) as any;
+  const data = pickAllowed((ctx.request.body ?? {}) as any, USER_CREATE_FIELDS);
+  await db.insertInto(T).values({...data, tenant_id: getCurrentTenantId()??'000000', deleted:0} as any);
   ctx.body = { code: 200, message: '新增成功' };
 });
 router.put('/edit', jwtAuth(), hasPerm('system:user:edit'), async (ctx: Context) => {
-  const db = (await getDb()) as any; const b: any = ctx.request.body;
-  await db.updateTable(T).set(b).where('user_id','=',b.userId).execute();
+  const db = (await getDb()) as any;
+  const data = pickAllowed((ctx.request.body ?? {}) as any, USER_EDIT_FIELDS);
+  await db.updateTable(T).set(data as any).where('user_id','=',(ctx.request.body as any).userId).execute();
   ctx.body = { code: 200, message: '修改成功' };
 });
 router.delete('/remove', jwtAuth(), hasPerm('system:user:remove'), async (ctx: Context) => {

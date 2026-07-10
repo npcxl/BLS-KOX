@@ -44,6 +44,7 @@ if (isProduction && replayEnabled && !apiSignSecret) throw new Error('API_SIGN_S
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   isProduction,
+  trustProxy: (process.env.TRUST_PROXY ?? 'false') === 'true',
   appName: process.env.APP_NAME ?? 'bls-server',
   host: process.env.APP_HOST ?? '0.0.0.0',
   port: numberEnv('APP_PORT', numberEnv('PORT', 6001)),

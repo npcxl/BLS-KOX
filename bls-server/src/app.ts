@@ -10,11 +10,16 @@ import { errorHandler } from './middleware/error-handler';
 import { tenantMiddleware } from './middleware/tenant';
 import { replayProtectionMiddleware } from './middlewares/replayProtection';
 import { requestContextMiddleware } from './core/request-context';
+import { rateLimitMiddleware } from './security/rate-limit/middleware';
 import { logger } from './core/logger';
 import { attachRealtimeWs } from './api/system/realtime/realtime.ws';
 
 export function createApp(): Koa {
   const app = new Koa();
+
+  // 可信代理：仅在 Nginx 前置时开启，Koa 信任 X-Forwarded-* Header
+  if (env.trustProxy) app.proxy = true;
+
   const router = createRouter();
 
   app.use(errorHandler);
@@ -35,6 +40,7 @@ export function createApp(): Koa {
   app.use(requestContextMiddleware);
   app.use(tenantMiddleware);
   app.use(replayProtectionMiddleware());
+  app.use(rateLimitMiddleware());
   app.use(router.routes());
   app.use(router.allowedMethods());
   app.on('error', (error) => {
