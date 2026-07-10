@@ -1,0 +1,21 @@
+name: Feature Request
+description: 提交功能建议
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes:
+      label: 场景描述
+      description: 你在什么场景下需要这个功能？
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 期望方案
+      description: 你希望如何实现
+  - type: textarea
+    attributes:
+      label: 替代方案
+      description: 你考虑过什么替代方案？
+  - type: textarea
+    attributes:
+      label: 其他信息
