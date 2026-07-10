@@ -69,8 +69,10 @@ export function replayProtectionMiddleware() {
     // 签名密钥：优先环境变量
     const signSecret = env.replay?.signSecret ?? process.env.API_SIGN_SECRET;
 
+    let result: Awaited<ReturnType<typeof svc.check>> = {};
+
     try {
-      const result = await svc.check({
+      result = await svc.check({
         path: ctx.path,
         method: ctx.method,
         timestamp: ctx.headers['x-timestamp'] as string | undefined,
@@ -85,51 +87,59 @@ export function replayProtectionMiddleware() {
       });
 
       // 幂等返回缓存结果
-      if (result.idempotentResult?.status === 'completed' && result.idempotentResult.cachedResponse) {
-        try {
-          ctx.body = JSON.parse(result.idempotentResult.cachedResponse);
-        } catch {
-          ctx.body = result.idempotentResult.cachedResponse;
+      if (result.idempotentResult?.status === 'completed') {
+        if (result.idempotentResult.cachedResponse) {
+          try {
+            ctx.body = JSON.parse(result.idempotentResult.cachedResponse);
+          } catch {
+            ctx.body = result.idempotentResult.cachedResponse;
+          }
         }
-        ctx.status = 200;
+        ctx.status = result.idempotentResult.cachedStatus ?? 200;
         return;
       }
+
+      const isIdempotent = result.idempotentResult?.status === 'new';
 
       await next();
 
       // 成功后保存幂等结果
-      if (result.idempotentResult?.status === 'new' && rule.idempotent) {
+      if (isIdempotent && rule.idempotent) {
         const idemKey = ctx.headers['idempotency-key'] as string;
         if (idemKey && ctx.status >= 200 && ctx.status < 300) {
-          const responseStr = JSON.stringify(ctx.body ?? {});
           await svc.saveIdempotentResult(
-            idemKey, tenantId, userId, responseStr,
+            idemKey, tenantId, userId,
+            JSON.stringify(ctx.body ?? {}), ctx.status,
             rule.idempotentTtlSeconds ?? 3600,
           );
         }
       }
     } catch (err) {
+      // 非安全错误 → 业务异常，释放幂等锁允许重试
+      if (!(err instanceof SecurityError) && result?.idempotentResult?.status === 'new' && rule?.idempotent) {
+        const idemKey = ctx.headers['idempotency-key'] as string;
+        if (idemKey) await svc.releaseIdempotentLock(idemKey, tenantId, userId);
+      }
+
       if (err instanceof SecurityError) {
         // 安全事件审计
         const eventMap: Record<number, SecurityEventType> = {
           40101: SecurityEventType.TIMESTAMP_EXPIRED,
-          40102: SecurityEventType.TIMESTAMP_EXPIRED,
+          40102: SecurityEventType.TIMESTAMP_INVALID,
           40103: SecurityEventType.TIMESTAMP_EXPIRED,
-          40104: SecurityEventType.TIMESTAMP_EXPIRED,
+          40104: SecurityEventType.NONCE_MISSING,
           40901: SecurityEventType.NONCE_REPLAY,
+          40105: SecurityEventType.SIGNATURE_MISSING,
           40106: SecurityEventType.SIGNATURE_INVALID,
         };
         const eventType = eventMap[err.securityCode] ?? SecurityEventType.TIMESTAMP_EXPIRED;
         const riskLevel = eventType === SecurityEventType.SIGNATURE_INVALID ? RiskLevel.CRITICAL : RiskLevel.HIGH;
         await writeSecurityLog({
-          eventType,
-          riskLevel,
+          eventType, riskLevel,
           title: err.message,
           detail: { errorCode: err.securityCode, path: ctx.path, method: ctx.method },
           actor: actorFromCtx(ctx),
-          route: ctx.path,
-          method: ctx.method,
-          source: 'replay',
+          route: ctx.path, method: ctx.method, source: 'replay',
         });
 
         ctx.status = err.status;

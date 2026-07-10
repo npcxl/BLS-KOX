@@ -57,4 +57,18 @@ router.delete('/audit/clean', jwtAuth(), hasPerm('system:log:audit:clean'), asyn
   ctx.body = { code: 200, message: '清理成功' };
 });
 
+// 安全日志列表
+router.get('/security', jwtAuth(), hasPerm('system:log:security:list'), async (ctx: Context) => {
+  const db = (await getDb()) as any; const q: any = ctx.query;
+  const p = Math.max(1, +q.pageNum||1); const s = Math.min(100, +q.pageSize||10);
+  let b = db.selectFrom('sys_security_log').selectAll();
+  if (q.eventType) b = b.where('event_type','=',q.eventType);
+  if (q.riskLevel) b = b.where('risk_level','=',q.riskLevel);
+  if (q.username) b = b.where('username','like',`%${q.username}%`);
+  if (q.clientIp) b = b.where('client_ip','like',`%${q.clientIp}%`);
+  if (q.keyword) b = b.where((eb:any)=>eb.or(['title','username','route'].map((f:string)=>eb(f,'like',`%${q.keyword}%`))));
+  const cr = await (b as any).clearSelect().select((eb:any)=>eb.fn.countAll().as('total')).executeTakeFirst();
+  ctx.body = { code: 200, data: await b.orderBy('create_time','desc').limit(s).offset((p-1)*s).execute(), total: Number(cr?.total??0) };
+});
+
 export default router;

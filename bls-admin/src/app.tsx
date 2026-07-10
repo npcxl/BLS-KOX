@@ -75,6 +75,7 @@ function mapBackendMenus(
           children: [
             { key: '/system/log/login', path: '/system/log/login', name: '登录日志', locale: false },
             { key: '/system/log/audit', path: '/system/log/audit', name: '操作审计', locale: false },
+            { key: '/system/log/security', path: '/system/log/security', name: '安全日志', locale: false },
           ],
         };
       }
