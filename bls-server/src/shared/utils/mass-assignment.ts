@@ -22,16 +22,16 @@ export const USER_PROFILE_FIELDS = [
   'nickname', 'avatar', 'email', 'phone', 'gender', 'remark',
 ];
 
-/** 管理员新建用户允许的字段 */
+/** 管理员新建用户允许的字段（不含 isAdmin，超管单独控制） */
 export const USER_CREATE_FIELDS = [
   'username', 'password', 'nickname', 'realName', 'avatar',
-  'gender', 'email', 'phone', 'deptId', 'isAdmin', 'status', 'remark',
+  'gender', 'email', 'phone', 'deptId', 'status', 'remark',
 ];
 
-/** 管理员编辑用户允许的字段 */
+/** 管理员编辑用户允许的字段（不含 isAdmin/tenantId/roleIds/perms/deleted） */
 export const USER_EDIT_FIELDS = [
   'nickname', 'realName', 'avatar', 'gender',
-  'email', 'phone', 'deptId', 'isAdmin', 'status', 'remark',
+  'email', 'phone', 'deptId', 'status', 'remark',
 ];
 
 /** 禁止写入的字段（用于审计告警） */
