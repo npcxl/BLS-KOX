@@ -9,6 +9,8 @@ import { logSecurity } from '../../../core/security-audit';
 import { SecurityEventType } from '../../../core/security-audit';
 import { pickAllowed, USER_PROFILE_FIELDS, USER_CREATE_FIELDS, USER_EDIT_FIELDS } from '../../../shared/utils/mass-assignment';
 import { appendEvent, EventTypes } from '../../../outbox/outbox';
+import { sessionCenter } from '../../../security/session/session-center';
+import { logger } from '../../../core/logger';
 
 function tenantId(): string {
   const ctx = getRequestContext();
@@ -103,6 +105,63 @@ router.delete('/remove', jwtAuth(), hasPerm('system:user:remove'), async (ctx: C
     await db.updateTable(T).set({deleted:1}).where('user_id','in',visibleIds).where('tenant_id','=',tid).execute();
   }
   ctx.body = { code: 200, message: '删除成功' };
+});
+
+/**
+ * 获取指定用户的活跃会话列表（在线状态/设备列表）
+ * 权限: system:user:kick（超级管理员默认拥有）
+ */
+router.get('/sessions/:userId', jwtAuth(), hasPerm('system:user:kick'), async (ctx: Context) => {
+  const tid = tenantId();
+  const userId = ctx.params.userId;
+  // 校验目标用户属于当前租户
+  const db = (await getDb()) as any;
+  const user = await db.selectFrom(T).select('user_id').where('user_id','=',userId).where('tenant_id','=',tid).where('deleted','=',0).executeTakeFirst();
+  if (!user) { ctx.body = { code: 404, message: '用户不存在' }; return; }
+
+  const sessions = await sessionCenter.list(tid, userId);
+  const active = sessions
+    .filter(s => s.status === 'active')
+    .map(s => ({
+      sessionId: s.sessionId,
+      deviceId: s.deviceId,
+      ip: s.ip,
+      userAgent: s.userAgent,
+      loginTime: new Date(s.loginTime).toISOString(),
+      lastActiveTime: new Date(s.lastActiveTime).toISOString(),
+    }));
+  ctx.body = { code: 200, data: { userId, activeSessions: active, online: active.length > 0 } };
+});
+
+/**
+ * 踢下线：吊销指定用户的全部会话
+ * 权限: system:user:kick（超级管理员默认拥有）
+ * POST body: { userIds: string[] }
+ */
+router.post('/kick', jwtAuth(), hasPerm('system:user:kick'), async (ctx: Context) => {
+  const db = (await getDb()) as any;
+  const body = (ctx.request.body ?? {}) as any;
+  const userIds: string[] = (body.userIds ?? []).map(String);
+  if (!userIds.length) { ctx.body = { code: 400, message: '缺少用户ID' }; return; }
+
+  const tid = tenantId();
+  // 跨租户防护：只踢当前租户的用户
+  const visible = await db.selectFrom(T).select(['user_id', 'username']).where('user_id','in',userIds).where('tenant_id','=',tid).where('deleted','=',0).execute() as any[];
+  const visibleIds = visible.map((r: any) => r.user_id);
+
+  let kicked = 0;
+  for (const uid of visibleIds) {
+    try {
+      await sessionCenter.revokeAll(tid, uid);
+      kicked++;
+      logger.info('[user] kicked offline', { operator: (ctx.state.user as any)?.username, targetUserId: uid });
+    } catch (err) {
+      logger.error('[user] kick failed', { userId: uid, error: String(err) });
+    }
+  }
+
+  await logSecurity(ctx, SecurityEventType.PERM_CHANGE, `踢下线用户：${visible.map((r: any) => r.username).join(',')}`).catch(() => {});
+  ctx.body = { code: 200, data: { kicked }, message: `成功踢出 ${kicked} 个用户` };
 });
 
 export default router;

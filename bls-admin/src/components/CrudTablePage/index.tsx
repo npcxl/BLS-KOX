@@ -60,6 +60,8 @@ export type CrudTablePageProps<T extends Record<string, any>> = {
     import?: string | string[];
     export?: string | string[];
   };
+  /** 选中行后的批量操作扩展（与"批量删除"同级展示） */
+  tableAlertExtraRender?: (selectedRows: T[], onCleanSelected: () => void) => ReactNode;
   excelMetaKey?: string;
 };
 
@@ -138,6 +140,7 @@ export default function CrudTablePage<T extends Record<string, any>>({
   showSearchModeToggle = true,
   permissions,
   excelMetaKey,
+  tableAlertExtraRender,
 }: CrudTablePageProps<T>) {
   const [searchMode, setSearchMode] = useState<"fuzzy" | "exact">(
     defaultSearchMode
@@ -403,18 +406,21 @@ export default function CrudTablePage<T extends Record<string, any>>({
             </Button>
           ) : null,
         ]}
-        rowSelection={canRemove && resource.remove !== false ? {} : false}
+        rowSelection={canRemove || tableAlertExtraRender ? {} : false}
         tableAlertOptionRender={({ selectedRows, onCleanSelected }) =>
-          canRemove ? (
+          canRemove || tableAlertExtraRender ? (
             <Space size={16}>
-              <a
-                onClick={() => {
-                  crud.remove(selectedRows as T[]);
-                  onCleanSelected();
-                }}
-              >
-                批量删除
-              </a>
+              {canRemove && (
+                <a
+                  onClick={() => {
+                    crud.remove(selectedRows as T[]);
+                    onCleanSelected();
+                  }}
+                >
+                  批量删除
+                </a>
+              )}
+              {tableAlertExtraRender?.(selectedRows as T[], onCleanSelected)}
             </Space>
           ) : null
         }

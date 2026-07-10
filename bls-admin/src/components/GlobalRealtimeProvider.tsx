@@ -1,5 +1,6 @@
 import { useWebSocket } from '@/hooks/useWebSocket';
-import React, { createContext, useContext, useMemo } from 'react';
+import { tokenStore } from '@/auth/token-store';
+import React, { createContext, useContext, useMemo, useState, useEffect } from 'react';
 
 export interface RealtimeInfo {
   timestamp: string;
@@ -32,9 +33,19 @@ interface RealtimeContextValue {
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
 
 export function GlobalRealtimeProvider({ children }: { children: React.ReactNode }) {
+  const [hasToken, setHasToken] = useState(false);
+
+  useEffect(() => {
+    const check = () => setHasToken(!!tokenStore.getAccessToken());
+    check();
+    const id = setInterval(check, 3000);
+    return () => clearInterval(id);
+  }, []);
+
   const { connected, connecting, errorText, lastMessage, reconnect } = useWebSocket<RealtimeMessage>({
     url: '/ws/realtime',
     autoReauth: true,
+    enabled: hasToken,
     onMessage: () => {},
   });
 

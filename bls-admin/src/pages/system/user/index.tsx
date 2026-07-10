@@ -6,7 +6,9 @@ import type {
   ProFormColumnsType,
 } from "@ant-design/pro-components";
 import { request } from "@umijs/max";
+import { usePermission } from "@/hooks/usePermission";
 import { useEffect, useState } from "react";
+import { message } from "antd";
 import { DeptRecord } from "../dept";
 export type UserRecord = {
   userId: string;
@@ -29,6 +31,9 @@ export type UserRecord = {
 };
 
 function UserPageInner() {
+  const { can } = usePermission();
+  const canKick = can("system:user:kick");
+
   const multiDict = useMultiDict([
     "sys_status",
     "sys_gender",
@@ -204,6 +209,34 @@ function UserPageInner() {
         import: "system:user:import",
         export: "system:user:export",
       }}
+      tableAlertExtraRender={
+        canKick
+          ? (selectedRows, onCleanSelected) => (
+              <a
+                key="kick"
+                onClick={async () => {
+                  const userIds = selectedRows.map((r) => r.userId);
+                  try {
+                    const res = await request<{ code: number; data?: { kicked: number }; message?: string }>(
+                      "/api/system/user/kick",
+                      { method: "POST", data: { userIds } }
+                    );
+                    if (res.code === 200) {
+                      message.success(res.message ?? `成功踢出 ${selectedRows.length} 个用户`);
+                      onCleanSelected();
+                    } else {
+                      message.error(res.message ?? "操作失败");
+                    }
+                  } catch {
+                    message.error("踢下线请求失败");
+                  }
+                }}
+              >
+                批量踢下线
+              </a>
+            )
+          : undefined
+      }
     />
   );
 }

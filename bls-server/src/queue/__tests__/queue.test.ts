@@ -3,18 +3,21 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockDb = {
-  insertInto: vi.fn().mockReturnThis(),
-  values: vi.fn().mockReturnThis(),
-  execute: vi.fn().mockResolvedValue(undefined),
-  executeTakeFirst: vi.fn().mockResolvedValue(null),
-  selectFrom: vi.fn().mockReturnThis(),
-  selectAll: vi.fn().mockReturnThis(),
-  where: vi.fn().mockReturnThis(),
-  orderBy: vi.fn().mockReturnThis(),
-  limit: vi.fn().mockReturnThis(),
-  updateTable: vi.fn().mockReturnThis(),
-};
+const { mockDb } = vi.hoisted(() => {
+  const mockDb = {
+    insertInto: vi.fn().mockReturnThis(),
+    values: vi.fn().mockReturnThis(),
+    execute: vi.fn().mockResolvedValue(undefined),
+    executeTakeFirst: vi.fn().mockResolvedValue(null),
+    selectFrom: vi.fn().mockReturnThis(),
+    selectAll: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    updateTable: vi.fn().mockReturnThis(),
+  };
+  return { mockDb };
+});
 
 vi.mock('../../core/database.js', () => ({ getDb: vi.fn().mockResolvedValue(mockDb) }));
 vi.mock('../../shared/utils/snowflake.js', () => ({ generateSnowflakeId: () => ({ toString: () => String(Date.now()) }) }));
