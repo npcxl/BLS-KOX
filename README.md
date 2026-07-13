@@ -122,6 +122,7 @@ BLS-KOX/
 | [CRUD 工厂](./docs/crud.md) | 一行配置生成接口 |
 | [安全能力](./docs/security.md) | 防重放、限流、审计 |
 | [可观测性](./docs/observability.md) | Metrics、告警 |
+| [API 版本化](./docs/api-versioning.md) | 路由前缀、OpenAPI、Internal |
 | [部署指南](./docs/deployment.md) | Docker、生产环境 |
 
 ## 🗺 Roadmap

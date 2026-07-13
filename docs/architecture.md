@@ -5,11 +5,15 @@
 ```
 HTTP Request
   ↓
+API Versioning — 路由前缀识别 (/api/v1/ | /openapi/v1/ | /internal/)
+  ↓
+Blocked IP Middleware (P10 安全中心)
+  ↓
 Request Context (traceId/requestId)
   ↓
-Tenant Middleware (提取 tenant_id)
+HTTP Metrics (P5 Prometheus)
   ↓
-HTTP Metrics Middleware (P5)
+Tenant Middleware (提取 tenant_id)
   ↓
 Replay Protection (防重放)
   ↓
@@ -17,13 +21,17 @@ Rate Limiter (限流)
   ↓
 JWT Auth (Session Center 校验)
   ↓
+Data Scope (P9 数据权限)
+  ↓
 RBAC Permission (hasPerm)
   ↓
 API Handler (Service)
   ↓
 Database / Redis
   ↓
-Audit Log / Metrics
+Audit Log → Security Event Center (P10) → Auto-dispose
+  ↓
+Prometheus Metrics
 ```
 
 ## 模块分层
@@ -31,12 +39,24 @@ Audit Log / Metrics
 | 层 | 路径 | 说明 |
 |----|------|------|
 | API | `src/api/` | 路由注册 + 中间件组合 |
-| Middleware | `src/middleware/` | 认证/权限/租户/HTTP Metrics |
+| Middleware | `src/middleware/` | 认证/权限/租户/API版本化 |
 | Middlewares | `src/middlewares/` | 防重放中间件 |
-| Security | `src/security/` | Ownership Guard / Session Center / Rate Limit |
+| Security | `src/security/` | Data Scope / Session Center / Event Center / Rate Limit |
 | Core | `src/core/` | 数据库 / CRUD 工厂 / 审计 / 日志 |
+| Outbox | `src/outbox/` | 事务性事件发布 (P7) |
+| Queue | `src/queue/` | 异步任务队列 (P6) |
 | Shared | `src/shared/` | JWT / Redis / Snowflake / 工具函数 |
 | Observability | `src/observability/` | Prometheus Metrics |
+
+## API 版本化 (P11)
+
+详见 [API 版本化文档](./api-versioning.md)。
+
+核心设计：
+- `/api/v1/` — 前端业务接口（JWT，标准鉴权）
+- `/api/` — 旧路径兼容（带 Deprecation 头，180天后下线）
+- `/openapi/v1/` — 第三方开放接口（API Key + HMAC 签名）
+- `/internal/` — 内部服务（Service Token + IP 白名单）
 
 ## 路由自动注册
 
@@ -55,4 +75,4 @@ Audit Log / Metrics
 - `DELETE /remove` 删除
 - `PUT /status` 状态切换
 
-内置：租户隔离、软删除、Snowflake ID、字段转换。
+内置：租户隔离、软删除、Snowflake ID、字段转换、Data Scope 数据权限。

@@ -15,6 +15,8 @@ import { requestContextMiddleware } from './core/request-context';
 import { rateLimitMiddleware } from './security/rate-limit/middleware';
 import { blockedIpMiddleware } from './security/event-center/ip-block-middleware';
 import { apiVersion } from './middleware/api-version';
+import { openApiAuth } from './middleware/openapi-auth';
+import { internalAuth } from './middleware/internal-auth';
 import { attachRealtimeWs } from './api/system/realtime/realtime.ws';
 import { worker } from './queue/worker';
 import { exportJob } from './queue/jobs/export.job';
@@ -54,18 +56,60 @@ export function createApp(): Koa {
   app.use(blockedIpMiddleware());
   app.use(rateLimitMiddleware());
 
-  // P11: API Versioning
-  // Deprecation header for non-versioned paths
+  // ====== P11: API Versioning ======
+
+  // 1. 保存原始路径（后续 rewrite 后会变）
   app.use(async (ctx, next) => {
-    if (ctx.path.startsWith('/api/') && !ctx.path.startsWith('/api/v1/')) {
+    ctx.state.originalPath = ctx.path;
+    await next();
+  });
+
+  // 2. /api/v1/* → rewrite 到 /api/*（透明代理到同一套路由）
+  app.use(async (ctx, next) => {
+    if (ctx.path.startsWith('/api/v1/')) {
+      ctx.path = '/api' + ctx.path.slice(7);
+    }
+    await next();
+  });
+
+  // 3. 旧 /api/* 路径 (非 /api/v1/) 返回 Deprecation/Sunset
+  app.use(async (ctx, next) => {
+    const orig = ctx.state.originalPath as string | undefined;
+    if (orig?.startsWith('/api/') && !orig?.startsWith('/api/v1/')) {
       ctx.set('Deprecation', 'true');
       ctx.set('Sunset', new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString());
     }
     await next();
   });
+
   app.use(apiVersion());
   app.use(router.routes());
   app.use(router.allowedMethods());
+
+  // ====== P11: /openapi/v1 — 独立鉴权 ======
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const KoaRouter = require('koa-router');
+  const openapiR = new KoaRouter({ prefix: '/openapi/v1' });
+  openapiR.use(openApiAuth());
+  openapiR.use(async (ctx: any, next: any) => {
+    // rewrite /openapi/v1/... → /api/... 复用现有路由
+    ctx.path = '/api' + ctx.path.slice(11);
+    await next();
+  });
+  openapiR.use(router.routes());
+  app.use(openapiR.routes());
+
+  // ====== P11: /internal — 内部服务鉴权 ======
+  const internalR = new KoaRouter({ prefix: '/internal' });
+  internalR.use(internalAuth());
+  internalR.get('/health', (ctx: any) => { ctx.body = { status: 'ok' }; });
+  internalR.get('/metrics', async (ctx: any) => {
+    const { metricsRegistry } = await import('./observability/metrics.js');
+    ctx.set('Content-Type', metricsRegistry.contentType);
+    ctx.body = await metricsRegistry.metrics();
+  });
+  app.use(internalR.routes());
+
   app.on('error', (error) => {
     logger.error('Unhandled application error', { error: String(error) });
   });
