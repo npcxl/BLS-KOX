@@ -11,6 +11,7 @@ import type { AuditActor } from './audit';
 import { logger } from './logger';
 import { getRequestContext } from './request-context';
 import { securityEventsTotal, crossTenantAccessTotal, loginFailedTotal, refreshReuseDetectedTotal } from '../observability/metrics';
+import { collectEvent } from '../security/event-center/event-center';
 
 // ========== 事件类型 ==========
 
@@ -165,6 +166,17 @@ export async function writeSecurityLog(input: SecurityLogInput): Promise<void> {
     if (input.eventType === SecurityEventType.CROSS_TENANT_ACCESS) crossTenantAccessTotal.inc();
     if (input.eventType === SecurityEventType.LOGIN_FAILED) loginFailedTotal.inc();
     if (input.eventType === SecurityEventType.REFRESH_TOKEN_REUSE) refreshReuseDetectedTotal.inc();
+
+    // P10: 接入 Event Center — 采集 → 聚合 → 评分 → 自动处置
+    const clientIp = actor.clientIp ?? 'unknown';
+    if (clientIp !== 'unknown') {
+      collectEvent({
+        eventType: input.eventType,
+        ip: clientIp,
+        tenantId: String(actor.tenantId ?? '000000'),
+        userId: actor.userId ?? undefined,
+      }).catch(() => { /* fire-and-forget, 不影响主流程 */ });
+    }
   } catch (error) {
     logger.error('安全审计日志写入失败', {
       event: 'security_audit_write_failed',

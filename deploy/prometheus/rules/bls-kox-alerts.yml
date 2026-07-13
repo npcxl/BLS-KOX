@@ -1,6 +1,13 @@
 groups:
   - name: bls-kox-critical
     rules:
+      # ============================================================
+      # SLA 绑定：参考 SECURITY.md 安全策略
+      #   Critical — 72h 内修复
+      #   High     — 1 周内修复
+      #   Medium   — 下个版本修复
+      # ============================================================
+
       # 1. 5xx Error Rate > 5%
       - alert: BLSKOXHigh5xxErrorRate
         expr: |
@@ -12,9 +19,11 @@ groups:
         for: 5m
         labels:
           severity: critical
+          sla: high
         annotations:
           summary: "BLS-KOX 5xx 错误率超过 5%"
           description: "过去 5 分钟 5xx 比率 {{ $value | humanizePercentage }}"
+          sla: "High — 1 周内修复"
 
       # 2. P95 Latency > 1s
       - alert: BLSKOXHighP95Latency
@@ -25,9 +34,11 @@ groups:
         for: 5m
         labels:
           severity: warning
+          sla: medium
         annotations:
           summary: "BLS-KOX P95 延迟超过 1 秒"
           description: "P95 延迟 {{ $value }}s"
+          sla: "Medium — 下个版本修复"
 
       # 3. DB Errors Increasing
       - alert: BLSKOXDatabaseErrorsIncreasing
@@ -35,9 +46,11 @@ groups:
         for: 5m
         labels:
           severity: critical
+          sla: critical
         annotations:
           summary: "BLS-KOX 数据库错误持续增长"
           description: "过去 5 分钟新增 {{ $value }} 个数据库错误"
+          sla: "Critical — 72h 内修复"
 
       # 4. Redis Errors Increasing
       - alert: BLSKOXRedisErrorsIncreasing
@@ -45,27 +58,33 @@ groups:
         for: 5m
         labels:
           severity: critical
+          sla: high
         annotations:
           summary: "BLS-KOX Redis 错误持续增长"
           description: "过去 5 分钟新增 {{ $value }} 个 Redis 错误"
+          sla: "High — 1 周内修复"
 
       # 5. Refresh Token Reuse Detected
       - alert: BLSKOXRefreshReuseDetected
         expr: increase(bls_kox_refresh_reuse_detected_total[5m]) > 0
         labels:
           severity: critical
+          sla: critical
         annotations:
           summary: "BLS-KOX 检测到 Refresh Token 复用"
           description: "可能存在 Token 泄露或攻击行为"
+          sla: "Critical — 72h 内修复"
 
       # 6. Cross Tenant Access Detected
       - alert: BLSKOXCrossTenantAccessDetected
         expr: increase(bls_kox_cross_tenant_access_total[5m]) > 0
         labels:
           severity: critical
+          sla: critical
         annotations:
           summary: "BLS-KOX 检测到跨租户访问"
           description: "可能存在越权访问行为"
+          sla: "Critical — 72h 内修复"
 
       # 7. Rate Limit Reject Spike
       - alert: BLSKOXHighRateLimitRejectRate
@@ -73,6 +92,8 @@ groups:
         for: 5m
         labels:
           severity: warning
+          sla: medium
         annotations:
           summary: "BLS-KOX 限流拒绝率飙升"
           description: "每秒 {{ $value }} 个请求被限流拒绝"
+          sla: "Medium — 下个版本修复"

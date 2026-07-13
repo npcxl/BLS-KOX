@@ -128,6 +128,12 @@ export default [
           },
         ],
       },
+      {
+        path: "/system/security",
+        name: "安全中心",
+        icon: "SafetyCertificateOutlined",
+        component: "./system/security",
+      },
     ],
   },
   {
