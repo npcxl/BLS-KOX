@@ -134,6 +134,12 @@ export default [
         icon: "SafetyCertificateOutlined",
         component: "./system/security",
       },
+      {
+        path: "/system/webhook",
+        name: "Webhook",
+        icon: "LinkOutlined",
+        component: "./system/webhook",
+      },
     ],
   },
   {
