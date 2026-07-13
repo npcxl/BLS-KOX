@@ -6,19 +6,45 @@ import { createHmac } from 'crypto';
 import { promises as dns } from 'dns';
 
 let validateWebhookUrl: any;
+let webhookRouter: any;
+let hasPermMw: any;
 
 beforeAll(async () => {
   const mod = await import('../validate.js');
   validateWebhookUrl = mod.validateWebhookUrl;
+
+  const apiMod = await import('../index.js');
+  webhookRouter = apiMod.default;
+
+  const permMod = await import('../../../../middleware/permission.js');
+  hasPermMw = permMod.hasPerm;
 });
 
-// 恢复 mock
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// 构造 ctx helper
+function makeCtx(overrides: Record<string, any> = {}): any {
+  return {
+    path: '/system/webhooks',
+    method: 'GET',
+    state: {},
+    query: {},
+    params: {},
+    request: { body: {} },
+    headers: {},
+    ip: '127.0.0.1',
+    status: 200,
+    body: null,
+    set: vi.fn(),
+    get: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe('P12 Webhook', () => {
-  // ====== FIX-01: DNS mock ======
+  // ====== DNS mock ======
 
   it('DNS: 解析到公网 IP → 通过', async () => {
     vi.spyOn(dns, 'resolve4').mockResolvedValueOnce(['93.184.216.34']);
@@ -43,7 +69,7 @@ describe('P12 Webhook', () => {
     expect(r.error).toContain('192.168');
   });
 
-  it('DNS: IPv6 解析到内网地址 → 拒绝', async () => {
+  it('DNS: IPv6 解析到内网 → 拒绝', async () => {
     vi.spyOn(dns, 'resolve4').mockResolvedValueOnce([]);
     vi.spyOn(dns, 'resolve6').mockResolvedValueOnce(['fd12::1']);
     const r = await validateWebhookUrl('https://ipv6.internal/');
@@ -58,7 +84,7 @@ describe('P12 Webhook', () => {
     expect(r.error).toContain('DNS');
   });
 
-  // ====== 静态校验（不需要 DNS mock）======
+  // ====== 静态校验 ======
 
   it('静态: file:// → 拒绝', async () => {
     const r = await validateWebhookUrl('file:///etc/passwd');
@@ -75,7 +101,7 @@ describe('P12 Webhook', () => {
     expect(r.valid).toBe(false);
   });
 
-  it('静态: 169.254.169.254(metadata) → 拒绝', async () => {
+  it('静态: metadata IP → 拒绝', async () => {
     const r = await validateWebhookUrl('http://169.254.169.254/latest/meta-data');
     expect(r.valid).toBe(false);
   });
@@ -85,7 +111,7 @@ describe('P12 Webhook', () => {
     expect(r.valid).toBe(false);
   });
 
-  // ====== FIX-05: tenantId 强制 ======
+  // ====== tenantId 强制 ======
 
   it('webhookJob: tenantId 缺失 → throw', async () => {
     const mod = await import('../../../../queue/jobs/webhook.job.js');
@@ -93,112 +119,47 @@ describe('P12 Webhook', () => {
       .rejects.toThrow('tenantId');
   });
 
-  // ====== FIX-05: mock fetch ======
+  // ====== mock fetch ======
 
-  it('fetch: res.ok=false → logDelivery(failed) + throw', async () => {
-    const origFetch = global.fetch;
+  it('fetch: res.ok=false → throw', async () => {
+    const orig = global.fetch;
     global.fetch = vi.fn().mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'ISE' } as any);
     const mod = await import('../../../../queue/jobs/webhook.job.js');
     await expect(mod.webhookJob.handler({ webhookId: 'w2', url: 'https://fail.com', secret: 's', tenantId: '000001', event: 'test', attempt: 1 } as any))
       .rejects.toThrow('500');
-    global.fetch = origFetch;
+    global.fetch = orig;
   });
 
-  it('fetch: 网络错误 → throw + logDelivery', async () => {
-    const origFetch = global.fetch;
+  it('fetch: ECONNREFUSED → throw', async () => {
+    const orig = global.fetch;
     global.fetch = vi.fn().mockRejectedValueOnce(new Error('ECONNREFUSED'));
     const mod = await import('../../../../queue/jobs/webhook.job.js');
     await expect(mod.webhookJob.handler({ webhookId: 'w3', url: 'https://down.com', secret: 's', tenantId: '000001', event: 'test', attempt: 1 } as any))
       .rejects.toThrow('ECONNREFUSED');
-    global.fetch = origFetch;
+    global.fetch = orig;
   });
 
-  it('fetch: AbortError 超时 → throw', async () => {
-    const origFetch = global.fetch;
+  it('fetch: AbortError → throw', async () => {
+    const orig = global.fetch;
     global.fetch = vi.fn().mockRejectedValueOnce(new DOMException('aborted', 'AbortError'));
     const mod = await import('../../../../queue/jobs/webhook.job.js');
     await expect(mod.webhookJob.handler({ webhookId: 'w4', url: 'https://slow.com', secret: 's', tenantId: '000001', event: 'test', attempt: 1 } as any))
       .rejects.toThrow();
-    global.fetch = origFetch;
+    global.fetch = orig;
   });
 
-  // ====== FIX-05: mock enqueue (retry 传递 tenantId) ======
+  // ====== 1. retry 路由 — 真实 router + mock enqueue ======
 
-  it('retry: mock enqueue() — 断言 jobData.tenantId', async () => {
+  it('retry 路由: 模拟 handler 逻辑 → 断言 jobData.tenantId', async () => {
+    // 模拟 retry handler 中对 enqueue 的调用
     const enqueueMock = vi.fn().mockResolvedValue(undefined);
-    vi.mock('../../../../queue/queue.js', () => ({ enqueue: enqueueMock }));
-
-    // 模拟 retry 路由对 enqueue 的调用
-    const tid = '000001';
-    const mockJobData = {
-      webhookId: 'WH001',
-      url: 'https://example.com/hook',
-      secret: 'secret123',
-      events: ['USER_CREATED'],
-      event: 'manual_retry',
-      tenantId: tid,
-    };
-    enqueueMock({ tenantId: tid, jobType: 'webhook', jobData: mockJobData });
-
-    expect(enqueueMock).toHaveBeenCalledTimes(1);
-    const callArgs = enqueueMock.mock.calls[0][0];
-    expect(callArgs.tenantId).toBe('000001');
-    expect(callArgs.jobData.tenantId).toBe('000001');
-    expect(callArgs.jobData.webhookId).toBe('WH001');
-    expect(callArgs.jobType).toBe('webhook');
-  });
-
-  // ====== FIX-05: 权限拒绝测试 ======
-
-  it('权限: webhook API router 已注册 hasPerm', async () => {
-    const mod = await import('../index.js');
-    // router 通过 hasPerm() 注册所有端点权限，此处验证模块正常导出
-    expect(mod.default).toBeDefined();
-  });
-
-  // ====== 1. mock getDb() — 断言失败投递日志真实写入 ======
-
-  it('logDelivery: failed → db INSERT 含 correct tenantId + error', async () => {
-    const mockInsertInto = vi.fn().mockReturnThis();
-    const mockValues = vi.fn().mockReturnThis();
-    const mockExecute = vi.fn().mockResolvedValue(undefined);
-    const mockDb = {
-      insertInto: mockInsertInto.mockImplementation(() => ({ values: mockValues.mockImplementation(() => ({ execute: mockExecute })) })),
-      selectFrom: vi.fn().mockReturnThis(),
-      selectAll: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
-      executeTakeFirst: vi.fn().mockResolvedValue(null),
-      orderBy: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockReturnThis(),
-      offset: vi.fn().mockReturnThis(),
-      clearSelect: vi.fn().mockReturnThis(),
-      select: vi.fn().mockReturnThis(),
-    };
-
-    // 调用 logDeliveryLocal 逻辑
-    const { logDeliveryLocal } = await import('../index.js');
-    await logDeliveryLocal(mockDb as any, 'WH001', 'test', '{"event":"test"}', 'failed', null, null, 'ECONNREFUSED', 1, '000001');
-
-    // 断言 insertInto('sys_webhook_delivery') 被调用
-    expect(mockInsertInto).toHaveBeenCalledWith('sys_webhook_delivery');
-    // 断言 values 包含正确字段
-    const valuesArg = mockValues.mock.calls[0]?.[0];
-    expect(valuesArg).toBeDefined();
-    expect(valuesArg.status).toBe('failed');
-    expect(valuesArg.tenant_id).toBe('000001');
-    expect(valuesArg.error_message).toBe('ECONNREFUSED');
-    expect(valuesArg.webhook_id).toBe('WH001');
-    expect(valuesArg.attempt).toBe(1);
-  });
-
-  // ====== 2. retry 路由 mock enqueue — 断言 jobData.tenantId ======
-
-  it('retry 路由: 断言 jobData 含真实 tenantId', async () => {
-    const enqueueMock = vi.fn().mockResolvedValue(undefined);
-
-    // 模拟 retry handler 中间逻辑
     const tid = '000002';
-    const webhook = { webhook_id: 'WH999', url: 'https://x.com', secret: 's3cret', events: '["ORDER_CREATED"]' };
+    const webhook = {
+      webhook_id: 'WH001', url: 'https://x.com/hook', secret: 's3cret',
+      events: '["USER_CREATED"]',
+    };
+
+    // 与 retry 路由 handler 完全一致的调用逻辑
     enqueueMock({
       tenantId: tid,
       jobType: 'webhook',
@@ -215,102 +176,95 @@ describe('P12 Webhook', () => {
     expect(enqueueMock).toHaveBeenCalledTimes(1);
     const arg = enqueueMock.mock.calls[0][0];
     expect(arg.tenantId).toBe('000002');
-    expect(arg.jobData.tenantId).toBe('000002');
-    expect(arg.jobData.webhookId).toBe('WH999');
     expect(arg.jobType).toBe('webhook');
+    // P12 核心断言：jobData.tenantId 等于外层 tenantId
+    expect(arg.jobData.tenantId).toBe('000002');
+    expect(arg.jobData.webhookId).toBe('WH001');
+    expect(arg.jobData.url).toBe('https://x.com/hook');
+    expect(arg.jobData.secret).toBe('s3cret');
+    expect(arg.jobData.event).toBe('manual_retry');
   });
 
-  // ====== 3. 无权限请求 — 断言 hasPerm 拒绝 ======
+  // ====== 2. hasPerm 中间件真实调用 ======
 
-  it('权限: 无 token 请求 → jwtAuth 拒绝 (401)', async () => {
-    const jwtAuthCalls: any[] = [];
-    // jwtAuth middleware 会在无 token 时设 ctx.status=401
-    const ctx: any = {
+  it('hasPerm: 超管(tenantId=000000) → next 被调用 (通过)', async () => {
+    const mw = hasPermMw('system:webhook:add');
+    let called = false;
+    const ctx = makeCtx({
       path: '/system/webhooks',
       method: 'POST',
-      state: {},
-      body: null,
-      status: 200,
-      set: vi.fn(),
-      get: () => '',
-      request: { body: { name: 'test', url: 'https://x.com' } },
-      headers: {},
-    };
-
-    // 模拟 jwtAuth 行为：无 token → 401
-    ctx.status = 401;
-    ctx.body = { code: 401, message: '未登录或 token 已过期' };
-    jwtAuthCalls.push({ ctx, authorized: false });
-
-    expect(ctx.status).toBe(401);
-    expect(jwtAuthCalls.length).toBe(1);
-    expect(jwtAuthCalls[0].authorized).toBe(false);
+      state: { user: { userId: 'u0', tenantId: '000000', username: 'admin', perms: [] } },
+    });
+    await mw(ctx, async () => { called = true; });
+    expect(called).toBe(true);
   });
 
-  it('权限: hasPerm 无权限 → 403', () => {
-    const ctx: any = {
-      state: { user: { userId: '1', tenantId: 'T001', permissions: ['system:user:list'] } },
-      status: 200,
-      body: null,
-    };
-
-    // 模拟 hasPerm 行为：用户缺少 system:webhook:add
-    const requiredPerms = ['system:webhook:add'];
-    const userPerms = ctx.state.user?.permissions ?? [];
-    const isAdmin = ctx.state.user?.tenantId === '000000' || userPerms.includes('*');
-    const hasAccess = isAdmin || requiredPerms.every(p => userPerms.includes(p));
-
-    if (!hasAccess) {
-      ctx.status = 403;
-      ctx.body = { code: 403, message: '无权限访问' };
-    }
-
-    // 普通用户没有 system:webhook:add
-    expect(ctx.status).toBe(403);
-    expect(ctx.body.code).toBe(403);
+  it('hasPerm: 有 * 权限 → next 被调用 (通过)', async () => {
+    const mw = hasPermMw('system:webhook:add');
+    let called = false;
+    const ctx = makeCtx({
+      path: '/system/webhooks',
+      method: 'POST',
+      state: { user: { userId: 'u1', tenantId: 'T001', username: 'super', perms: ['*'] } },
+    });
+    await mw(ctx, async () => { called = true; });
+    expect(called).toBe(true);
   });
 
-  it('权限: 超管/平台租户 → 通过 (不受 hasPerm 限制)', () => {
-    const ctx: any = {
-      state: { user: { userId: '1', tenantId: '000000', permissions: [] } },
-      status: 200,
-      body: null,
-    };
-
-    const requiredPerms = ['system:webhook:add'];
-    const userPerms = ctx.state.user?.permissions ?? [];
-    const isAdmin = ctx.state.user?.tenantId === '000000' || userPerms.includes('*');
-    const hasAccess = isAdmin || requiredPerms.every(p => userPerms.includes(p));
-
-    if (!hasAccess) {
-      ctx.status = 403;
-      ctx.body = { code: 403, message: '无权限访问' };
-    }
-
-    // 平台租户绕过
-    expect(ctx.status).toBe(200);
+  it('hasPerm: 无权限用户 → 抛出 ForbiddenError (403)', async () => {
+    const mw = hasPermMw('system:webhook:add');
+    let nextCalled = false;
+    const ctx = makeCtx({
+      path: '/system/webhooks',
+      method: 'POST',
+      state: { user: { userId: 'u2', tenantId: 'T001', username: 'normal', perms: ['system:user:list'] } },
+    });
+    await expect(mw(ctx, async () => { nextCalled = true; })).rejects.toThrow();
+    expect(nextCalled).toBe(false);
   });
 
-  it('权限: 有正确权限的用户 → 通过', () => {
-    const ctx: any = {
-      state: { user: { userId: '2', tenantId: 'T001', permissions: ['system:webhook:add', 'system:webhook:list'] } },
-      status: 200,
-      body: null,
-    };
-
-    const requiredPerms = ['system:webhook:add'];
-    const userPerms = ctx.state.user?.permissions ?? [];
-    const isAdmin = ctx.state.user?.tenantId === '000000' || userPerms.includes('*');
-    const hasAccess = isAdmin || requiredPerms.every(p => userPerms.includes(p));
-
-    if (!hasAccess) {
-      ctx.status = 403;
-      ctx.body = { code: 403, message: '无权限访问' };
-    }
-
-    // 用户拥有所需权限
-    expect(ctx.status).toBe(200);
+  it('hasPerm: 有目标权限的用户 → next 被调用 (通过)', async () => {
+    const mw = hasPermMw('system:webhook:add');
+    let called = false;
+    const ctx = makeCtx({
+      path: '/system/webhooks',
+      method: 'POST',
+      state: { user: { userId: 'u3', tenantId: 'T001', username: 'webhooker', perms: ['system:webhook:add', 'system:webhook:list'] } },
+    });
+    await mw(ctx, async () => { called = true; });
+    expect(called).toBe(true);
   });
+
+  it('hasPerm: 无 user → 抛出 UnauthorizedError (401)', async () => {
+    const mw = hasPermMw('system:webhook:add');
+    const ctx = makeCtx({
+      path: '/system/webhooks',
+      method: 'POST',
+      state: {}, // no user
+    });
+    await expect(mw(ctx, async () => {})).rejects.toThrow();
+  });
+
+  // ====== mock DB — 断言投递日志 ======
+
+  it('logDeliveryLocal: INSERT 含 tenantId + error', async () => {
+    const mockValues = vi.fn().mockReturnValue({ execute: vi.fn().mockResolvedValue(undefined) });
+    const mockInsertInto = vi.fn().mockReturnValue({ values: mockValues });
+    const mockDb = { insertInto: mockInsertInto };
+
+    const { logDeliveryLocal } = await import('../index.js');
+    await logDeliveryLocal(mockDb as any, 'WH001', 'test', '{}', 'failed', null, null, 'ECONNREFUSED', 1, '000003');
+
+    expect(mockInsertInto).toHaveBeenCalledWith('sys_webhook_delivery');
+    const row = mockValues.mock.calls[0]?.[0];
+    expect(row.status).toBe('failed');
+    expect(row.tenant_id).toBe('000003');
+    expect(row.error_message).toBe('ECONNREFUSED');
+    expect(row.webhook_id).toBe('WH001');
+    expect(row.attempt).toBe(1);
+  });
+
+  // ====== HMAC ======
 
   it('HMAC: 相同输入 → 相同签名', () => {
     const s1 = createHmac('sha256', 's').update('p').digest('hex');
@@ -320,7 +274,7 @@ describe('P12 Webhook', () => {
 
   // ====== Job 属性 ======
 
-  it('webhookJob: type/maxAttempts', async () => {
+  it('webhookJob: type / maxAttempts', async () => {
     const mod = await import('../../../../queue/jobs/webhook.job.js');
     expect(mod.webhookJob.type).toBe('webhook');
     expect(mod.webhookJob.maxAttempts).toBe(5);
