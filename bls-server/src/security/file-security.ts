@@ -9,20 +9,15 @@ const ALLOWED_EXT = new Set(['.jpg','.jpeg','.png','.gif','.webp','.pdf','.doc',
 const ALLOWED_MIME = new Set(['image/jpeg','image/png','image/gif','image/webp','application/pdf','text/plain','text/csv','application/json','application/zip']);
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 
-// P13-FIX-04: 完整 Magic Number 检测（WebP 需要 12 bytes RIFF....WEBP）
+// Magic Number → 实际图片类型（返回类型用于精确比较）
 const IMAGE_SIGNATURES: { hex: string; len: number; type: string }[] = [
-  { hex: 'ffd8ff',    len: 3, type: 'jpeg' },
-  { hex: '89504e47',  len: 4, type: 'png' },
-  { hex: '47494638',  len: 4, type: 'gif' },
+  { hex: 'ffd8ff',    len: 3,  type: 'jpeg' },
+  { hex: '89504e47',  len: 4,  type: 'png' },
+  { hex: '47494638',  len: 4,  type: 'gif' },
   { hex: '52494646',  len: 12, type: 'webp' }, // RIFF????WEBP
 ];
-const ALLOWED_IMG_TYPES = new Set(['jpeg', 'png', 'gif', 'webp']);
 
-// P13-FIX-03: SVG disabled by default
-const ALLOWED_MODULES = new Set(['common', 'avatar', 'attachment', 'import', 'export', 'public', 'private']);
-const ALLOWED_ACCESS = new Set(['public', 'private']);
-
-// ext → expected MIME prefix
+// ext → expected MIME
 const EXT_MIME_MAP: Record<string, string> = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.png': 'image/png', '.gif': 'image/gif',
@@ -32,7 +27,24 @@ const EXT_MIME_MAP: Record<string, string> = {
   '.zip': 'application/zip',
 };
 
-export interface FileSecurityResult { valid: boolean; reason?: string }
+// type → expected extension set
+const TYPE_EXT_MAP: Record<string, Set<string>> = {
+  jpeg: new Set(['.jpg', '.jpeg']),
+  png:  new Set(['.png']),
+  gif:  new Set(['.gif']),
+  webp: new Set(['.webp']),
+};
+
+// P13-FIX-03: SVG disabled
+const ALLOWED_MODULES = new Set(['common', 'avatar', 'attachment', 'import', 'export', 'public', 'private']);
+const ALLOWED_ACCESS = new Set(['public', 'private']);
+
+// 路径穿越检测模式
+const PATH_TRAVERSAL_RE = /(?:^|\/)\.\.(?:\/|$)/;
+
+export interface FileSecurityResult { valid: boolean; reason?: string; detectedType?: string }
+
+// ====== 基础校验 ======
 
 export function validateExtension(filename: string): FileSecurityResult {
   const ext = extname(filename).toLowerCase();
@@ -50,53 +62,85 @@ export function validateFileSize(size: number, maxSize = MAX_FILE_SIZE): FileSec
   return { valid: true };
 }
 
-// P13-FIX-02: 扩展名 ↔ MIME 一致性检查
+// FIX-02: 扩展名 ↔ MIME 一致性
 export function validateExtMimeConsistency(filename: string, mimeType: string): FileSecurityResult {
   const ext = extname(filename).toLowerCase();
   const expected = EXT_MIME_MAP[ext];
-  if (!expected) return { valid: true }; // non-image, skip
+  if (!expected) return { valid: true };
   if (mimeType !== expected) {
     return { valid: false, reason: `MIME 类型与扩展名不匹配: ${ext} → ${mimeType} (期望 ${expected})` };
   }
   return { valid: true };
 }
 
-// P13-FIX-04: Magic Number → type + WebP 完整签名
-export function detectImageMagicNumber(buffer: Buffer): FileSecurityResult {
+// ====== 1. Magic 检测返回实际类型 + 精确比较 ======
+
+/** 返回检测到的图片类型，未知返回 null */
+export function detectImageMagicNumber(buffer: Buffer): FileSecurityResult & { detectedType?: string } {
   const hex12 = buffer.slice(0, 12).toString('hex');
   for (const sig of IMAGE_SIGNATURES) {
-    const part = hex12.slice(0, sig.len * 2);
     if (sig.type === 'webp') {
-      // P13-FIX-04: RIFF + WEBP (bytes 0-3=RIFF, 8-11=WEBP)
       if (hex12.slice(0, 8) === '52494646' && hex12.slice(16, 24) === '57454250') {
-        return { valid: true };
+        return { valid: true, detectedType: 'webp' };
       }
-    } else if (part.startsWith(sig.hex)) {
-      return { valid: true };
+    } else {
+      const part = hex12.slice(0, sig.len * 2);
+      if (part.startsWith(sig.hex)) {
+        return { valid: true, detectedType: sig.type };
+      }
     }
   }
   logger.warn('[file-security] blocked: unknown magic', { hex: hex12.slice(0, 16) });
   return { valid: false, reason: '文件内容与扩展名不匹配' };
 }
 
-// P13-FIX-02: 扩展名 + MIME + Magic Number 三者一致性
+/** 精确比较：ext + mime + magic type 三者必须一致 */
 export function validateConsistency(filename: string, mimeType: string, buffer: Buffer): FileSecurityResult {
+  // 1. ext ↔ mime
   const r = validateExtMimeConsistency(filename, mimeType);
   if (!r.valid) return r;
-  // 图片才检查 magic
-  if (mimeType.startsWith('image/')) return detectImageMagicNumber(buffer);
+
+  // 2. 图片才检查 magic
+  if (!mimeType.startsWith('image/')) return { valid: true };
+  const magicResult = detectImageMagicNumber(buffer);
+  if (!magicResult.valid) return magicResult;
+
+  // 3. magic type ↔ ext 精确比较
+  const actualType = magicResult.detectedType!;
+  const ext = extname(filename).toLowerCase();
+  const validExts = TYPE_EXT_MAP[actualType];
+  if (!validExts || !validExts.has(ext)) {
+    return { valid: false, reason: `Magic Number 实际为 ${actualType}，与扩展名 ${ext} 不匹配` };
+  }
+
+  // 4. magic type ↔ mime
+  const expectedMime = EXT_MIME_MAP[ext];
+  if (expectedMime && mimeType !== expectedMime) {
+    return { valid: false, reason: `Magic Number 实际为 ${actualType}，与 MIME ${mimeType} 不匹配` };
+  }
+
   return { valid: true };
 }
 
-// P13-FIX-04: randomUUID Object Key
+// ====== randomUUID Object Key ======
+
 export function generateObjectKey(originalName: string): string {
   return randomUUID().replace(/-/g, '') + extname(originalName);
 }
 
-// P13-FIX-04: validate moduleName + accessType
+// ====== 2. moduleName 校验原始字符串，禁止 ../common 绕过 ======
+
 export function validateUploadMeta(moduleName: string, accessType: string): FileSecurityResult {
-  const cleanModule = (moduleName || '').replace(/[^a-zA-Z0-9_-]/g, '');
-  if (!cleanModule || !ALLOWED_MODULES.has(cleanModule)) {
+  // 先检查原始字符串是否存在路径穿越
+  if (!moduleName || typeof moduleName !== 'string') {
+    return { valid: false, reason: '缺少模块名' };
+  }
+  if (PATH_TRAVERSAL_RE.test(moduleName)) {
+    return { valid: false, reason: `模块名包含非法路径: ${moduleName}` };
+  }
+  // 再校验清洗后的值是否在允许列表中
+  const clean = moduleName.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!clean || !ALLOWED_MODULES.has(clean)) {
     return { valid: false, reason: `不允许的模块名: ${moduleName}` };
   }
   if (!ALLOWED_ACCESS.has(accessType)) {
@@ -105,11 +149,12 @@ export function validateUploadMeta(moduleName: string, accessType: string): File
   return { valid: true };
 }
 
-// P13-FIX-04: 路径穿越防护
+// 路径穿越防护
 export function sanitizeFilename(filename: string): string {
   return filename.replace(/[/\\:*?"<>|]/g, '_').replace(/\.\./g, '_');
 }
 
+// 组合校验
 export function validateFile(filename: string, mimeType: string, buffer?: Buffer, fileSize?: number): FileSecurityResult {
   let r = validateExtension(filename); if (!r.valid) return r;
   r = validateMimeType(mimeType); if (!r.valid) return r;
