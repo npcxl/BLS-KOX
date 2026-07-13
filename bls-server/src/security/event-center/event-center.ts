@@ -153,7 +153,6 @@ async function executeActions(actions: SecurityAction[], params: { ip: string; t
 export async function getSecurityStats(tenantId: string): Promise<{
   recentEvents: number;
   blockedIPs: number;
-  riskScore: number;
 }> {
   const rows = await query<any>(
     `SELECT COUNT(*) as cnt FROM sys_security_log
@@ -175,6 +174,5 @@ export async function getSecurityStats(tenantId: string): Promise<{
   return {
     recentEvents: Number(recent?.cnt ?? 0),
     blockedIPs,
-    riskScore: 0, // 需要更复杂的聚合计算
   };
 }

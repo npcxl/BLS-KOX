@@ -47,28 +47,41 @@ describe('P11 API Versioning', () => {
     expect(ctx.state.apiVersion).toBe('v1');
   });
 
-  it('apiVersion: X-API-Deprecated header → Sunset header', async () => {
-    const headers: Record<string, string> = {};
-    const ctx: any = {
-      path: '/api/v1/old',
-      state: {},
-      set: (k: string, v: string) => { headers[k] = v; },
-      get: (k: string) => k === 'X-API-Deprecated' ? 'true' : '',
-    };
+  it('apiVersion: /api/xxx 的 Deprecation 由 app.ts 控制（中间件不负责）', async () => {
+    const ctx: any = { path: '/api/system/user', state: {}, set: () => {}, get: () => '' };
     await apiVersion()(ctx, async () => {});
-    expect(headers['Sunset']).toBeDefined();
     expect(ctx.state.apiVersion).toBe('v1');
   });
 
-  it('apiVersion: no X-API-Deprecated → no Sunset', async () => {
-    const headers: Record<string, string> = {};
-    const ctx: any = {
-      path: '/api/v1/old',
-      state: {},
-      set: (k: string, v: string) => { headers[k] = v; },
-      get: () => '',
-    };
+  // ====== P11: 路由版本化 ======
+
+  it('/api/v1/system/user → apiVersion = v1', async () => {
+    const ctx: any = { path: '/api/v1/system/user', state: {}, set: () => {}, get: () => '' };
     await apiVersion()(ctx, async () => {});
-    expect(headers['Sunset']).toBeUndefined();
+    expect(ctx.state.apiVersion).toBe('v1');
+  });
+
+  it('/api/system/user → 旧路径仍兼容，apiVersion = v1', async () => {
+    const ctx: any = { path: '/api/system/user', state: {}, set: () => {}, get: () => '' };
+    await apiVersion()(ctx, async () => {});
+    expect(ctx.state.apiVersion).toBe('v1');
+  });
+
+  it('/openapi/v1/orders → apiVersion = openapi_v1', async () => {
+    const ctx: any = { path: '/openapi/v1/orders', state: {}, set: () => {}, get: () => '' };
+    await apiVersion()(ctx, async () => {});
+    expect(ctx.state.apiVersion).toBe('openapi_v1');
+  });
+
+  it('/internal/health → apiVersion = internal', async () => {
+    const ctx: any = { path: '/internal/health', state: {}, set: () => {}, get: () => '' };
+    await apiVersion()(ctx, async () => {});
+    expect(ctx.state.apiVersion).toBe('internal');
+  });
+
+  it('/other → 未知路径默认 v1', async () => {
+    const ctx: any = { path: '/metrics', state: {}, set: () => {}, get: () => '' };
+    await apiVersion()(ctx, async () => {});
+    expect(ctx.state.apiVersion).toBe('v1');
   });
 });

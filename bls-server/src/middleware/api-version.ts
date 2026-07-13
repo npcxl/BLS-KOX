@@ -32,12 +32,6 @@ export function apiVersion() {
       ctx.state.apiVersion = 'v1'; // 默认
     }
 
-    // Deprecation 检测
-    const deprecated = ctx.get('X-API-Deprecated');
-    if (deprecated) {
-      ctx.set('Sunset', new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString());
-    }
-
     await next();
   };
 }

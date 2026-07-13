@@ -7,6 +7,10 @@ build/
 out/
 coverage/
 
+# BLS-KOX
+BLS-KOX
+BLS-KOX_
+
 # Environment variables
 .env
 .env.*
