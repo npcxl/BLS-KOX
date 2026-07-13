@@ -1,20 +1,20 @@
 /**
  * P12: Webhook 投递 Job
- *
- * 异步投递 Webhook，记录投递日志到 sys_webhook_delivery
  */
 import { createHmac } from 'crypto';
 import type { JobDefinition } from '../job-types';
 import { logger } from '../../core/logger';
 
+const FETCH_TIMEOUT = 10_000;
+
 export const webhookJob: JobDefinition = {
   type: 'webhook',
   maxAttempts: 5,
-  timeout: 10_000,
+  timeout: 15_000,
 
   async handler(payload: Record<string, unknown>) {
     const p = payload as any;
-    const { webhookId, url, secret, events, event, attempt = 1 } = p;
+    const { webhookId, url, secret, events, event, tenantId = '000000', attempt = 1 } = p;
     const payloadStr = JSON.stringify({
       webhookId,
       event: event ?? (Array.isArray(events) ? events[0] : 'unknown'),
@@ -24,6 +24,9 @@ export const webhookJob: JobDefinition = {
     const signature = createHmac('sha256', secret).update(payloadStr).digest('hex');
 
     const start = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+
     let res: Response;
     try {
       res = await fetch(url, {
@@ -34,17 +37,20 @@ export const webhookJob: JobDefinition = {
           'X-Webhook-ID': webhookId,
         },
         body: payloadStr,
+        signal: controller.signal,
       });
     } catch (err: any) {
-      // 网络错误也记日志
-      await logDelivery(webhookId, event ?? 'unknown', payloadStr, 'failed', null, null, String(err.message), attempt);
+      clearTimeout(timer);
+      const errMsg = err.name === 'AbortError' ? '请求超时' : String(err.message);
+      await logDelivery(webhookId, event ?? 'unknown', payloadStr, 'failed', null, null, errMsg, attempt, tenantId);
       throw err;
     }
+    clearTimeout(timer);
 
     const responseBody = await res.text();
     const status = res.ok ? 'success' : 'failed';
 
-    await logDelivery(webhookId, event ?? 'unknown', payloadStr, status, res.status, responseBody.slice(0, 500), res.ok ? null : `HTTP ${res.status}`, attempt);
+    await logDelivery(webhookId, event ?? 'unknown', payloadStr, status, res.status, responseBody.slice(0, 500), res.ok ? null : `HTTP ${res.status}`, attempt, tenantId);
 
     if (!res.ok) {
       throw new Error(`Webhook ${webhookId} returned ${res.status}: ${responseBody.slice(0, 200)}`);
@@ -58,7 +64,7 @@ export const webhookJob: JobDefinition = {
 async function logDelivery(
   webhookId: string, event: string, payload: string,
   status: string, responseCode: number | null, responseBody: string | null,
-  errorMessage: string | null, attempt: number,
+  errorMessage: string | null, attempt: number, tenantId: string,
 ) {
   try {
     const { getDb } = require('../../core/database');
@@ -74,7 +80,7 @@ async function logDelivery(
       response_body: responseBody,
       error_message: errorMessage,
       attempt,
-      tenant_id: '000000',
+      tenant_id: tenantId,
     }).execute();
   } catch (err) {
     logger.error('[webhook] log delivery failed', { webhookId, error: String(err) });
