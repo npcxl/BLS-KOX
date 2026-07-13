@@ -3,7 +3,7 @@
  */
 import { request } from '@umijs/max';
 import { PageContainer, ProCard, ProTable, StatisticCard } from '@ant-design/pro-components';
-import { Badge, Button, Form, Input, message, Modal, Popconfirm, Space, Tag } from 'antd';
+import { Badge, Button, DatePicker, Form, Input, message, Modal, Popconfirm, Space, Tag } from 'antd';
 import { ReloadOutlined, SafetyCertificateOutlined, FireOutlined, KeyOutlined, BugOutlined, PlusOutlined } from '@ant-design/icons';
 import { useEffect, useRef, useState } from 'react';
 
@@ -207,7 +207,7 @@ export default function SecurityCenterPage() {
           await request('/api/system/security/blacklist', { method: 'POST', data: {
             ipAddress: values.ipAddress,
             reason: values.reason,
-            expireAt: values.expireAt?.toISOString(),
+            expireAt: values.expireAt ? values.expireAt.toISOString() : undefined,
           }});
           message.success('IP 已加入黑名单');
           setAddModalOpen(false);
@@ -224,7 +224,7 @@ export default function SecurityCenterPage() {
             <Input.TextArea rows={2} placeholder="可选" />
           </Form.Item>
           <Form.Item name="expireAt" label="过期时间（留空=永久）">
-            <Input type="datetime-local" />
+            <DatePicker showTime style={{ width: '100%' }} placeholder="选择过期时间" />
           </Form.Item>
         </Form>
       </Modal>
