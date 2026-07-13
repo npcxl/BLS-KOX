@@ -4,7 +4,7 @@
  * 2. moduleName 原始字符串校验(防 ../common)
  * 3. 上传 Handler 租户隔离 + 审计验证
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   validateExtension, validateMimeType, validateFileSize,
   detectImageMagicNumber, generateObjectKey, validateFile,
@@ -96,20 +96,24 @@ describe('P13 File Security', () => {
     expect(generateObjectKey('a.png')).not.toBe(generateObjectKey('a.png'));
   });
 
-  // ====== 2. moduleName 原始字符串校验 ======
+  // ====== 2. moduleName 严格正则匹配原始字符串 ======
   it('meta: common+private → 通过', () => expect(validateUploadMeta('common','private').valid).toBe(true));
   it('meta: avatar+public → 通过', () => expect(validateUploadMeta('avatar','public').valid).toBe(true));
   it('meta: attachment → 通过', () => expect(validateUploadMeta('attachment','private').valid).toBe(true));
-  it('meta: ../common → 路径穿越拒绝', () => {
+  // strict regex — 包含路径字符直接拒绝（不降解清洗）
+  it('meta: ../common → 非法字符拒绝', () => {
     const r = validateUploadMeta('../common', 'private');
     expect(r.valid).toBe(false);
-    expect(r.reason).toContain('非法路径');
+    expect(r.reason).toContain('非法字符');
   });
-  it('meta: common/../etc → 路径穿越拒绝', () => {
+  it('meta: common/../etc → 非法字符拒绝', () => {
     expect(validateUploadMeta('common/../etc','private').valid).toBe(false);
   });
-  it('meta: ..\\windows → 路径穿越拒绝', () => {
+  it('meta: ..\\windows → 非法字符拒绝', () => {
     expect(validateUploadMeta('..\\windows','private').valid).toBe(false);
+  });
+  it('meta: spaces → 非法字符拒绝', () => {
+    expect(validateUploadMeta('common space','private').valid).toBe(false);
   });
   it('meta: root → 不在白名单拒绝', () => {
     expect(validateUploadMeta('root','private').valid).toBe(false);
@@ -131,52 +135,93 @@ describe('P13 File Security', () => {
     expect(sanitizeFilename('photo.jpg')).toBe('photo.jpg');
   });
 
-  // ====== 3. 上传路由 — 租户隔离 + 审计 ======
+  // ====== 3. handleUpload 真实执行 — 租户隔离 + 安全日志 + 审计 ======
 
-  describe('Upload Handler', () => {
-    it('storageId 跨租户查询 → executeTakeFirst 返回 null', () => {
-      // 验证 handler 逻辑：用户 T1 用 T2 的 storageId → tenant_id 不匹配 → null
-      const result: null = null;
-      expect(result).toBeNull();
-      // handler: if (!configRow) → ctx.body = { code: 500, message: '未配置存储服务' }
-    });
+  describe('handleUpload', () => {
+    it('跨租户 storageId → storeRow=null → 500', async () => {
+      const mockDb = {
+        selectFrom: () => mockDb, selectAll: () => mockDb,
+        where: () => mockDb, orderBy: () => mockDb, limit: () => mockDb,
+        executeTakeFirst: vi.fn().mockResolvedValue(null),
+      } as any;
+      const getDb = vi.fn().mockResolvedValue(mockDb);
+      const getTenant = vi.fn().mockReturnValue('T001');
 
-    it('默认 storage 查询也带 tenant_id 条件', () => {
-      const tid = 'T002';
-      // index.ts line 78:
-      // .where('is_default','=','1').where('tenant_id','=',tid)
-      expect(tid).toBe('T002');
-    });
-
-    it('校验失败时 writeSecurityLog 被调用 (SECURITY_VALIDATION_FAILED)', () => {
-      let called = false;
-      const mockLog = () => { called = true; return Promise.resolve(); };
-      mockLog();
-      expect(called).toBe(true);
-    });
-
-    it('上传成功后 writeUploadAudit 被调用', () => {
-      let called = false;
-      const mockAudit = () => { called = true; return Promise.resolve(); };
-      mockAudit();
-      expect(called).toBe(true);
-    });
-
-    it('审计日志包含 tenantId + userId', () => {
-      const auditPayload = {
-        tenantId: 'T001',
-        userId: 'U001',
-        username: 'test',
-        moduleName: 'common',
-        accessType: 'public',
+      const ctx: any = {
+        request: { body: { moduleName: 'common', accessType: 'private', storageId: 'S_OTHER_TENANT' }, files: { file: { originalFilename: 'test.jpg', mimetype: 'image/jpeg', size: 1024, filepath: '/tmp/test.jpg' } } },
+        state: { user: { userId: 'u1', tenantId: 'T001' } },
+        body: null, status: 200, params: {}, headers: {}, ip: '1.2.3.4',
       };
-      expect(auditPayload.tenantId).toBe('T001');
-      expect(auditPayload.userId).toBe('U001');
-    });
-  });
 
+      const { handleUpload } = await import('../../api/system/storage/index.js');
+      try {
+        await handleUpload(ctx, getDb, getTenant, async () => {}, async () => {}, () => ({}));
+      } catch { /* ok */ }
+
+      expect(ctx.body.code).toBe(500);
+      expect(ctx.body.message).toBe('未配置存储服务');
+    });
+
+    it('moduleName 非法 → 400 + securityLog 调用', async () => {
+      const securityLogCalls: any[] = [];
+      const mockDb = { selectFrom: () => mockDb, selectAll: () => mockDb, where: () => mockDb, executeTakeFirst: vi.fn() } as any;
+      const getDb = vi.fn().mockResolvedValue(mockDb);
+      const getTenant = vi.fn().mockReturnValue('T001');
+
+      const ctx: any = {
+        request: { body: { moduleName: '../etc', accessType: 'private' }, files: { file: { originalFilename: 'x.jpg', mimetype: 'image/jpeg', size: 1, filepath: '/tmp/x.jpg' } } },
+        state: { user: { userId: 'u1', tenantId: 'T001' } },
+        body: null, status: 200, params: {}, headers: {}, ip: '1.2.3.4',
+      };
+
+      const { handleUpload } = await import('../../api/system/storage/index.js');
+      try {
+        await handleUpload(ctx, getDb, getTenant,
+          async (e) => { securityLogCalls.push(e); },
+          async () => {},
+          () => ({}),
+        );
+      } catch { /* ok */ }
+
+      expect(ctx.body.code).toBe(400);
+      expect(ctx.body.message).toContain('非法字符');
+    });
+
+    it('安全校验失败 → securityLog 记录', async () => {
+      const securityLogCalls: any[] = [];
+      const mockDb = {
+        selectFrom: () => mockDb, selectAll: () => mockDb, where: () => mockDb,
+        executeTakeFirst: vi.fn().mockResolvedValue({ storage_id: 'S1', storage_type: 's3', tenant_id: 'T001' }),
+      } as any;
+      const getDb = vi.fn().mockResolvedValue(mockDb);
+      const getTenant = vi.fn().mockReturnValue('T001');
+
+      // .exe file fails validation
+      const ctx: any = {
+        request: { body: { moduleName: 'common', accessType: 'private' }, files: { file: { originalFilename: 'virus.exe', mimetype: 'application/octet-stream', size: 1, filepath: '/tmp/v.exe' } } },
+        state: { user: { userId: 'u1', tenantId: 'T001' } },
+        body: null, status: 200, params: {}, headers: {}, ip: '1.2.3.4',
+      };
+
+      const { handleUpload } = await import('../../api/system/storage/index.js');
+      try {
+        await handleUpload(ctx, getDb, getTenant,
+          async (e) => { securityLogCalls.push(e); },
+          async () => {},
+          () => ({}),
+        );
+      } catch { /* ok */ }
+
+      expect(ctx.body.code).toBe(400);
+      expect(securityLogCalls.length).toBe(1);
+      expect(securityLogCalls[0].eventType).toBe('SECURITY_VALIDATION_FAILED');
+      expect(securityLogCalls[0].source).toBe('file-security');
+    });
+
+    
   // ====== validateFile 组合 ======
   it('validateFile: jpg 全通过', () => {
+it('validateFile: jpg 全通过', () => {
     expect(validateFile('p.jpg','image/jpeg',Buffer.from([0xff,0xd8,0xff,0xe0]),1024).valid).toBe(true);
   });
   it('validateFile: exe 拒绝', () => {

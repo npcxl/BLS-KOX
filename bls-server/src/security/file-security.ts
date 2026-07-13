@@ -36,6 +36,8 @@ const TYPE_EXT_MAP: Record<string, Set<string>> = {
 };
 
 // P13-FIX-03: SVG disabled
+// 严格模块名正则：仅字母/数字/下划线/连字符，不含路径分隔符
+const MODULE_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/;
 const ALLOWED_MODULES = new Set(['common', 'avatar', 'attachment', 'import', 'export', 'public', 'private']);
 const ALLOWED_ACCESS = new Set(['public', 'private']);
 
@@ -128,19 +130,18 @@ export function generateObjectKey(originalName: string): string {
   return randomUUID().replace(/-/g, '') + extname(originalName);
 }
 
-// ====== 2. moduleName 校验原始字符串，禁止 ../common 绕过 ======
+// ====== 2. moduleName 严格正则匹配原始字符串（禁止清洗后接受） ======
 
 export function validateUploadMeta(moduleName: string, accessType: string): FileSecurityResult {
-  // 先检查原始字符串是否存在路径穿越
   if (!moduleName || typeof moduleName !== 'string') {
     return { valid: false, reason: '缺少模块名' };
   }
-  if (PATH_TRAVERSAL_RE.test(moduleName)) {
-    return { valid: false, reason: `模块名包含非法路径: ${moduleName}` };
+  // 严格正则：原始字符串必须匹配，不匹配直接拒绝，不降解清洗
+  if (!MODULE_NAME_RE.test(moduleName)) {
+    return { valid: false, reason: `模块名包含非法字符: ${moduleName}` };
   }
-  // 再校验清洗后的值是否在允许列表中
-  const clean = moduleName.replace(/[^a-zA-Z0-9_-]/g, '');
-  if (!clean || !ALLOWED_MODULES.has(clean)) {
+  // 必须在白名单中（不再走 clean 降级）
+  if (!ALLOWED_MODULES.has(moduleName)) {
     return { valid: false, reason: `不允许的模块名: ${moduleName}` };
   }
   if (!ALLOWED_ACCESS.has(accessType)) {
