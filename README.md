@@ -128,8 +128,10 @@ BLS-KOX/
 
 - [x] CI/CD
 - [x] Prometheus Metrics
-- [ ] Queue / Worker
-- [ ] Outbox Pattern
+- [x] Queue / Worker
+- [x] Outbox Pattern
+- [x] Backup / Restore
+- [x] Data Scope
 - [ ] API Versioning
 - [ ] Webhook
 

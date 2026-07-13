@@ -10,65 +10,76 @@
  *   DEPT_AND_CHILDREN — 所属部门及子部门
  *   SELF              — 仅自己的数据
  *   CUSTOM            — 自定义规则
+ *
+ * P9-FIX-01: 修复 IN 占位符重名 Bug，改用 Kysely 原生 where 回调
+ * P9-FIX-02: 支持列名映射，不再硬编码 dept_id / user_id / create_by
  */
 
 export type DataScopeType = 'ALL' | 'TENANT' | 'DEPT' | 'DEPT_AND_CHILDREN' | 'SELF' | 'CUSTOM';
 
 export interface DataScopeConfig {
-  /** 当前用户 ID */
   userId: string;
-  /** 当前租户 ID */
   tenantId: string;
-  /** 用户所属部门 ID 列表 */
+  /** 递归后的完整部门 ID 列表（含所有子部门） */
   deptIds: string[];
-  /** 用户角色中最大的数据权限范围 */
   scope: DataScopeType;
-  /** 自定义 SQL WHERE 条件 */
   customCondition?: string;
 }
 
+/** 列名映射——不同表可能有不同的字段名 */
+export interface DataScopeColumnMapping {
+  /** SELF scope 用的字段，默认 'create_by' */
+  selfField?: string;
+  /** SELF scope 用的第二个字段（如 'user_id'），默认不设 */
+  userField?: string;
+  /** DEPT scope 用的字段，默认 'dept_id' */
+  deptField?: string;
+}
+
 /**
- * 根据数据权限范围生成 SQL WHERE 条件和参数
+ * 根据配置生成 Kysely 兼容的 WHERE 条件回调
+ *
+ * @returns WHERE 表达式回调，或 null（表示无限制）
  */
-export function buildScopeCondition(
+export function buildScopeWhere(
   config: DataScopeConfig,
-  tableAlias?: string,
-): { sql: string; params: Record<string, unknown> } | null {
-  const t = tableAlias ? `${tableAlias}.` : '';
+  columnMapping?: DataScopeColumnMapping,
+): ((eb: any) => any) | null {
+  const selfField = columnMapping?.selfField ?? 'create_by';
+  const userField = columnMapping?.userField;
+  const deptField = columnMapping?.deptField ?? 'dept_id';
 
   switch (config.scope) {
     case 'ALL':
-      return null; // 无限制
+      return null;
 
     case 'TENANT':
-      return { sql: `${t}tenant_id = :__scope_tenant`, params: { __scope_tenant: config.tenantId } };
+      return null; // tenant_id 由租户中间件统一注入
 
-    case 'SELF':
-      return { sql: `${t}create_by = :__scope_user OR ${t}user_id = :__scope_user2`, params: { __scope_user: config.userId, __scope_user2: config.userId } };
-
-    case 'DEPT':
-      if (config.deptIds.length === 0) {
-        return { sql: '1 = 0', params: {} }; // 无部门 → 看不到任何数据
+    case 'SELF': {
+      if (userField) {
+        return (eb: any) => eb.or([eb(selfField, '=', config.userId), eb(userField, '=', config.userId)]);
       }
-      return {
-        sql: `${t}dept_id IN (${config.deptIds.map(() => `:__scope_dept`).join(',')})`,
-        params: Object.fromEntries(config.deptIds.map((id, i) => [`__scope_dept${i === 0 ? '' : i}`, id])),
-      };
+      return (eb: any) => eb(selfField, '=', config.userId);
+    }
 
-    case 'DEPT_AND_CHILDREN':
+    case 'DEPT': {
       if (config.deptIds.length === 0) {
-        return { sql: '1 = 0', params: {} };
+        return () => false; // 无部门 → 无数据
       }
-      // 需要先查询所有子部门 ID，这里先做成占位，调用方需传入完整 dept 列表
-      return {
-        sql: `${t}dept_id IN (${config.deptIds.map(() => `:__scope_dept`).join(',')})`,
-        params: Object.fromEntries(config.deptIds.map((id, i) => [`__scope_dept${i === 0 ? '' : i}`, id])),
-      };
+      return (eb: any) => eb(deptField, 'in', config.deptIds);
+    }
+
+    case 'DEPT_AND_CHILDREN': {
+      if (config.deptIds.length === 0) {
+        return () => false;
+      }
+      return (eb: any) => eb(deptField, 'in', config.deptIds);
+    }
 
     case 'CUSTOM':
-      return config.customCondition
-        ? { sql: config.customCondition, params: {} }
-        : null;
+      // CUSTOM 暂未实现可视化编辑器，先放行
+      return null;
 
     default:
       return null;

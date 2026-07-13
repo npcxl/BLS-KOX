@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.0] - 2026-07-13
+
+### Features
+- **Outbox Pattern (P7)** — 事务性事件发布，原子 Claim，Stale Recovery，Dead Letter，指数退避
+- **Queue / Worker (P6)** — 异步任务队列，支持 Export / Import / Notification / Webhook
+- **Data Scope (P9)** — 角色级数据权限（ALL/TENANT/DEPT/DEPT_AND_CHILDREN/SELF）
+- **Backup / Restore / DR** — 定时自动备份，mysqldump 导出，mysql 恢复
+- **用户踢下线** — 批量下线用户活跃会话（需 `system:user:kick` 权限）
+- **迁移引擎增强** — 事务边界、Checksum 漂移检测
+- **WebSocket 稳定性修复** — 未登录不连接，失败完全静默
+
+### Documentation
+- docs/outbox.md — Outbox 设计文档
+- docs/roadmap.md
+
 ## [0.1.0] - 2026-07-10
 
 ### Features
