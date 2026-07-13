@@ -5,20 +5,24 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { createHmac } from 'crypto';
 import { promises as dns } from 'dns';
 
-// ====== module-level mocks (hoisted) ======
+// ====== vi.hoisted — 修复提升错误 ======
 
-const enqueueMock = vi.fn().mockResolvedValue(undefined);
-const mockDb = {
-  selectFrom: vi.fn().mockReturnThis(),
-  selectAll: vi.fn().mockReturnThis(),
-  where: vi.fn().mockReturnThis(),
-  executeTakeFirst: vi.fn(),
-  insertInto: vi.fn(),
-};
-const mockGetDb = vi.fn().mockResolvedValue(mockDb);
+const { enqueueMock, mockDb, mockGetDb } = vi.hoisted(() => {
+  const enqueueMock = vi.fn().mockResolvedValue(undefined);
+  const mockDb = {
+    selectFrom: vi.fn().mockReturnThis(),
+    selectAll: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    executeTakeFirst: vi.fn(),
+    insertInto: vi.fn(),
+  };
+  const mockGetDb = vi.fn().mockResolvedValue(mockDb);
+  return { enqueueMock, mockDb, mockGetDb };
+});
 
-vi.mock('../../../../core/database.js', () => ({ getDb: mockGetDb }));
-vi.mock('../../../../queue/queue.js', () => ({ enqueue: enqueueMock }));
+vi.mock('../../../../core/database', () => ({ getDb: mockGetDb }));
+vi.mock('../../../../queue/queue', () => ({ enqueue: enqueueMock }));
+vi.mock('../../../../middleware/tenant', () => ({ getCurrentTenantId: () => 'T001' }));
 
 // ====== dynamic imports ======
 
@@ -162,8 +166,8 @@ describe('P12 Webhook', () => {
 
   // ====== 1. retry 真实 handler — mock getDb + enqueue（已模块级 mock） ======
 
-  it('retry handler: 调用真实 handler → 断言 jobData.tenantId', async () => {
-    // 设置 mock DB 返回值
+  it('retry handler: 真实调用 → 断言 tenantId=T001', async () => {
+    // 设置 mock DB 返回指定 Webhook
     mockDb.executeTakeFirst.mockResolvedValue({
       webhook_id: 'WH001', url: 'https://x.com/hook', secret: 's3cret',
       events: '["USER_CREATED"]',
@@ -173,7 +177,7 @@ describe('P12 Webhook', () => {
     const apiMod = await import('../index.js');
     const router = apiMod.default as any;
 
-    // 从 router stack 找到 POST /:id/retry 的 handler
+    // 从 router stack 找到 POST /:id/retry 的真实 handler
     const retryLayer = router.stack.find((s: any) =>
       s.path === '/:id/retry' && s.methods.includes('POST')
     );
@@ -181,11 +185,12 @@ describe('P12 Webhook', () => {
     const handler = retryLayer.stack[retryLayer.stack.length - 1];
     expect(handler).toBeDefined();
 
+    // 使用普通租户 T001（非超管）
     const ctx = makeCtx({
       path: '/system/webhooks/WH001/retry',
       method: 'POST',
       params: { id: 'WH001' },
-      state: { user: { userId: '1', tenantId: '000000', username: 'admin', perms: ['*'] } },
+      state: { user: { userId: 'u2', tenantId: 'T001', username: 'normal', perms: ['system:webhook:logs'] } },
       request: { body: { event: 'USER_CREATED' } },
     });
 
@@ -198,8 +203,9 @@ describe('P12 Webhook', () => {
     expect(arg.jobData.url).toBe('https://x.com/hook');
     expect(arg.jobData.secret).toBe('s3cret');
     expect(arg.jobData.event).toBe('USER_CREATED');
-    // 核心：tenantId 由真实 handler 写入
-    expect(arg.jobData.tenantId).toBeDefined();
+    // P12 核心断言：外层 tenantId 和 jobData.tenantId 都等于 T001
+    expect(arg.tenantId).toBe('T001');
+    expect(arg.jobData.tenantId).toBe('T001');
   });
 
   // ====== 2. hasPerm 中间件真实调用 ======
