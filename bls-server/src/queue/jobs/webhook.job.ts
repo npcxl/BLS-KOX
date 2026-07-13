@@ -14,7 +14,8 @@ export const webhookJob: JobDefinition = {
 
   async handler(payload: Record<string, unknown>) {
     const p = payload as any;
-    const { webhookId, url, secret, events, event, tenantId = '000000', attempt = 1 } = p;
+    if (!p.tenantId) throw new Error('[webhook] tenantId is required in jobData');
+    const { webhookId, url, secret, events, event, tenantId, attempt = 1 } = p;
     const payloadStr = JSON.stringify({
       webhookId,
       event: event ?? (Array.isArray(events) ? events[0] : 'unknown'),
@@ -38,6 +39,7 @@ export const webhookJob: JobDefinition = {
         },
         body: payloadStr,
         signal: controller.signal,
+        redirect: 'manual',
       });
     } catch (err: any) {
       clearTimeout(timer);

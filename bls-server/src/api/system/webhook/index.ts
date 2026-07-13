@@ -34,7 +34,7 @@ router.post('/', jwtAuth(), hasPerm('system:webhook:add'), async (ctx: Context) 
   const tid = getCurrentTenantId() ?? '000000';
   const b: any = ctx.request.body ?? {};
 
-  const valid = validateWebhookUrl(b.url);
+  const valid = await validateWebhookUrl(b.url);
   if (!valid.valid) { ctx.body = { code: 400, message: valid.error }; return; }
 
   const secret = createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 32);
@@ -64,7 +64,7 @@ router.put('/:id', jwtAuth(), hasPerm('system:webhook:edit'), async (ctx: Contex
   if (!row) { ctx.body = { code: 404, message: 'Webhook 不存在' }; return; }
 
   if (b.url) {
-    const valid = validateWebhookUrl(b.url);
+    const valid = await validateWebhookUrl(b.url);
     if (!valid.valid) { ctx.body = { code: 400, message: valid.error }; return; }
   }
 
@@ -119,6 +119,7 @@ router.post('/:id/test', jwtAuth(), hasPerm('system:webhook:test'), async (ctx: 
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Webhook-Signature': signature },
       body: payload,
+      redirect: 'manual',
     });
     const responseBody = await res.text();
     const status = res.ok ? 'success' : 'failed';
