@@ -102,49 +102,61 @@ describe('P13 File Security', () => {
       expect(ac.length).toBe(0);
     });
 
-    it('tenantId 缺失 → 拒绝', async () => {
-      const mockDb: any = { selectFrom:()=>mockDb,selectAll:()=>mockDb,where:()=>mockDb,orderBy:()=>mockDb,limit:()=>mockDb,executeTakeFirst:vi.fn().mockResolvedValue(null) };
+    it('tenantId 缺失 → fail-closed 401', async () => {
+      const mockDb: any = {};
+      const getDb = vi.fn();
       const ctx = makeCtx({ request: { body: { moduleName:'common',accessType:'private' }, files: { file: { originalFilename:'test.jpg',mimetype:'image/jpeg',size:1,filepath:'/t.jpg' } } } });
       const { handleUpload } = await import('../../api/system/storage/index.js');
-      try { await handleUpload(ctx, vi.fn().mockResolvedValue(mockDb), vi.fn().mockReturnValue(null), async()=>{}, async()=>{}, ()=>({})); } catch {}
-      expect(ctx.body.code).toBe(500);
+      try { await handleUpload(ctx, getDb, vi.fn().mockReturnValue(null), async()=>{}, async()=>{}, ()=>({})); } catch {}
+      // fail-closed: 不查询数据库，直接 401
+      expect(ctx.body.code).toBe(401);
+      expect(ctx.body.message).toBe('租户上下文缺失');
+      expect(getDb).not.toHaveBeenCalled();
     });
 
-    it('成功上传 → INSERT + audit called', async () => {
+    it('成功上传 → INSERT + audit 强制断言', async () => {
       const ac: any[]=[];
       const mockValues = vi.fn().mockReturnValue({ execute: vi.fn().mockResolvedValue(undefined) });
+      const mockInsert = vi.fn().mockReturnValue({ values: mockValues });
       const mockDb: any = {
         selectFrom:()=>mockDb, selectAll:()=>mockDb, where:()=>mockDb,
         executeTakeFirst: vi.fn().mockResolvedValue({ storage_id:'S1',storage_type:'s3',tenant_id:'T001',public_bucket:'pub' }),
-        insertInto: vi.fn().mockReturnValue({ values: mockValues }),
+        insertInto: mockInsert,
       };
-      // 创建临时 JPEG 文件
-      const fs=require('fs'), t=require('path').join(__dirname,'test-jpeg-tmp');
-      fs.writeFileSync(t, Buffer.from([0xff,0xd8,0xff,0xe0,0,0,0,0]));
-      global.fetch = vi.fn().mockResolvedValueOnce({ ok:true,status:200,text:async()=>'ok' } as any);
+
+      // inject provider: succeed
+      const mockUpload = vi.fn().mockResolvedValue({ url: 'https://s3.example.com/f.jpg' });
+      const mockGetPublicUrl = vi.fn().mockReturnValue('https://s3.example.com/f.jpg');
+      const createProvider = () => ({ upload: mockUpload, getPublicUrl: mockGetPublicUrl });
+
+      // inject readFile: JPEG magic
+      const readFile = () => Buffer.from([0xff,0xd8,0xff,0xe0,0,0,0,0]);
 
       const ctx = makeCtx({
-        request: { body: { moduleName:'avatar',accessType:'public',storageId:'S1' }, files: { file: { originalFilename:'photo.jpg',mimetype:'image/jpeg',size:100,filepath:t } } },
+        request: { body: { moduleName:'avatar',accessType:'public',storageId:'S1' }, files: { file: { originalFilename:'photo.jpg',mimetype:'image/jpeg',size:100,filepath:'/t.jpg' } } },
         state: { user: { userId:'u2',tenantId:'T002',username:'test' } },
       });
 
       const { handleUpload } = await import('../../api/system/storage/index.js');
-      try { await handleUpload(ctx, vi.fn().mockResolvedValue(mockDb), vi.fn().mockReturnValue('T002'), async()=>{}, async(e:any)=>{ac.push(e)}, ()=>({clientIp:'1.2.3.4'})); } catch {}
+      await handleUpload(ctx,
+        vi.fn().mockResolvedValue(mockDb),
+        vi.fn().mockReturnValue('T002'),
+        async()=>{},
+        async(e:any)=>{ac.push(e)},
+        ()=>({clientIp:'1.2.3.4'}),
+        createProvider,
+        readFile,
+      );
 
-      // 清理
-      try { fs.unlinkSync(t); } catch {}
-      global.fetch = undefined as any;
-
-      // provider.upload may fail in test, but verify audit was called if success
-      if (ctx.body?.code === 200) {
-        expect(mockDb.insertInto).toHaveBeenCalledWith('sys_file');
-        expect(ac.length).toBeGreaterThanOrEqual(1);
-        if (ac.length > 0) {
-          expect(ac[0].tenantId).toBe('T002');
-          expect(ac[0].userId).toBe('u2');
-        }
-      }
-      // 至少前置校验通过了
+      // 强制断言 — 全部必须通过
+      expect(ctx.body.code).toBe(200);
+      expect(mockUpload).toHaveBeenCalledTimes(1);
+      expect(mockInsert).toHaveBeenCalledWith('sys_file');
+      const insertRow = mockValues.mock.calls[0]?.[0];
+      expect(insertRow.tenant_id).toBe('T002');
+      expect(ac.length).toBe(1);
+      expect(ac[0].tenantId).toBe('T002');
+      expect(ac[0].userId).toBe('u2');
     });
   });
 });

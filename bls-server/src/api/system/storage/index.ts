@@ -9,7 +9,8 @@ import { assertTenantResource } from '../../../security/ownership';
 import { pickAllowed } from '../../../shared/utils/mass-assignment';
 import { createStorageProvider } from './storage.factory';
 import type { StorageConfig } from './storage.model';
-import { validateFile, generateObjectKey, validateUploadMeta, sanitizeFilename } from '../../../security/file-security';
+import { validateFile, generateObjectKey, validateUploadMeta, sanitizeFilename, validateFileSize } from '../../../security/file-security';
+import { getDynamicConfig } from '../../../config/dynamic-config';
 import { writeSecurityLog, SecurityEventType } from '../../../core/security-audit';
 import { writeUploadAudit } from '../../../core/audit';
 import { getRequestContext } from '../../../core/request-context';
@@ -62,8 +63,10 @@ export async function handleUpload(
   securityLogFn: (event: any) => Promise<void>,
   uploadAuditFn: (event: any) => Promise<void>,
   getReqCtxFn: () => any,
+  createProviderFn?: (cfg: StorageConfig) => any,
+  readFileFn?: (p: string) => Buffer,
+  getConfigFn?: (tid: string) => Promise<{ uploadLimitMB: number }>,
 ) {
-  const db = (await getDbFn()) as any;
   const files = (ctx.request as any).files;
   const body = ctx.request.body as any;
   if (!files?.file) { ctx.body = { code: 400, message: '请选择文件' }; return; }
@@ -75,7 +78,14 @@ export async function handleUpload(
   const metaResult = validateUploadMeta(moduleName, accessType);
   if (!metaResult.valid) { ctx.body = { code: 400, message: metaResult.reason }; return; }
 
-  const tid = getTenantFn() ?? '000000';
+  // P13: fail-closed — 租户上下文缺失直接拒绝（不查 DB）
+  const tid = getTenantFn();
+  if (!tid) {
+    ctx.body = { code: 401, message: '租户上下文缺失' };
+    return;
+  }
+
+  const db = (await getDbFn()) as any;
   let configRow: any;
   if (storageId) {
     configRow = await db.selectFrom('sys_storage_config').selectAll()
@@ -100,7 +110,7 @@ export async function handleUpload(
     createBy: configRow.create_by, createTime: configRow.create_time, updateBy: configRow.update_by, updateTime: configRow.update_time,
   };
 
-  const provider = createStorageProvider(config);
+  const provider = (createProviderFn ?? createStorageProvider)(config);
   const bucketName = accessType === 'public' ? (config.publicBucket || 'public-assets') : (config.privateBucket || 'private-assets');
   const originalName = sanitizeFilename(file.originalFilename || file.name || '');
   const ext = path.extname(originalName);
@@ -108,21 +118,32 @@ export async function handleUpload(
   const mimeType = file.mimetype || 'application/octet-stream';
   const fileSize = file.size || 0;
 
-  const secResult = validateFile(originalName, mimeType, undefined, fileSize);
+  // P14: 动态上传大小限制
+  let maxSizeBytes = 100 * 1024 * 1024;
+  try {
+    const dc = (getConfigFn ?? getDynamicConfig)(tid);
+    const dcResult = dc instanceof Promise ? await dc : dc;
+    if (dcResult?.uploadLimitMB) maxSizeBytes = dcResult.uploadLimitMB * 1024 * 1024;
+  } catch { /* 降级使用默认 100MB */ }
+
+  // ext + mime 先校验
+  let secResult = validateFile(originalName, mimeType, undefined, undefined);
   if (!secResult.valid) {
     ctx.body = { code: 400, message: secResult.reason };
-    securityLogFn({
-      eventType: SecurityEventType.SECURITY_VALIDATION_FAILED,
-      title: `文件上传被拒绝: ${secResult.reason}`,
-      detail: { originalName, mimeType, fileSize },
-      source: 'file-security',
-    }).catch(() => {});
+    securityLogFn({ eventType: SecurityEventType.SECURITY_VALIDATION_FAILED, title: `文件上传被拒绝: ${secResult.reason}`, detail: { originalName, mimeType, fileSize }, source: 'file-security' }).catch(() => {});
+    return;
+  }
+  // P14: 动态大小限制
+  secResult = validateFileSize(fileSize, maxSizeBytes);
+  if (!secResult.valid) {
+    ctx.body = { code: 400, message: secResult.reason };
+    securityLogFn({ eventType: SecurityEventType.SECURITY_VALIDATION_FAILED, title: `文件上传被拒绝: ${secResult.reason}`, detail: { originalName, mimeType, fileSize, maxSizeBytes }, source: 'file-security' }).catch(() => {});
     return;
   }
 
   const objectName = `${moduleName}/${generateObjectKey(originalName)}`;
   const safeName = objectName;
-  const buffer = fs.readFileSync(file.filepath || file.path);
+  const buffer = (readFileFn ?? ((p: string) => fs.readFileSync(p)))(file.filepath || file.path);
 
   const fullResult = validateFile(originalName, mimeType, buffer, fileSize);
   if (!fullResult.valid) {

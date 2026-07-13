@@ -3,16 +3,25 @@ import { getCurrentTenantId } from '../../../middleware/tenant';
 import { invalidateConfigCache } from '../../../config/dynamic-config';
 import { logger } from '../../../core/logger';
 
+// P14: fail-closed tenantId
+function getTenantOrFail(): string {
+  const tid = getCurrentTenantId();
+  if (!tid) throw new Error('TENANT_CONTEXT_MISSING');
+  return tid;
+}
+
 export const config = {
   table: 'sys_config', pkField: 'config_id',
   searchFields: ['config_key', 'config_name'],
   name: '系统参数', permPrefix: 'system:config', softDelete: false,
-  /** P14: 写操作后清除 Redis 缓存 */
+  /** P14: 写操作后清除 Redis 缓存 (fail-closed) */
   onWrite: () => {
     try {
-      const tid = getCurrentTenantId() ?? '000000';
+      const tid = getTenantOrFail();
       invalidateConfigCache(tid).catch(() => {});
-    } catch { /* 不影响主流程 */ }
+    } catch (err) {
+      logger.warn('[config] onWrite failed', { error: String(err) });
+    }
   },
 };
 
@@ -40,7 +49,8 @@ export class ConfigService {
   }
 }
 
-const SYS_KEYS = ['sys.user.defaultPassword','sys.app.name','sys.demo.enabled','sys.upload.maxSize','sys.version','sys.app.logo','sys.user.defaultAvatar'];
+// P14: publicSystem 排除敏感配置
+const SYS_KEYS = ['sys.app.name','sys.demo.enabled','sys.upload.maxSize','sys.version','sys.app.logo','sys.user.defaultAvatar'];
 async function fetchSystemConfigs() {
   const svc = new ConfigService();
   const items = await Promise.all(SYS_KEYS.map((k: string) => (svc as any).findByKey(k)));
