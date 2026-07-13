@@ -153,7 +153,7 @@ router.post('/:id/retry', jwtAuth(), hasPerm('system:webhook:logs'), async (ctx:
 });
 
 /** 内联 logDelivery（避免引用 webhook.job 的循环依赖） */
-async function logDeliveryLocal(
+export async function logDeliveryLocal(
   db: any, webhookId: string, event: string, payload: string,
   status: string, responseCode: number | null, responseBody: string | null,
   errorMessage: string | null, attempt: number, tenantId: string,
