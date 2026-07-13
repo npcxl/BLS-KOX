@@ -133,15 +133,14 @@ router.post('/:id/test', jwtAuth(), hasPerm('system:webhook:test'), async (ctx: 
   }
 });
 
-/** 重试 */
-router.post('/:id/retry', jwtAuth(), hasPerm('system:webhook:logs'), async (ctx: Context) => {
-  const tid = getCurrentTenantId() ?? '000000';
-  const db = await getDb();
+/** 重试 handler — 导出以便测试 */
+export async function handleRetry(ctx: Context, getDbFn: () => any, getTenantFn: () => string | null | undefined, enqueueFn: (p: any) => Promise<void>) {
+  const tid = getTenantFn() ?? '000000';
+  const db = await getDbFn();
   const webhook = await db.selectFrom(T).selectAll().where('webhook_id', '=', ctx.params.id).where('tenant_id', '=', tid).executeTakeFirst() as any;
   if (!webhook) { ctx.body = { code: 404, message: 'Webhook 不存在' }; return; }
 
-  const { enqueue } = require('../../../queue/queue');
-  await enqueue({
+  await enqueueFn({
     tenantId: tid, jobType: 'webhook',
     jobData: {
       webhookId: webhook.webhook_id, url: webhook.url, secret: webhook.secret,
@@ -150,6 +149,12 @@ router.post('/:id/retry', jwtAuth(), hasPerm('system:webhook:logs'), async (ctx:
     },
   });
   ctx.body = { code: 200, message: '已重新入队' };
+}
+
+/** 重试 */
+router.post('/:id/retry', jwtAuth(), hasPerm('system:webhook:logs'), async (ctx: Context) => {
+  const { enqueue } = require('../../../queue/queue');
+  await handleRetry(ctx, getDb, getCurrentTenantId, enqueue);
 });
 
 /** 内联 logDelivery（避免引用 webhook.job 的循环依赖） */

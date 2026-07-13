@@ -5,48 +5,23 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { createHmac } from 'crypto';
 import { promises as dns } from 'dns';
 
-// ====== vi.hoisted — 修复提升错误 ======
-
-const { enqueueMock, mockDb, mockGetDb } = vi.hoisted(() => {
-  const enqueueMock = vi.fn().mockResolvedValue(undefined);
-  const mockDb = {
-    selectFrom: vi.fn().mockReturnThis(),
-    selectAll: vi.fn().mockReturnThis(),
-    where: vi.fn().mockReturnThis(),
-    executeTakeFirst: vi.fn(),
-    insertInto: vi.fn(),
-  };
-  const mockGetDb = vi.fn().mockResolvedValue(mockDb);
-  return { enqueueMock, mockDb, mockGetDb };
-});
-
-vi.mock('../../../../core/database', () => ({ getDb: mockGetDb }));
-vi.mock('../../../../queue/queue', () => ({ enqueue: enqueueMock }));
-vi.mock('../../../../middleware/tenant', () => ({ getCurrentTenantId: () => 'T001' }));
-
-// ====== dynamic imports ======
-
 let validateWebhookUrl: any;
+let handleRetry: any;
 let hasPermMw: any;
 
 beforeAll(async () => {
   const mod = await import('../validate.js');
   validateWebhookUrl = mod.validateWebhookUrl;
 
+  const apiMod = await import('../index.js');
+  handleRetry = apiMod.handleRetry;
+
   const permMod = await import('../../../../middleware/permission.js');
   hasPermMw = permMod.hasPerm;
 });
 
 afterEach(() => {
-  vi.clearAllMocks();
-  // reset defaults
-  mockGetDb.mockResolvedValue(mockDb);
-  enqueueMock.mockResolvedValue(undefined);
-  mockDb.selectFrom.mockReturnThis();
-  mockDb.selectAll.mockReturnThis();
-  mockDb.where.mockReturnThis();
-  mockDb.executeTakeFirst.mockResolvedValue(null);
-  mockDb.insertInto.mockReset();
+  vi.restoreAllMocks();
 });
 
 // ctx helper
@@ -164,28 +139,21 @@ describe('P12 Webhook', () => {
     global.fetch = orig;
   });
 
-  // ====== 1. retry 真实 handler — mock getDb + enqueue（已模块级 mock） ======
+  // ====== 1. retry — 直接调用导出 handler，无需 vi.mock ======
 
-  it('retry handler: 真实调用 → 断言 tenantId=T001', async () => {
-    // 设置 mock DB 返回指定 Webhook
-    mockDb.executeTakeFirst.mockResolvedValue({
-      webhook_id: 'WH001', url: 'https://x.com/hook', secret: 's3cret',
-      events: '["USER_CREATED"]',
+  it('retry handler: 真实 handleRetry → 断言 tenantId=T001', async () => {
+    const enqueueFn = vi.fn().mockResolvedValue(undefined);
+    const getTenantFn = vi.fn().mockReturnValue('T001');
+    const getDbFn = vi.fn().mockResolvedValue({
+      selectFrom: vi.fn().mockReturnThis(),
+      selectAll: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      executeTakeFirst: vi.fn().mockResolvedValue({
+        webhook_id: 'WH001', url: 'https://x.com/hook', secret: 's3cret',
+        events: '["USER_CREATED"]',
+      }),
     });
 
-    // 重新 import webhook 模块（使用模块级 mock）
-    const apiMod = await import('../index.js');
-    const router = apiMod.default as any;
-
-    // 从 router stack 找到 POST /:id/retry 的真实 handler
-    const retryLayer = router.stack.find((s: any) =>
-      s.path === '/:id/retry' && s.methods.includes('POST')
-    );
-    expect(retryLayer).toBeDefined();
-    const handler = retryLayer.stack[retryLayer.stack.length - 1];
-    expect(handler).toBeDefined();
-
-    // 使用普通租户 T001（非超管）
     const ctx = makeCtx({
       path: '/system/webhooks/WH001/retry',
       method: 'POST',
@@ -194,16 +162,16 @@ describe('P12 Webhook', () => {
       request: { body: { event: 'USER_CREATED' } },
     });
 
-    await handler(ctx, async () => {});
+    await handleRetry(ctx, getDbFn, getTenantFn, enqueueFn);
 
-    expect(enqueueMock).toHaveBeenCalledTimes(1);
-    const arg = enqueueMock.mock.calls[0][0];
+    expect(enqueueFn).toHaveBeenCalledTimes(1);
+    const arg = enqueueFn.mock.calls[0][0];
     expect(arg.jobType).toBe('webhook');
     expect(arg.jobData.webhookId).toBe('WH001');
     expect(arg.jobData.url).toBe('https://x.com/hook');
     expect(arg.jobData.secret).toBe('s3cret');
     expect(arg.jobData.event).toBe('USER_CREATED');
-    // P12 核心断言：外层 tenantId 和 jobData.tenantId 都等于 T001
+    // P12 核心断言
     expect(arg.tenantId).toBe('T001');
     expect(arg.jobData.tenantId).toBe('T001');
   });

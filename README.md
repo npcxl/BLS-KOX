@@ -135,6 +135,7 @@ BLS-KOX/
 - [x] Data Scope
 - [x] API Versioning
 - [x] Webhook
+- [x] File Security
 
 详见 [docs/roadmap.md](./docs/roadmap.md)。
 
