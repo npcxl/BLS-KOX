@@ -1,12 +1,9 @@
-name: CI
+name: Release
 
 on:
   push:
-  pull_request:
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+    tags:
+      - "v*"
 
 permissions:
   contents: read
@@ -49,6 +46,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t bls-kox-server:test ./bls-server
-      - run: docker build -f bls-admin/Dockerfile -t bls-kox-admin:test .
+      - run: docker build -t bls-kox-server:${{ github.ref_name }} ./bls-server
+      - run: docker build -f bls-admin/Dockerfile -t bls-kox-admin:${{ github.ref_name }} .
       - run: docker compose config

@@ -2,9 +2,11 @@
 
 [![CI](https://github.com/npcxl/BLS-KOX/actions/workflows/ci.yml/badge.svg)](https://github.com/npcxl/BLS-KOX/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Mulan%20PSL%20v2-blue.svg)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)](https://www.typescriptlang.org/)
-[![Koa](https://img.shields.io/badge/Koa-2.x-333)](https://koajs.com/)
-[![Ant Design Pro](https://img.shields.io/badge/Ant%20Design%20Pro-5.x-1677ff)](https://pro.ant.design/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178c6)](https://www.typescriptlang.org/)
+[![Koa](https://img.shields.io/badge/Koa-3.x-333)](https://koajs.com/)
+[![Ant Design Pro](https://img.shields.io/badge/Ant%20Design%20Pro-6.x-1677ff)](https://pro.ant.design/)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue)](CHANGELOG.md)
+[![License](https://img.shields.io/badge/license-Mulan%20PSL%20v2-blue.svg)](LICENSE)
 
 > 基于 Koa + TypeScript 的开源多租户后台开发框架与管理系统模板。
 > 内置 RBAC、多租户隔离、JWT 会话体系、防重放、限流、安全审计、WebSocket、Prometheus Metrics。
@@ -41,8 +43,8 @@
 
 | 层 | 技术 |
 |----|------|
-| 前端 | React 18 + Ant Design Pro 5 + Umi 4 + TypeScript |
-| 后端 | Koa 2 + TypeScript + Kysely ORM + Zod |
+| 前端 | React 18 + Ant Design Pro 6 + Umi 4 + TypeScript |
+| 后端 | Koa 3 + TypeScript + Kysely ORM + Zod |
 | 数据库 | MySQL 8.0 |
 | 缓存 | Redis 7 |
 | 部署 | Docker Compose + Nginx |
@@ -50,25 +52,39 @@
 ## 🏃 Quick Start
 
 ### 环境要求
-- Node.js ≥ 20
+- Node.js ≥ 22
 - MySQL 8.0
 - Redis 7
 
+### Docker 一键部署（推荐）
+
 ```bash
-# 1. 克隆
 git clone https://github.com/npcxl/BLS-KOX.git && cd BLS-KOX
+cp .env.example .env
+# 编辑 .env 修改所有 CHANGE_TO_* 值为强密码
+docker compose up -d --build
+docker compose ps
+```
 
-# 2. 启动 MySQL + Redis（Docker）
-docker compose up -d mysql redis
+访问：
+- 管理端：http://localhost
+- API：http://localhost/api
+- 健康检查：http://localhost/api/health
 
-# 3. 后端
+### 本地开发
+
+```bash
+# 1. 启动 MySQL + Redis
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d mysql redis
+
+# 2. 后端
 cd bls-server
 cp .env.example .env
 npm install
-mysql -u root -p -h 127.0.0.1 < sql/init.sql  # 初始化数据库（含演示数据）
+npm run db:migrate up
 npm run dev                                    # http://localhost:6001
 
-# 4. 前端（新终端）
+# 3. 前端（新终端）
 cd ../bls-admin
 npm install
 npm start                                      # http://localhost:8000
@@ -76,15 +92,13 @@ npm start                                      # http://localhost:8000
 
 ## 🔑 默认账号
 
-导入 `sql/init.sql` 后包含演示数据：
-
 | 项目 | 值 |
 |------|-----|
 | 默认租户 | `000000` |
 | 默认账号 | `superadmin` |
 | 默认密码 | `123456` |
 
-> ⚠️ 生产环境务必修改默认密码和 `JWT_SECRET`。
+> ⚠️ **该账号仅适用于本地演示。生产部署前必须立即修改密码！** 详见 [SECURITY.md](./SECURITY.md)。
 
 ## 📁 Project Structure
 

@@ -1,0 +1,11 @@
+# BLS-KOX 开发环境覆盖
+# 使用: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+services:
+  mysql:
+    ports:
+      - "${DB_EXPOSE_PORT:-3306}:3306"
+
+  redis:
+    ports:
+      - "${REDIS_EXPOSE_PORT:-6379}:6379"

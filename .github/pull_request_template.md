@@ -1,25 +1,36 @@
-## What
+## Description
 
-<!-- 描述你做了什么 -->
+<!-- Describe your changes in detail -->
 
-## Why
+## Type of Change
 
-<!-- 为什么需要这个改动 -->
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+- [ ] Security fix
 
-## Changes
+## Testing
 
-<!-- 列举主要改动 -->
+<!-- Describe the tests you ran and their results -->
 
-## Test
+## Security Impact
 
-- [ ] `npm run lint` 通过
-- [ ] `npm test` 通过
-- [ ] `npm run build` 通过
+<!-- Does this change affect security? (auth, data access, input validation, etc.) -->
 
-## Breaking Changes
+## Database Changes
 
-<!-- 如有 Breaking Change 请说明 -->
+<!-- List any schema migrations or seed data changes -->
 
-## Screenshots
+## Compatibility
 
-<!-- 如有 UI 变更请贴图 -->
+<!-- Is this backwards compatible? -->
+
+## Checklist
+
+- [ ] Code follows project style guidelines
+- [ ] Tests pass (`npm test`)
+- [ ] Lint passes (`npm run lint`)
+- [ ] Build succeeds (`npm run build`)
+- [ ] Security implications considered
+- [ ] Documentation updated if needed

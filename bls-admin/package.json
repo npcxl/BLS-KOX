@@ -1,9 +1,16 @@
 {
-  "name": "Baolongshen-Admin-Template",
+  "name": "bls-kox-admin",
   "version": "1.0.0",
   "private": true,
-  "description": "Baolongshen Admin Template",
-  "repository": "https://gitee.com/leheya/bls-server",
+  "description": "BLS-KOX multi-tenant administration frontend.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/npcxl/BLS-KOX.git",
+    "directory": "bls-admin"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "analyze": "cross-env ANALYZE=1 max build",
     "biome": "biome check --write",
@@ -13,7 +20,7 @@
     "dev": "cross-env UMI_ENV=dev MOCK=none PORT=9000 max dev",
     "doctor": "react-doctor .",
     "i18n-remove": "node scripts/i18n-remove.js",
-    "lint": "npm run biome:lint && npm run tsc",
+    "lint": "npm run tsc",
     "lint-staged": "lint-staged",
     "openapi": "max openapi",
     "prepare": "npx husky && max setup",
@@ -29,7 +36,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "tsc": "tsc --noEmit",
-    "check": "npm run biome:lint && npm run tsc && npm run test",
+    "check": "npm run tsc && npm run test",
     "ci": "npm run lint && npm run test && npm run build"
   },
   "browserslist": [

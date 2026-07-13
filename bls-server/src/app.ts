@@ -118,6 +118,35 @@ export function createApp(): Koa {
 }
 
 if (require.main === module) {
+  // ====== P15: 生产环境安全启动校验 ======
+  if (process.env.NODE_ENV === 'production') {
+    const issues: string[] = [];
+    const WEAK_SECRETS = ['please_change_me', '123456', 'password', 'changeme', ''];
+
+    const jwt = process.env.JWT_SECRET ?? '';
+    if (!jwt || WEAK_SECRETS.some(w => jwt.toLowerCase().includes(w))) {
+      issues.push('JWT_SECRET is missing or too weak (must be >= 32 chars, no common passwords)');
+    }
+    if (jwt.length < 32) issues.push('JWT_SECRET must be at least 32 characters');
+
+    const dbPwd = process.env.DB_PASSWORD ?? '';
+    if (!dbPwd || WEAK_SECRETS.some(w => dbPwd.toLowerCase() === w)) {
+      issues.push('DB_PASSWORD is missing or too weak');
+    }
+
+    const redisPwd = process.env.REDIS_PASSWORD ?? '';
+    if (!redisPwd || WEAK_SECRETS.some(w => redisPwd.toLowerCase() === w)) {
+      issues.push('REDIS_PASSWORD is missing or too weak');
+    }
+
+    if (issues.length > 0) {
+      console.error('[security] Production startup blocked due to weak configuration:');
+      for (const issue of issues) console.error('  - ' + issue);
+      console.error('[security] Please set strong values in .env and restart.');
+      process.exit(1);
+    }
+  }
+
   const app = createApp();
   const server = http.createServer(app.callback());
   const wss = attachRealtimeWs(server, app);
