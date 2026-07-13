@@ -136,6 +136,7 @@ BLS-KOX/
 - [x] API Versioning
 - [x] Webhook
 - [x] File Security
+- [x] Configuration Center
 
 详见 [docs/roadmap.md](./docs/roadmap.md)。
 

@@ -1,10 +1,19 @@
 import { getDb } from '../../../core/database';
 import { getCurrentTenantId } from '../../../middleware/tenant';
+import { invalidateConfigCache } from '../../../config/dynamic-config';
+import { logger } from '../../../core/logger';
 
 export const config = {
   table: 'sys_config', pkField: 'config_id',
   searchFields: ['config_key', 'config_name'],
   name: '系统参数', permPrefix: 'system:config', softDelete: false,
+  /** P14: 写操作后清除 Redis 缓存 */
+  onWrite: () => {
+    try {
+      const tid = getCurrentTenantId() ?? '000000';
+      invalidateConfigCache(tid).catch(() => {});
+    } catch { /* 不影响主流程 */ }
+  },
 };
 
 export class ConfigService {

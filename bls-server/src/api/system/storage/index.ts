@@ -9,7 +9,7 @@ import { assertTenantResource } from '../../../security/ownership';
 import { pickAllowed } from '../../../shared/utils/mass-assignment';
 import { createStorageProvider } from './storage.factory';
 import type { StorageConfig } from './storage.model';
-import { validateFile, generateObjectKey } from '../../../security/file-security';
+import { validateFile, generateObjectKey, validateUploadMeta, sanitizeFilename } from '../../../security/file-security';
 import { writeSecurityLog, SecurityEventType } from '../../../core/security-audit';
 import { writeUploadAudit } from '../../../core/audit';
 import { getRequestContext } from '../../../core/request-context';
@@ -66,13 +66,21 @@ router.post('/upload', jwtAuth(), hasPerm('system:file:upload'), async (ctx: Con
     const moduleName = body.moduleName || 'common';
     const storageId = body.storageId;
 
-    // 获取存储配置
+    // P13-FIX-04: 校验 moduleName / accessType
+    const metaResult = validateUploadMeta(moduleName, accessType);
+    if (!metaResult.valid) { ctx.body = { code: 400, message: metaResult.reason }; return; }
+
+    // P13-FIX-01: 所有 storage config 查询加 tenant_id
+    const tid = getCurrentTenantId() ?? '000000';
     let configRow: any;
     if (storageId) {
-      configRow = await db.selectFrom('sys_storage_config').selectAll().where('storage_id','=',storageId).where('deleted','=',0).executeTakeFirst();
+      configRow = await db.selectFrom('sys_storage_config').selectAll()
+        .where('storage_id','=',storageId).where('tenant_id','=',tid).where('deleted','=',0).executeTakeFirst();
     } else {
-      configRow = await db.selectFrom('sys_storage_config').selectAll().where('is_default','=','1').where('deleted','=',0).executeTakeFirst()
-        || await db.selectFrom('sys_storage_config').selectAll().where('deleted','=',0).orderBy('create_time','asc').limit(1).executeTakeFirst();
+      configRow = await db.selectFrom('sys_storage_config').selectAll()
+        .where('is_default','=','1').where('tenant_id','=',tid).where('deleted','=',0).executeTakeFirst()
+        || await db.selectFrom('sys_storage_config').selectAll()
+          .where('tenant_id','=',tid).where('deleted','=',0).orderBy('create_time','asc').limit(1).executeTakeFirst();
     }
     if (!configRow) { ctx.body = { code: 500, message: '未配置存储服务' }; return; }
 
@@ -90,7 +98,7 @@ router.post('/upload', jwtAuth(), hasPerm('system:file:upload'), async (ctx: Con
 
     const provider = createStorageProvider(config);
     const bucketName = accessType === 'public' ? (config.publicBucket || 'public-assets') : (config.privateBucket || 'private-assets');
-    const originalName = file.originalFilename || file.name || '';
+    const originalName = sanitizeFilename(file.originalFilename || file.name || '');
     const ext = path.extname(originalName);
     const extName = ext.replace('.', '').toLowerCase();
     const mimeType = file.mimetype || 'application/octet-stream';
@@ -133,7 +141,6 @@ router.post('/upload', jwtAuth(), hasPerm('system:file:upload'), async (ctx: Con
     const fileId = generateSnowflakeId();
     const url = accessType === 'public' ? result.url || provider.getPublicUrl({ bucketName, objectName }) : null;
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    const tid = getCurrentTenantId() || '000000';
     await db.insertInto('sys_file').values({
       file_id: fileId, tenant_id: tid, storage_id: config.storageId,
       bucket_name: bucketName, object_name: objectName,

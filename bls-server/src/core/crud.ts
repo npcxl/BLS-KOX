@@ -31,6 +31,8 @@ export interface CrudModuleConfig {
   schema?: { create?: z.ZodType; update?: z.ZodType };
   /** P9: 数据权限列名映射。设为 false 显式关闭（默认关闭） */
   dataScope?: false | DataScopeColumnMapping;
+  /** P14: 写入后回调（add/edit/delete/status），用于清缓存等 */
+  onWrite?: () => void | Promise<void>;
 }
 
 /** ========= 核心工厂 ========= */
@@ -137,6 +139,7 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
     const values: Record<string, any> = { [pk]: id, [tenantField]: data[tenantField] ?? tid, ...data };
     if (softDelete && values.deleted === undefined) values.deleted = 0;
     await db.insertInto(table).values(toSnake(values)).execute();
+    await config.onWrite?.();
     success(ctx, { [pk]: values[pk] }, '新增成功');
   });
 
@@ -166,6 +169,7 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
     if (softDelete) query = query.where('deleted', '=', 0);
 
     await query.execute();
+    await config.onWrite?.();
     success(ctx, null, '修改成功');
   });
 
@@ -192,6 +196,7 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
     if (scopeWhere) query = query.where(scopeWhere);
 
     await query.execute();
+    await config.onWrite?.();
     success(ctx, null, '删除成功');
   });
 
@@ -215,6 +220,7 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
     if (softDelete) query = query.where('deleted', '=', 0);
 
     await query.execute();
+    await config.onWrite?.();
     success(ctx, null, '状态修改成功');
   });
 
