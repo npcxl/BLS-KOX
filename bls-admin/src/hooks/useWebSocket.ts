@@ -4,9 +4,8 @@ import { authEvents } from '@/auth/auth-events';
 
 export interface WebSocketState<TMessage> {
   connected: boolean;
-  connecting: boolean;
-  errorText: string | null;
   lastMessage: TMessage | null;
+  /** 手动重连（重置重试计数器，立即尝试） */
   reconnect: () => void;
 }
 
@@ -23,22 +22,14 @@ export interface UseWebSocketOptions<TMessage> {
   onMessage?: (message: TMessage) => void;
 }
 
-/**
- * 构造 WebSocket URL
- *   - 开发环境：使用 dev proxy 目标
- *   - 生产环境：使用同源 wss://
- */
+/** 构造 WebSocket URL */
 function buildWsUrl(path: string): string {
   if (typeof window === 'undefined') return '';
-
   const { protocol, hostname } = window.location;
-
-  // 开发环境：Umi 代理到 localhost:6001
   if (process.env.NODE_ENV === 'development') {
-    return `ws://localhost:6001${path}`;
+    const port = process.env.WS_PORT ?? '6001';
+    return `ws://localhost:${port}${path}`;
   }
-
-  // 生产环境：同源
   const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
   return `${wsProtocol}//${hostname}${path}`;
 }
@@ -57,31 +48,42 @@ export function useWebSocket<TMessage = unknown>({
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const manualCloseRef = useRef(false);
-  const enabledRef = useRef(enabled);
-  enabledRef.current = enabled;
   const [connected, setConnected] = useState(false);
-  const [connecting, setConnecting] = useState(false);
-  const [errorText, setErrorText] = useState<string | null>(null);
   const [lastMessage, setLastMessage] = useState<TMessage | null>(null);
 
-  const wsUrl = buildWsUrl(url);
+  // ====== stable refs for callbacks & options (avoid dep-array churn) ======
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+  const maxRetryRef = useRef(maxReconnectAttempts);
+  maxRetryRef.current = maxReconnectAttempts;
+  const retryDelayRef = useRef(reconnectDelayMs);
+  retryDelayRef.current = reconnectDelayMs;
+  const heartbeatRef = useRef(heartbeatIntervalMs);
+  heartbeatRef.current = heartbeatIntervalMs;
+  const onOpenRef = useRef(onOpen);
+  onOpenRef.current = onOpen;
+  const onMessageRef = useRef(onMessage);
+  onMessageRef.current = onMessage;
 
+  // stable wsUrl (computed once, re-computed when url changes)
+  const wsUrl = useRef(buildWsUrl(url));
+  useEffect(() => { wsUrl.current = buildWsUrl(url); }, [url]);
+
+  // ====== helpers ======
   const clearTimers = useCallback(() => {
-    if (retryTimerRef.current) window.clearTimeout(retryTimerRef.current);
-    if (heartbeatTimerRef.current) window.clearInterval(heartbeatTimerRef.current);
-    retryTimerRef.current = null;
-    heartbeatTimerRef.current = null;
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
+    if (heartbeatTimerRef.current) { clearInterval(heartbeatTimerRef.current); heartbeatTimerRef.current = null; }
   }, []);
 
   const closeSocket = useCallback(() => {
-    manualCloseRef.current = true;
     clearTimers();
     const sock = socketRef.current;
     socketRef.current = null;
-    if (sock && sock.readyState !== WebSocket.CLOSED) {
-      sock.close();
+    if (sock) {
+      // 1000 = normal closure; prevent onclose from scheduling retry
+      try { sock.close(1000); } catch { /* already closed */ }
     }
+    setConnected(false);
   }, [clearTimers]);
 
   const sendAuth = useCallback((socket: WebSocket) => {
@@ -92,91 +94,78 @@ export function useWebSocket<TMessage = unknown>({
     }
   }, []);
 
+  // ====== connect (stable ref — only url changes rebuild it) ======
   const connect = useCallback(() => {
-    if (!enabledRef.current) {
-      closeSocket();
-      setConnected(false);
-      return;
-    }
+    if (!enabledRef.current) { closeSocket(); return; }
 
     clearTimers();
+    // 防止旧 socket 残留
+    if (socketRef.current) {
+      try { socketRef.current.close(1000); } catch { /* ignore */ }
+    }
 
-    const socket = new WebSocket(wsUrl);
+    const socket = new WebSocket(wsUrl.current);
     socketRef.current = socket;
-    manualCloseRef.current = false;
 
     socket.onopen = () => {
       reconnectAttemptsRef.current = 0;
       setConnected(true);
       sendAuth(socket);
-      onOpen?.(socket);
+      onOpenRef.current?.(socket);
 
-      heartbeatTimerRef.current = window.setInterval(() => {
+      heartbeatTimerRef.current = setInterval(() => {
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
         }
-      }, heartbeatIntervalMs);
+      }, heartbeatRef.current);
 
-      console.info('[ws] connected', { url: wsUrl, heartbeatIntervalMs });
+      console.info('[ws] connected', { url: wsUrl.current });
     };
 
-    socket.onerror = (event) => {
-      setConnected(false);
-      console.debug('[ws] error', { url: wsUrl, event });
+    socket.onerror = () => {
+      // 静默：失败由 onclose 统一处理，不触发 React 更新
+      console.debug('[ws] error', { url: wsUrl.current });
     };
 
     socket.onclose = (event) => {
       setConnected(false);
-      clearTimers();
-      console.debug('[ws] closed', { url: wsUrl, code: event.code, reason: event.reason, wasClean: event.wasClean });
-      if (manualCloseRef.current || !enabledRef.current) return;
-      const nextAttempt = reconnectAttemptsRef.current + 1;
-      reconnectAttemptsRef.current = nextAttempt;
-      if (nextAttempt > maxReconnectAttempts) {
+      clearTimers(); // 包括心跳
+
+      // 鉴权失败 (1008) / 服务异常 (1011) — 不重连，等 token 刷新后手动 reconnect
+      if (event.code === 1008 || event.code === 1011) {
+        console.debug('[ws] auth-fail or server error, stop', { url: wsUrl.current, code: event.code });
         return;
       }
-      retryTimerRef.current = window.setTimeout(connect, reconnectDelayMs);
+
+      // 手动关闭 → 不重连
+      if (event.code === 1000) return;
+
+      // disabled → 不重连
+      if (!enabledRef.current) return;
+
+      const next = reconnectAttemptsRef.current + 1;
+      reconnectAttemptsRef.current = next;
+      if (next > maxRetryRef.current) {
+        console.debug('[ws] retry exhausted', { url: wsUrl.current, max: maxRetryRef.current });
+        return;
+      }
+      retryTimerRef.current = setTimeout(connect, retryDelayRef.current);
     };
 
     socket.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data) as TMessage;
         setLastMessage(message);
-        onMessage?.(message);
+        onMessageRef.current?.(message);
       } catch (error) {
-        setErrorText('WebSocket 消息解析失败');
-        console.error('[ws] message parse failed', { url: wsUrl, data: event.data, error });
+        console.error('[ws] message parse failed', { url: wsUrl.current, data: event.data, error });
       }
     };
-  }, [url, wsUrl, heartbeatIntervalMs, reconnectDelayMs, maxReconnectAttempts, sendAuth, closeSocket, clearTimers, onOpen, onMessage]);
+  }, [url, closeSocket, clearTimers, sendAuth]); // 不依赖 enabled/maxRetry/etc，仅 url 变化重建
 
-  // Token 刷新后自动重新认证（不发重连，只发 auth 消息）
-  useEffect(() => {
-    if (!autoReauth) return;
-    const handleTokenRefreshed = () => {
-      const socket = socketRef.current;
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        sendAuth(socket);
-      }
-    };
-    authEvents.on('token-refreshed', handleTokenRefreshed);
-    return () => {
-      authEvents.off('token-refreshed', handleTokenRefreshed);
-    };
-  }, [autoReauth, sendAuth]);
+  // ====== effects ======
 
-  // 登出时关闭 WebSocket
-  useEffect(() => {
-    const handleLogout = () => {
-      closeSocket();
-    };
-    authEvents.on('logout', handleLogout);
-    return () => {
-      authEvents.off('logout', handleLogout);
-    };
-  }, [closeSocket]);
-
-  // enabled 变化时启动/停止连接（不依赖 connect 引用，避免无限重连）
+  // enabled 变化 → 启动 或 停止
   useEffect(() => {
     if (enabled) {
       reconnectAttemptsRef.current = 0;
@@ -184,12 +173,33 @@ export function useWebSocket<TMessage = unknown>({
     } else {
       closeSocket();
     }
-    return () => {
-      closeSocket();
-    };
-    // connect / closeSocket 通过 ref 稳定引用，此处 intentional dependency on enabled only
+    return () => { closeSocket(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
-  return { connected, connecting, errorText, lastMessage, reconnect: connect };
+  // Token 刷新后自动重新认证（不发重连，只发 auth 消息）
+  useEffect(() => {
+    if (!autoReauth) return;
+    const handler = () => {
+      const sock = socketRef.current;
+      if (sock?.readyState === WebSocket.OPEN) sendAuth(sock);
+    };
+    authEvents.on('token-refreshed', handler);
+    return () => { authEvents.off('token-refreshed', handler); };
+  }, [autoReauth, sendAuth]);
+
+  // 登出 → 关闭
+  useEffect(() => {
+    const handler = () => closeSocket();
+    authEvents.on('logout', handler);
+    return () => { authEvents.off('logout', handler); };
+  }, [closeSocket]);
+
+  // ====== reconnect（重置计数器，立即尝试） ======
+  const reconnect = useCallback(() => {
+    reconnectAttemptsRef.current = 0;
+    connect();
+  }, [connect]);
+
+  return { connected, lastMessage, reconnect };
 }

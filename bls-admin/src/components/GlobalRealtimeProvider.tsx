@@ -24,8 +24,6 @@ interface RealtimeMessage {
 
 interface RealtimeContextValue {
   connected: boolean;
-  connecting: boolean;
-  errorText: string | null;
   info: RealtimeInfo | null;
   reconnect: () => void;
 }
@@ -42,7 +40,7 @@ export function GlobalRealtimeProvider({ children }: { children: React.ReactNode
     return () => clearInterval(id);
   }, []);
 
-  const { connected, connecting, errorText, lastMessage, reconnect } = useWebSocket<RealtimeMessage>({
+  const { connected, lastMessage, reconnect } = useWebSocket<RealtimeMessage>({
     url: '/ws/realtime',
     autoReauth: true,
     enabled: hasToken,
@@ -51,11 +49,9 @@ export function GlobalRealtimeProvider({ children }: { children: React.ReactNode
 
   const value = useMemo<RealtimeContextValue>(() => ({
     connected,
-    connecting,
-    errorText,
     info: lastMessage?.type === 'realtime-info' ? lastMessage.data : null,
     reconnect,
-  }), [connected, connecting, errorText, lastMessage, reconnect]);
+  }), [connected, lastMessage, reconnect]);
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
 }

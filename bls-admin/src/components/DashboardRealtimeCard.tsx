@@ -10,7 +10,7 @@ function formatBytes(bytes: number) {
 }
 
 export default function DashboardRealtimeCard() {
-  const { info, connected, errorText, reconnect } = useRealtime();
+  const { info, connected, reconnect } = useRealtime();
 
   const loadPercent = useMemo(() => info?.usedMemoryPercent ?? 0, [info]);
 
@@ -24,10 +24,8 @@ export default function DashboardRealtimeCard() {
       }
       extra={
         <Space>
-          {errorText ? <Typography.Text type="danger">{errorText}</Typography.Text> : null}
-          <Button icon={<ReloadOutlined />} onClick={reconnect}>
-            重连
-          </Button>
+          <Badge status={connected ? 'success' : 'default'} text={connected ? '已连接' : '未连接'} />
+          <Button icon={<ReloadOutlined />} onClick={reconnect}>重连</Button>
         </Space>
       }
     >
