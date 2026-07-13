@@ -75,6 +75,29 @@ if (require.main === module) {
   registerOutboxSubscribers();
   outboxPublisher.start();
 
+  // ========== P8: DR — 定时自动备份 ==========
+  const backupEnabled = (process.env.BACKUP_ENABLED ?? 'false') === 'true';
+  if (backupEnabled) {
+    const intervalH = parseInt(process.env.BACKUP_INTERVAL_HOURS ?? '24', 10);
+    const intervalMs = Math.max(intervalH, 1) * 60 * 60 * 1000;
+    logger.info('[backup] enabled', { intervalHours: intervalH });
+
+    const runBackup = () => {
+      const { exec } = require('child_process');
+      const child = exec('npm run db:backup -- --compress --no-color', {
+        cwd: __dirname + '/..',
+        timeout: 10 * 60 * 1000,
+      });
+      child.stdout?.on('data', (d: Buffer) => logger.info('[backup] ' + d.toString().trim()));
+      child.stderr?.on('data', (d: Buffer) => logger.warn('[backup] ' + d.toString().trim()));
+      child.on('error', (err: Error) => logger.error('[backup] spawn error', { error: err.message }));
+    };
+
+    // 启动后延迟 5 分钟做首次备份（避免与启动高峰冲突）
+    setTimeout(runBackup, 5 * 60 * 1000);
+    setInterval(runBackup, intervalMs);
+  }
+
   // ========== Graceful Shutdown ==========
   let shuttingDown = false;
   const SHUTDOWN_TIMEOUT = 30_000;

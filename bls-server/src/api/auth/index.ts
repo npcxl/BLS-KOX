@@ -32,6 +32,12 @@ export class AuthService {
               avatar, gender, email, phone, dept_id AS deptId, is_admin AS isAdmin, status
        FROM sys_user WHERE user_id = :uid AND deleted = 0`, { uid: userId });
     if (!user) throw new UnauthorizedError('用户不存在');
+    // 角色信息（含 P9 data_scope）
+    const roles = await query<{ roleKey: string; dataScope: string }>(
+      `SELECT r.role_key AS roleKey, r.data_scope AS dataScope
+       FROM sys_role r JOIN sys_user_role ur ON r.role_id = ur.role_id
+       WHERE ur.user_id = :uid AND r.status = '0' AND r.deleted = 0`,
+      { uid: userId });
     const perms = await query<{ perms: string }>(
       `SELECT DISTINCT m.perms FROM sys_role_menu rm JOIN sys_menu m ON rm.menu_id = m.menu_id
        JOIN sys_user_role ur ON rm.role_id = ur.role_id WHERE ur.user_id = :uid AND m.perms IS NOT NULL`,
@@ -44,7 +50,7 @@ export class AuthService {
        WHERE ur.user_id = :uid AND m.menu_type IN ('0','1') AND m.status = '0'
        ORDER BY m.sort_num ASC`, { uid: userId });
     const menus = buildMenuTree(menuRows);
-    return { ...user, permissions: perms.map(p => p.perms).filter(Boolean), menus };
+    return { ...user, permissions: perms.map(p => p.perms).filter(Boolean), roles, menus };
   }
 
   async loginByDomain(domainName: string, username: string, password: string, meta?: any) {

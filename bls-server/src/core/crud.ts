@@ -23,6 +23,8 @@ import { jwtAuth } from '../middleware/auth';
 import { hasPerm } from '../middleware/permission';
 import { getCurrentTenantId } from '../middleware/tenant';
 import { generateSnowflakeId } from '../shared/utils/snowflake';
+import { resolveMaxScope } from '../security/data-scope/data-scope';
+import type { DataScopeType } from '../security/data-scope/data-scope';
 import type { Context } from 'koa';
 
 export interface CrudModuleConfig {
@@ -80,6 +82,39 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
     const tenantId = getCurrentTenantId();
     if (tenantId) {
       query = query.where(tenantField, '=', tenantId);
+    }
+
+    // ====== P9: Data Scope 数据权限过滤 ======
+    // 平台租户 / 超级管理员 → 跳过数据范围限制
+    const user = (ctx.state.user ?? {}) as any;
+    if (user.tenantId !== '000000' && !user.permissions?.includes('*')) {
+      const roles: { dataScope?: DataScopeType }[] = user.roles ?? [];
+      if (roles.length > 0) {
+        const scope = resolveMaxScope(roles);
+        if (scope === 'SELF') {
+          // 仅看到自己创建/属于自己的数据
+          const uid = user.userId;
+          query = query.where((eb: any) =>
+            eb.or([eb('create_by', '=', uid), eb('user_id', '=', uid)]),
+          );
+        } else if ((scope === 'DEPT' || scope === 'DEPT_AND_CHILDREN') && user.deptId) {
+          // 仅看到所属部门（及子部门）的数据
+          const deptIds: string[] = [String(user.deptId)];
+          // DEPT_AND_CHILDREN: 递归查子部门
+          if (scope === 'DEPT_AND_CHILDREN') {
+            try {
+              const children = await db.selectFrom('sys_dept').select('dept_id')
+                .where('parent_id', '=', String(user.deptId)).where('deleted', '=', 0)
+                .execute() as any[];
+              if (children.length > 0) {
+                deptIds.push(...children.map((c: any) => String(c.dept_id)));
+              }
+            } catch { /* ignore, fallback to own dept */ }
+          }
+          query = query.where('dept_id', 'in', deptIds);
+        }
+        // ALL / TENANT: 无需额外过滤（TENANT 已有上面 tenant_id 过滤）
+      }
     }
 
     // 软删除

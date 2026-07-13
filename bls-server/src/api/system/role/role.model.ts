@@ -17,4 +17,6 @@ export interface RoleInput {
   status?: '0' | '1';
   remark?: string | null;
   menuIds?: string[] | null;
+  /** P9 Data Scope: ALL/TENANT/DEPT/DEPT_AND_CHILDREN/SELF/CUSTOM */
+  dataScope?: string;
 }

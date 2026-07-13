@@ -71,11 +71,11 @@ async function applyOne(
       'INSERT INTO sys_migrations (version,checksum,execution_time_ms) VALUES (?,?,?)',
       [filename, checksum, ms],
     );
-    console.log(`  ✅ ${filename} (${ms}ms)`);
+    console.log(`   ${filename} (${ms}ms)`);
     return null;
   } catch (err: any) {
     await conn.rollback().catch(() => {});
-    return `❌ ${filename}: ${err.message}`;
+    return ` ${filename}: ${err.message}`;
   }
 }
 
@@ -88,7 +88,7 @@ function checkDrift(
   const current = sha256(currentSql);
   if (current !== storedChecksum) {
     console.warn(
-      `  ⚠️  DRIFT: ${filename} — checksum 不匹配!\n` +
+      `       DRIFT: ${filename} — checksum 不匹配!\n` +
       `       已记录: ${storedChecksum.slice(0, 12)}…\n` +
       `       当前值: ${current.slice(0, 12)}…`,
     );
@@ -112,7 +112,7 @@ async function runUp(pool: mysql.Pool) {
   }
 
   if (driftCount > 0) {
-    console.warn(`\n⚠️  检测到 ${driftCount} 个迁移文件发生漂移。`);
+    console.warn(`\n  检测到 ${driftCount} 个迁移文件发生漂移。`);
     console.warn('建议检查文件变更是否符合预期后重新执行。\n');
   }
 
@@ -124,7 +124,7 @@ async function runUp(pool: mysql.Pool) {
     for (const f of files) {
       if (done.has(f)) { console.log(`  ⏭ ${f} (already applied)`); continue; }
       const sql = readFileSync(join(MIGRATIONS_DIR, f), 'utf-8');
-      console.log(`  ▶ ${f} ...`);
+      console.log(`   ${f} ...`);
       const err = await applyOne(conn, f, sql);
       if (err) { console.error(err); failed++; } else { applied++; }
     }
@@ -132,7 +132,7 @@ async function runUp(pool: mysql.Pool) {
     conn.release();
   }
 
-  console.log(`\n✅ ${applied} applied, ${failed} failed, ${files.length - applied - failed} skipped.`);
+  console.log(`\n ${applied} applied, ${failed} failed, ${files.length - applied - failed} skipped.`);
 }
 
 async function runStatus(pool: mysql.Pool) {
@@ -144,20 +144,20 @@ async function runStatus(pool: mysql.Pool) {
   let driftCount = 0;
   for (const f of files) {
     if (!done.has(f)) {
-      console.log(`  ⬜ ${f} (pending)`);
+      console.log(`${f} (pending)`);
       continue;
     }
     const sql = readFileSync(join(MIGRATIONS_DIR, f), 'utf-8');
     if (checkDrift(f, done.get(f)!.checksum, sql)) {
-      console.log(`  ⚠️  ${f}`);
+      console.log(`${f}`);
       driftCount++;
     } else {
-      console.log(`  ✅ ${f}`);
+      console.log(` ${f}`);
     }
   }
 
   if (driftCount > 0) {
-    console.warn(`\n⚠️  ${driftCount} 个迁移文件存在漂移。`);
+    console.warn(`\n  ${driftCount} 个迁移文件存在漂移。`);
   }
 }
 
@@ -176,17 +176,17 @@ async function runRollback(pool: mysql.Pool) {
     return;
   }
 
-  console.log(`◀  ${last.version} ...`);
+  console.log(`${last.version} ...`);
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     await conn.query(readFileSync(rf, 'utf-8'));
     await conn.query('DELETE FROM sys_migrations WHERE version = ?', [last.version]);
     await conn.commit();
-    console.log(`✅ Rolled back ${last.version}`);
+    console.log(`Rolled back ${last.version}`);
   } catch (err: any) {
     await conn.rollback().catch(() => {});
-    console.error(`❌ Rollback failed: ${err.message}`);
+    console.error(`Rollback failed: ${err.message}`);
   } finally {
     conn.release();
   }

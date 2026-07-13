@@ -49,14 +49,23 @@ router.get('/:roleId/menus', jwtAuth(), hasPerm('system:role:list'), async (ctx:
 
 router.post('/add', jwtAuth(), hasPerm('system:role:add'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;
-  await db.insertInto(T).values({role_id:generateSnowflakeId(), tenant_id:getCurrentTenantId()??'000000', role_name:b.roleName, role_key:b.roleKey, sort_num:b.sortNum??0, status:'0', remark:b.remark??null, deleted:0}).execute();
+  await db.insertInto(T).values({
+    role_id: generateSnowflakeId(), tenant_id: getCurrentTenantId() ?? '000000',
+    role_name: b.roleName, role_key: b.roleKey,
+    data_scope: b.dataScope ?? 'TENANT',
+    sort_num: b.sortNum ?? 0, status: '0', remark: b.remark ?? null, deleted: 0,
+  }).execute();
   ctx.body = { code: 200, message: '新增成功' };
 });
 router.put('/edit', jwtAuth(), hasPerm('system:role:edit'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;
   await assertTenantResource('sys_role', 'role_id', b.roleId);
   const tid = getCurrentTenantId();
-  await db.updateTable(T).set({role_name:b.roleName, role_key:b.roleKey, sort_num:b.sortNum, status:b.status, remark:b.remark}).where('role_id','=',b.roleId).where('tenant_id','=',tid).execute();
+  await db.updateTable(T).set({
+    role_name: b.roleName, role_key: b.roleKey,
+    data_scope: b.dataScope ?? 'TENANT',
+    sort_num: b.sortNum, status: b.status, remark: b.remark,
+  }).where('role_id', '=', b.roleId).where('tenant_id', '=', tid).execute();
   ctx.body = { code: 200, message: '修改成功' };
 });
 router.put('/:roleId/menus', jwtAuth(), hasPerm('system:role:assignMenu'), async (ctx: Context) => {

@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:init": "tsx src/scripts/init-db.ts",
-    "db:migrate": "tsx src/scripts/migrate.ts"
+    "db:migrate": "tsx src/scripts/migrate.ts",
+    "db:backup": "tsx src/scripts/backup.ts",
+    "db:restore": "tsx src/scripts/restore.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.5.0",

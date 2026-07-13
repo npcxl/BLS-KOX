@@ -29,3 +29,4 @@ Thumbs.db
 # Local caches
 .cache/
 .tmp/
+\nbls-server/backups/\n
