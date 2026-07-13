@@ -22,14 +22,21 @@ function requiredEnv(name: string, defaultValue?: string): string {
 }
 
 const isProduction = (process.env.NODE_ENV ?? '') === 'production';
+const PLACEHOLDER_PREFIX = 'CHANGE_TO_';
 
 /** 生产环境强校验 JWT_SECRET */
 const jwtSecret = requiredEnv('JWT_SECRET', 'please_change_me_dev_only');
-if (isProduction && jwtSecret === 'please_change_me_dev_only') throw new Error('Production must set a strong JWT_SECRET');
+if (isProduction) {
+  if (jwtSecret === 'please_change_me_dev_only') throw new Error('Production must set a strong JWT_SECRET');
+  if (jwtSecret.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) throw new Error('JWT_SECRET must not be a CHANGE_TO_* placeholder');
+}
 
 /** 生产环境强校验 DB_PASSWORD */
 const dbPassword = requiredEnv('DB_PASSWORD', '');
-if (isProduction && !dbPassword) throw new Error('Production must set DB_PASSWORD');
+if (isProduction) {
+  if (!dbPassword) throw new Error('Production must set DB_PASSWORD');
+  if (dbPassword.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) throw new Error('DB_PASSWORD must not be a CHANGE_TO_* placeholder');
+}
 
 /** 生产环境强校验 CORS 白名单 */
 const corsOrigins = (process.env.CORS_ORIGINS ?? '').split(',').map(s => s.trim()).filter(Boolean);

@@ -40,6 +40,7 @@ jobs:
           cache-dependency-path: bls-admin/package-lock.json
       - run: npm ci
       - run: npm run tsc
+      - run: npm test
       - run: npm run build
 
   docker:
@@ -47,5 +48,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t bls-kox-server:${{ github.ref_name }} ./bls-server
-      - run: docker build -f bls-admin/Dockerfile -t bls-kox-admin:${{ github.ref_name }} .
+      - run: docker build -t bls-kox-admin:${{ github.ref_name }} ./bls-admin
       - run: docker compose config
+        env:
+          DB_PASSWORD: ci_test_password_placeholder
+          REDIS_PASSWORD: ci_test_password_placeholder
+          JWT_SECRET: ci_test_jwt_secret_at_least_32_chars_long

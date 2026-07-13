@@ -122,21 +122,22 @@ if (require.main === module) {
   if (process.env.NODE_ENV === 'production') {
     const issues: string[] = [];
     const WEAK_SECRETS = ['please_change_me', '123456', 'password', 'changeme', ''];
+    const PLACEHOLDER_PREFIX = 'CHANGE_TO_';
 
     const jwt = process.env.JWT_SECRET ?? '';
-    if (!jwt || WEAK_SECRETS.some(w => jwt.toLowerCase().includes(w))) {
-      issues.push('JWT_SECRET is missing or too weak (must be >= 32 chars, no common passwords)');
+    if (!jwt || WEAK_SECRETS.some(w => jwt.toLowerCase().includes(w)) || jwt.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) {
+      issues.push('JWT_SECRET is missing or too weak (must be >= 32 chars, no common passwords or CHANGE_TO_* placeholder)');
     }
     if (jwt.length < 32) issues.push('JWT_SECRET must be at least 32 characters');
 
     const dbPwd = process.env.DB_PASSWORD ?? '';
-    if (!dbPwd || WEAK_SECRETS.some(w => dbPwd.toLowerCase() === w)) {
-      issues.push('DB_PASSWORD is missing or too weak');
+    if (!dbPwd || WEAK_SECRETS.some(w => dbPwd.toLowerCase() === w) || dbPwd.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) {
+      issues.push('DB_PASSWORD is missing or too weak (no CHANGE_TO_* placeholder allowed)');
     }
 
     const redisPwd = process.env.REDIS_PASSWORD ?? '';
-    if (!redisPwd || WEAK_SECRETS.some(w => redisPwd.toLowerCase() === w)) {
-      issues.push('REDIS_PASSWORD is missing or too weak');
+    if (!redisPwd || WEAK_SECRETS.some(w => redisPwd.toLowerCase() === w) || redisPwd.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) {
+      issues.push('REDIS_PASSWORD is missing or too weak (no CHANGE_TO_* placeholder allowed)');
     }
 
     if (issues.length > 0) {
