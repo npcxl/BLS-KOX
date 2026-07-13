@@ -42,7 +42,7 @@ router.post('/', jwtAuth(), hasPerm('system:webhook:add'), async (ctx: Context) 
   await (await getDb()).insertInto(T).values({
     webhook_id: id, tenant_id: tid,
     name: b.name, url: b.url.trim(), events: JSON.stringify(b.events ?? []),
-    secret, status: '0', enabled: true,
+    secret, status: '0',
     created_at: new Date(), updated_at: new Date(),
   } as any).execute();
   ctx.body = { code: 200, data: { webhookId: id, secret }, message: '注册成功' };
@@ -72,7 +72,7 @@ router.put('/:id', jwtAuth(), hasPerm('system:webhook:edit'), async (ctx: Contex
     name: b.name ?? row.name,
     url: b.url ? b.url.trim() : row.url,
     events: b.events ? JSON.stringify(b.events) : row.events,
-    enabled: b.enabled !== undefined ? b.enabled : row.enabled,
+    status: b.status !== undefined ? b.status : row.status,
     updated_at: new Date(),
   } as any).where('webhook_id', '=', ctx.params.id).execute();
 
