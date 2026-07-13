@@ -138,8 +138,9 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
     const tid = getCurrentTenantId() ?? '000000';
     const values: Record<string, any> = { [pk]: id, [tenantField]: data[tenantField] ?? tid, ...data };
     if (softDelete && values.deleted === undefined) values.deleted = 0;
-    await db.insertInto(table).values(toSnake(values)).execute();
+    // P14: fail-closed — 租户校验在写入前，阻止跨租户/无租户写入
     await config.onWrite?.();
+    await db.insertInto(table).values(toSnake(values)).execute();
     success(ctx, { [pk]: values[pk] }, '新增成功');
   });
 
@@ -168,8 +169,8 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
 
     if (softDelete) query = query.where('deleted', '=', 0);
 
-    await query.execute();
     await config.onWrite?.();
+    await query.execute();
     success(ctx, null, '修改成功');
   });
 
@@ -195,8 +196,8 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
     const scopeWhere = await buildScopeWhereFn(db, ctx);
     if (scopeWhere) query = query.where(scopeWhere);
 
-    await query.execute();
     await config.onWrite?.();
+    await query.execute();
     success(ctx, null, '删除成功');
   });
 
@@ -219,8 +220,8 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
 
     if (softDelete) query = query.where('deleted', '=', 0);
 
-    await query.execute();
     await config.onWrite?.();
+    await query.execute();
     success(ctx, null, '状态修改成功');
   });
 
