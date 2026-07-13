@@ -132,7 +132,7 @@ BLS-KOX/
 - [x] Outbox Pattern
 - [x] Backup / Restore
 - [x] Data Scope
-- [ ] API Versioning
+- [x] API Versioning
 - [ ] Webhook
 
 详见 [docs/roadmap.md](./docs/roadmap.md)。

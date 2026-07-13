@@ -27,8 +27,8 @@ export async function collectEvent(params: {
   userId?: string;
 }): Promise<{ riskScore: number; actions: SecurityAction[] }> {
   try {
-    // 查询时间窗口内同 IP 的事件统计
-    const rows = await execute(
+    // P10-FIX-01: SELECT 改用 query()，不绕 Array.isArray 兜底
+    const rows = await query<any>(
       `SELECT event_type, COUNT(*) as cnt
        FROM sys_security_log
        WHERE client_ip = :ip AND create_time >= NOW() - INTERVAL :window SECOND
@@ -37,10 +37,8 @@ export async function collectEvent(params: {
     );
 
     const stats = new Map<string, number>();
-    if (Array.isArray(rows)) {
-      for (const r of rows as any[]) {
-        stats.set(String(r.event_type ?? ''), Number(r.cnt ?? 0));
-      }
+    for (const r of rows) {
+      stats.set(String(r.event_type ?? ''), Number(r.cnt ?? 0));
     }
 
     // 当前事件计数+1

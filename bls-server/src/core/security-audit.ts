@@ -11,7 +11,6 @@ import type { AuditActor } from './audit';
 import { logger } from './logger';
 import { getRequestContext } from './request-context';
 import { securityEventsTotal, crossTenantAccessTotal, loginFailedTotal, refreshReuseDetectedTotal } from '../observability/metrics';
-import { collectEvent } from '../security/event-center/event-center';
 
 // ========== 事件类型 ==========
 
@@ -167,15 +166,22 @@ export async function writeSecurityLog(input: SecurityLogInput): Promise<void> {
     if (input.eventType === SecurityEventType.LOGIN_FAILED) loginFailedTotal.inc();
     if (input.eventType === SecurityEventType.REFRESH_TOKEN_REUSE) refreshReuseDetectedTotal.inc();
 
-    // P10: 接入 Event Center — 采集 → 聚合 → 评分 → 自动处置
-    const clientIp = actor.clientIp ?? 'unknown';
-    if (clientIp !== 'unknown') {
-      collectEvent({
-        eventType: input.eventType,
-        ip: clientIp,
-        tenantId: String(actor.tenantId ?? '000000'),
-        userId: actor.userId ?? undefined,
-      }).catch(() => { /* fire-and-forget, 不影响主流程 */ });
+    // P10: 接入 Event Center — 采集 → 聚合 → 评分 → 自动处置（运行时 require 打破循环依赖）
+    // P10-FIX-02: source === 'event-center' 不二次 collectEvent，防处置循环
+    const source = input.source ?? 'system';
+    if (source !== 'event-center') {
+      const clientIp = actor.clientIp ?? 'unknown';
+      if (clientIp !== 'unknown') {
+        try {
+          const { collectEvent } = require('../security/event-center/event-center');
+          collectEvent({
+            eventType: input.eventType,
+            ip: clientIp,
+            tenantId: String(actor.tenantId ?? '000000'),
+            userId: actor.userId ?? undefined,
+          }).catch(() => { /* fire-and-forget */ });
+        } catch { /* event-center 未就绪时静默 */ }
+      }
     }
   } catch (error) {
     logger.error('安全审计日志写入失败', {

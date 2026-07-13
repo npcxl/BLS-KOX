@@ -14,6 +14,7 @@ import { httpMetricsMiddleware } from './middleware/http-metrics';
 import { requestContextMiddleware } from './core/request-context';
 import { rateLimitMiddleware } from './security/rate-limit/middleware';
 import { blockedIpMiddleware } from './security/event-center/ip-block-middleware';
+import { apiVersion } from './middleware/api-version';
 import { attachRealtimeWs } from './api/system/realtime/realtime.ws';
 import { worker } from './queue/worker';
 import { exportJob } from './queue/jobs/export.job';
@@ -52,6 +53,17 @@ export function createApp(): Koa {
   app.use(replayProtectionMiddleware());
   app.use(blockedIpMiddleware());
   app.use(rateLimitMiddleware());
+
+  // P11: API Versioning
+  // Deprecation header for non-versioned paths
+  app.use(async (ctx, next) => {
+    if (ctx.path.startsWith('/api/') && !ctx.path.startsWith('/api/v1/')) {
+      ctx.set('Deprecation', 'true');
+      ctx.set('Sunset', new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString());
+    }
+    await next();
+  });
+  app.use(apiVersion());
   app.use(router.routes());
   app.use(router.allowedMethods());
   app.on('error', (error) => {

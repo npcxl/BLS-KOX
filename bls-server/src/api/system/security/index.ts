@@ -140,7 +140,7 @@ router.get('/blacklist', jwtAuth(), hasPerm('system:security:stats'), async (ctx
 });
 
 // ====== POST /blacklist ======
-router.post('/blacklist', jwtAuth(), hasPerm('system:security:stats'), async (ctx: Context) => {
+router.post('/blacklist', jwtAuth(), hasPerm('system:security:blacklist:add'), async (ctx: Context) => {
   const db = (await getDb()) as any;
   const body = ctx.request.body as any;
   const ip = (body.ipAddress ?? body.ip ?? '').trim();
@@ -174,7 +174,7 @@ router.post('/blacklist', jwtAuth(), hasPerm('system:security:stats'), async (ct
 });
 
 // ====== DELETE /blacklist/:id ======
-router.delete('/blacklist/:id', jwtAuth(), hasPerm('system:security:stats'), async (ctx: Context) => {
+router.delete('/blacklist/:id', jwtAuth(), hasPerm('system:security:blacklist:remove'), async (ctx: Context) => {
   const db = (await getDb()) as any;
   const row = await db.selectFrom(T).selectAll().where('id', '=', ctx.params.id).executeTakeFirst();
   if (!row) { ctx.body = { code: 404, message: '记录不存在' }; return; }

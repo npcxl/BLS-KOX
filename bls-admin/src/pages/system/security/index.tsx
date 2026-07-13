@@ -3,9 +3,9 @@
  */
 import { request } from '@umijs/max';
 import { PageContainer, ProCard, ProTable, StatisticCard } from '@ant-design/pro-components';
-import { Badge, Button, message, Popconfirm, Space, Tag, Typography, Descriptions } from 'antd';
-import { ReloadOutlined, SafetyCertificateOutlined, FireOutlined, KeyOutlined, BugOutlined } from '@ant-design/icons';
-import { useEffect, useState } from 'react';
+import { Badge, Button, Form, Input, message, Modal, Popconfirm, Space, Tag } from 'antd';
+import { ReloadOutlined, SafetyCertificateOutlined, FireOutlined, KeyOutlined, BugOutlined, PlusOutlined } from '@ant-design/icons';
+import { useEffect, useRef, useState } from 'react';
 
 const riskColorMap: Record<string, string> = {
   LOW: 'green', MEDIUM: 'orange', HIGH: 'red', CRITICAL: 'magenta',
@@ -33,6 +33,9 @@ export default function SecurityCenterPage() {
   const [stats, setStats] = useState<SecurityStats | null>(null);
   const [rules, setRules] = useState<RiskRule[]>([]);
   const [loading, setLoading] = useState(false);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const blacklistRef = useRef<any>(null);
+  const [addForm] = Form.useForm();
 
   const fetchStats = async () => {
     setLoading(true);
@@ -150,8 +153,15 @@ export default function SecurityCenterPage() {
       </ProCard>
 
       {/* ====== IP 黑名单 ====== */}
-      <ProCard title="IP 黑名单" style={{ marginTop: 16 }}>
+      <ProCard title="IP 黑名单" style={{ marginTop: 16 }}
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddModalOpen(true)}>
+            添加IP
+          </Button>
+        }
+      >
         <ProTable<any>
+          actionRef={blacklistRef}
           rowKey="id"
           request={async (params) => {
             const res = await request<{ data: any[]; total: number }>('/api/system/security/blacklist', {
@@ -174,6 +184,7 @@ export default function SecurityCenterPage() {
                 <Popconfirm title="确定解封?" onConfirm={async () => {
                   await request(`/api/system/security/blacklist/${record.id}`, { method: 'DELETE' });
                   message.success('已解封');
+                  blacklistRef.current?.reload();
                 }}>
                   <a>解封</a>
                 </Popconfirm>
@@ -182,8 +193,41 @@ export default function SecurityCenterPage() {
           ]}
           search={{ labelWidth: 60 }}
           pagination={{ defaultPageSize: 10 }}
+          options={false}
         />
       </ProCard>
+
+      {/* ====== 添加 IP Modal ====== */}
+      <Modal
+        title="添加 IP 黑名单"
+        open={addModalOpen}
+        onCancel={() => { setAddModalOpen(false); addForm.resetFields(); }}
+        onOk={async () => {
+          const values = await addForm.validateFields();
+          await request('/api/system/security/blacklist', { method: 'POST', data: {
+            ipAddress: values.ipAddress,
+            reason: values.reason,
+            expireAt: values.expireAt?.toISOString(),
+          }});
+          message.success('IP 已加入黑名单');
+          setAddModalOpen(false);
+          addForm.resetFields();
+          blacklistRef.current?.reload();
+          fetchStats();
+        }}
+      >
+        <Form form={addForm} layout="vertical">
+          <Form.Item name="ipAddress" label="IP 地址" rules={[{ required: true, message: '请输入 IP 地址' }]}>
+            <Input placeholder="192.168.1.1" />
+          </Form.Item>
+          <Form.Item name="reason" label="封禁原因">
+            <Input.TextArea rows={2} placeholder="可选" />
+          </Form.Item>
+          <Form.Item name="expireAt" label="过期时间（留空=永久）">
+            <Input type="datetime-local" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </PageContainer>
   );
 }
