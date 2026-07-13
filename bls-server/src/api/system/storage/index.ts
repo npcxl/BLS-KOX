@@ -9,6 +9,10 @@ import { assertTenantResource } from '../../../security/ownership';
 import { pickAllowed } from '../../../shared/utils/mass-assignment';
 import { createStorageProvider } from './storage.factory';
 import type { StorageConfig } from './storage.model';
+import { validateFile, generateObjectKey } from '../../../security/file-security';
+import { writeSecurityLog, SecurityEventType } from '../../../core/security-audit';
+import { writeUploadAudit } from '../../../core/audit';
+import { getRequestContext } from '../../../core/request-context';
 import fs from 'fs';
 import path from 'path';
 
@@ -86,27 +90,75 @@ router.post('/upload', jwtAuth(), hasPerm('system:file:upload'), async (ctx: Con
 
     const provider = createStorageProvider(config);
     const bucketName = accessType === 'public' ? (config.publicBucket || 'public-assets') : (config.privateBucket || 'private-assets');
-    const ext = path.extname(file.originalFilename || file.name || '');
+    const originalName = file.originalFilename || file.name || '';
+    const ext = path.extname(originalName);
     const extName = ext.replace('.', '').toLowerCase();
-    const safeName = `${Date.now()}_${file.originalFilename || file.name || 'file'}`;
-    const objectName = `${moduleName}/${safeName}`;
+    const mimeType = file.mimetype || 'application/octet-stream';
+    const fileSize = file.size || 0;
+
+    // P13: 文件安全校验（扩展名 + MIME + 大小）
+    const secResult = validateFile(originalName, mimeType, undefined, fileSize);
+    if (!secResult.valid) {
+      ctx.body = { code: 400, message: secResult.reason };
+      writeSecurityLog({
+        eventType: SecurityEventType.SECURITY_VALIDATION_FAILED,
+        title: `文件上传被拒绝: ${secResult.reason}`,
+        detail: { originalName, mimeType, fileSize },
+        source: 'file-security',
+      }).catch(() => {});
+      return;
+    }
+
+    // 随机 Object Key 防遍历
+    const objectName = `${moduleName}/${generateObjectKey(originalName)}`;
+    const safeName = objectName;
 
     const buffer = fs.readFileSync(file.filepath || file.path);
-    const result = await provider.upload({ originalName: file.originalFilename || file.name || '', fileName: safeName, mimeType: file.mimetype || null, buffer, bucketName, objectName, accessType: accessType as 'public'|'private' });
+
+    // P13: Magic Number 检测（图片文件）
+    const fullResult = validateFile(originalName, mimeType, buffer, fileSize);
+    if (!fullResult.valid) {
+      ctx.body = { code: 400, message: fullResult.reason };
+      writeSecurityLog({
+        eventType: SecurityEventType.SECURITY_VALIDATION_FAILED,
+        title: `文件上传被拒绝(Magic): ${fullResult.reason}`,
+        detail: { originalName, mimeType, fileSize },
+        source: 'file-security',
+      }).catch(() => {});
+      return;
+    }
+
+    const result = await provider.upload({ originalName, fileName: safeName, mimeType, buffer, bucketName, objectName, accessType: accessType as 'public'|'private' });
 
     const fileId = generateSnowflakeId();
     const url = accessType === 'public' ? result.url || provider.getPublicUrl({ bucketName, objectName }) : null;
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const tid = getCurrentTenantId() || '000000';
     await db.insertInto('sys_file').values({
-      file_id: fileId, tenant_id: getCurrentTenantId() || '000000', storage_id: config.storageId,
+      file_id: fileId, tenant_id: tid, storage_id: config.storageId,
       bucket_name: bucketName, object_name: objectName,
-      original_name: file.originalFilename || file.name || '',
-      file_name: safeName, file_ext: extName || null, mime_type: file.mimetype || null,
-      file_size: file.size || 0, access_type: accessType, module_name: moduleName,
+      original_name: originalName,
+      file_name: safeName, file_ext: extName || null, mime_type: mimeType,
+      file_size: fileSize, access_type: accessType, module_name: moduleName,
       url, create_time: now,
     }).execute();
 
-    ctx.body = { code: 200, message: '上传成功', data: { fileId, url, bucketName, objectName, originalName: file.originalFilename || file.name, fileName: safeName, fileSize: file.size || 0 } };
+    // P13: 上传审计日志
+    writeUploadAudit({
+      tenantId: tid,
+      userId: (ctx.state.user as any)?.userId ?? '',
+      username: (ctx.state.user as any)?.username ?? '',
+      moduleName, accessType,
+      storageId: config.storageId, storageType: config.storageType,
+      bucketName, objectName,
+      originalName, safeName,
+      fileExt: extName, mimeType, fileSize,
+      uploadStatus: '0', fileId, fileUrl: url || '',
+      clientIp: getRequestContext()?.clientIp ?? ctx.ip ?? '',
+      userAgent: (ctx.headers as any)?.['user-agent'] ?? '',
+    }).catch(() => { /* 不影响主流程 */ });
+
+    ctx.body = { code: 200, message: '上传成功', data: { fileId, url, bucketName, objectName, originalName, fileName: safeName, fileSize } };
   } catch (err: any) {
     ctx.body = { code: 500, message: err?.message || '上传失败' };
   }

@@ -42,22 +42,32 @@ function staticCheck(parsed: URL): { valid: boolean; error?: string } {
   return { valid: true };
 }
 
-/** DNS lookup + 全部 IP 校验 */
+/** DNS lookup + 全部 IPv4/IPv6 校验 */
 async function dnsCheck(hostname: string): Promise<{ valid: boolean; error?: string }> {
   // 如果 hostname 本身就是 IP，跳过 DNS
   if (/^[\d.]+$/.test(hostname) || hostname.includes(':')) {
     return { valid: true };
   }
 
-  try {
-    const addresses = await dns.resolve(hostname);
-    for (const addr of addresses) {
-      if (isBlockedIp(addr)) {
-        return { valid: false, error: `DNS 解析到内网地址: ${hostname} → ${addr}` };
-      }
+  // 并行解析 IPv4 + IPv6
+  const results = await Promise.allSettled([dns.resolve4(hostname), dns.resolve6(hostname)]);
+  const allAddresses: string[] = [];
+
+  for (const r of results) {
+    if (r.status === 'fulfilled') {
+      allAddresses.push(...r.value);
     }
-  } catch {
-    // DNS 解析失败不阻止（可能是网络问题，或域名不存在）—— 静态检查已通过即可
+  }
+
+  // P12-FIX-01: DNS 完全失败（IPv4+IPv6 都解析不到）→ 拒绝
+  if (allAddresses.length === 0) {
+    return { valid: false, error: `DNS 解析失败: ${hostname}` };
+  }
+
+  for (const addr of allAddresses) {
+    if (isBlockedIp(addr)) {
+      return { valid: false, error: `DNS 解析到内网地址: ${hostname} → ${addr}` };
+    }
   }
 
   return { valid: true };
