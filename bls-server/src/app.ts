@@ -13,6 +13,7 @@ import { replayProtectionMiddleware } from './middlewares/replayProtection';
 import { httpMetricsMiddleware } from './middleware/http-metrics';
 import { requestContextMiddleware } from './core/request-context';
 import { rateLimitMiddleware } from './security/rate-limit/middleware';
+import { blockedIpMiddleware } from './security/event-center/ip-block-middleware';
 import { attachRealtimeWs } from './api/system/realtime/realtime.ws';
 import { worker } from './queue/worker';
 import { exportJob } from './queue/jobs/export.job';
@@ -49,6 +50,7 @@ export function createApp(): Koa {
   app.use(httpMetricsMiddleware);
   app.use(tenantMiddleware);
   app.use(replayProtectionMiddleware());
+  app.use(blockedIpMiddleware());
   app.use(rateLimitMiddleware());
   app.use(router.routes());
   app.use(router.allowedMethods());

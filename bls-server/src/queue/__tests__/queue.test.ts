@@ -3,25 +3,15 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockDb } = vi.hoisted(() => {
-  const mockDb = {
-    insertInto: vi.fn().mockReturnThis(),
-    values: vi.fn().mockReturnThis(),
-    execute: vi.fn().mockResolvedValue(undefined),
-    executeTakeFirst: vi.fn().mockResolvedValue(null),
-    selectFrom: vi.fn().mockReturnThis(),
-    selectAll: vi.fn().mockReturnThis(),
-    where: vi.fn().mockReturnThis(),
-    orderBy: vi.fn().mockReturnThis(),
-    limit: vi.fn().mockReturnThis(),
-    updateTable: vi.fn().mockReturnThis(),
-  };
-  return { mockDb };
-});
-
-vi.mock('../../core/database.js', () => ({ getDb: vi.fn().mockResolvedValue(mockDb) }));
-vi.mock('../../shared/utils/snowflake.js', () => ({ generateSnowflakeId: () => ({ toString: () => String(Date.now()) }) }));
-vi.mock('../../core/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock('../../core/database.js', () => ({
+  getDb: vi.fn(),
+}));
+vi.mock('../../shared/utils/snowflake.js', () => ({
+  generateSnowflakeId: () => ({ toString: () => String(Date.now()) }),
+}));
+vi.mock('../../core/logger.js', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
 vi.mock('../../observability/metrics.js', () => ({
   jobQueueWaiting: { inc: vi.fn(), dec: vi.fn() },
   jobQueueFailedTotal: { inc: vi.fn() },
@@ -29,9 +19,34 @@ vi.mock('../../observability/metrics.js', () => ({
 }));
 
 import { enqueue, failJob, getJob, listJobs } from '../queue.js';
+import { getDb } from '../../core/database.js';
+
+/**
+ * mockDb 定义在模块顶层（非 vi.hoisted），在 beforeEach 中绑定到 getDb。
+ * 避免 vi.mock 工厂引用外部变量导致的 hoisting 初始化顺序问题。
+ */
+const mockDb = {
+  insertInto: vi.fn().mockReturnThis(),
+  values: vi.fn().mockReturnThis(),
+  execute: vi.fn().mockResolvedValue(undefined),
+  executeTakeFirst: vi.fn().mockResolvedValue(null),
+  selectFrom: vi.fn().mockReturnThis(),
+  selectAll: vi.fn().mockReturnThis(),
+  where: vi.fn().mockReturnThis(),
+  orderBy: vi.fn().mockReturnThis(),
+  limit: vi.fn().mockReturnThis(),
+  updateTable: vi.fn().mockReturnThis(),
+  transaction: vi.fn().mockReturnThis(),
+  set: vi.fn().mockReturnThis(),
+  forUpdate: vi.fn().mockReturnThis(),
+  skipLocked: vi.fn().mockReturnThis(),
+} as any;
 
 describe('Queue', () => {
-  beforeEach(() => { vi.clearAllMocks(); });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getDb).mockResolvedValue(mockDb);
+  });
 
   it('enqueue returns a queued job', async () => {
     mockDb.insertInto.mockReturnValue({ values: vi.fn().mockReturnValue({ execute: vi.fn().mockResolvedValue(undefined) }) } as any);

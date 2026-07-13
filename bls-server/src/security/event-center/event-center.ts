@@ -6,6 +6,7 @@
 import { execute, query } from '../../core/database';
 import { logger } from '../../core/logger';
 import { evaluateRisk, getOverallRisk, DEFAULT_RULES, type SecurityAction, type RiskRule } from './risk-rules';
+import { writeSecurityLog, SecurityEventType } from '../../core/security-audit';
 
 const WINDOW_SECONDS = 300; // 5 分钟聚合窗口
 
@@ -30,7 +31,7 @@ export async function collectEvent(params: {
     const rows = await execute(
       `SELECT event_type, COUNT(*) as cnt
        FROM sys_security_log
-       WHERE ip = :ip AND create_time >= NOW() - INTERVAL :window SECOND
+       WHERE client_ip = :ip AND create_time >= NOW() - INTERVAL :window SECOND
        GROUP BY event_type`,
       { ip: params.ip, window: String(WINDOW_SECONDS) },
     );
@@ -94,6 +95,14 @@ async function executeActions(actions: SecurityAction[], params: { ip: string; t
           if (redis) {
             await redis.set(`security:blocked_ip:${params.ip}`, '1', 'EX', 3600);
             logger.warn('[event-center] BLOCK_IP', { ip: params.ip });
+
+            // 处置审计
+            await writeSecurityLog({
+              eventType: SecurityEventType.RATE_LIMIT_EXCEEDED,
+              title: `自动封禁 IP：${params.ip}`,
+              detail: { action: 'BLOCK_IP', ip: params.ip, duration: '3600s' },
+              source: 'event-center',
+            }).catch(() => {});
           }
         } catch {}
         break;
@@ -104,6 +113,13 @@ async function executeActions(actions: SecurityAction[], params: { ip: string; t
             await execute('UPDATE sys_user SET status = 1 WHERE user_id = :uid AND tenant_id = :tid',
               { uid: params.userId, tid: params.tenantId });
             logger.warn('[event-center] LOCK_ACCOUNT', { userId: params.userId });
+
+            await writeSecurityLog({
+              eventType: SecurityEventType.SECURITY_VALIDATION_FAILED,
+              title: `自动锁定账户：${params.userId}`,
+              detail: { action: 'LOCK_ACCOUNT', userId: params.userId, tenantId: params.tenantId },
+              source: 'event-center',
+            }).catch(() => {});
           } catch {}
         }
         break;
@@ -114,6 +130,13 @@ async function executeActions(actions: SecurityAction[], params: { ip: string; t
             const { sessionCenter } = require('../session/session-center');
             await sessionCenter.revokeAll(params.tenantId, params.userId);
             logger.warn('[event-center] REVOKE_ALL_SESSIONS', { userId: params.userId });
+
+            await writeSecurityLog({
+              eventType: SecurityEventType.TOKEN_INVALID,
+              title: `吊销全部会话：${params.userId}`,
+              detail: { action: 'REVOKE_ALL_SESSIONS', userId: params.userId, tenantId: params.tenantId },
+              source: 'event-center',
+            }).catch(() => {});
           } catch {}
         }
         break;

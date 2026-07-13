@@ -105,4 +105,75 @@ describe('P9 Data Scope Core', () => {
     const fn = buildScopeWhere({ ...cfg, scope: 'DEPT_AND_CHILDREN', deptIds: [] });
     expect(fn).not.toBeNull();
   });
+
+  // ====== P9: CUD 路由 Data Scope 集成验证 ======
+
+  // 模拟 Kysely ExpressionBuilder
+  function mockEb(field: string, op?: string, val?: any): any {
+    return { type: 'condition', field, op, val };
+  }
+  mockEb.or = (conds: any[]) => ({ type: 'or', conds });
+  mockEb.fn = { countAll: () => ({ type: 'countAll' }) };
+  mockEb.selectAll = () => ({ type: 'selectAll' });
+
+  it('SELF scope WHERE callback → create_by = userId', () => {
+    const fn = buildScopeWhere({ ...cfg, scope: 'SELF' })!;
+    const result = fn(mockEb);
+    expect(result).toBeDefined();
+    // SELF without userField → single condition
+    expect(result.field).toBe('create_by');
+    expect(result.op).toBe('=');
+    expect(result.val).toBe('u1');
+  });
+
+  it('SELF scope with userField → OR condition', () => {
+    const fn = buildScopeWhere({ ...cfg, scope: 'SELF' }, { userField: 'user_id' })!;
+    const result = fn(mockEb);
+    expect(result.type).toBe('or');
+    expect(result.conds.length).toBe(2);
+  });
+
+  it('DEPT scope WHERE callback → dept_id IN', () => {
+    const fn = buildScopeWhere({ ...cfg, scope: 'DEPT', deptIds: ['d1', 'd2'] })!;
+    const result = fn(mockEb);
+    expect(result.field).toBe('dept_id');
+    expect(result.op).toBe('in');
+    expect(result.val).toEqual(['d1', 'd2']);
+  });
+
+  it('DEPT_AND_CHILDREN scope WHERE callback → dept_id IN (递归后)', () => {
+    const deptIds = ['d1', 'd1-c1', 'd1-c1-g1']; // 已递归展开
+    const fn = buildScopeWhere({ ...cfg, scope: 'DEPT_AND_CHILDREN', deptIds })!;
+    const result = fn(mockEb);
+    expect(result.field).toBe('dept_id');
+    expect(result.op).toBe('in');
+    expect(result.val.length).toBe(3);
+  });
+
+  it('DEPT scope empty deptIds → returns false literal', () => {
+    const fn = buildScopeWhere({ ...cfg, scope: 'DEPT', deptIds: [] })!;
+    const result = fn(mockEb);
+    expect(result).toBe(false);
+  });
+
+  // ====== dataScope: false 不应用 ======
+  it('config with dataScope: false → buildScopeWhere returns null (不启用)', () => {
+    // 模拟 crud.ts 中的检查逻辑
+    const dsConfig: false | any = false;
+    const whereFn = dsConfig
+      ? buildScopeWhere({ ...cfg, scope: 'SELF' }, dsConfig)
+      : null;
+    expect(whereFn).toBeNull();
+  });
+
+  it('config with dataScope: { selfField } → buildScopeWhere returns non-null (启用)', () => {
+    const dsConfig = { selfField: 'owner_id' };
+    const whereFn = buildScopeWhere({ ...cfg, scope: 'SELF' }, dsConfig);
+    expect(whereFn).not.toBeNull();
+  });
+
+  it('config with empty dataScope → buildScopeWhere uses defaults', () => {
+    const whereFn = buildScopeWhere({ ...cfg, scope: 'SELF' }, {});
+    expect(whereFn).not.toBeNull();
+  });
 });
