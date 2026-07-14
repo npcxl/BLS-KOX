@@ -67,10 +67,32 @@ export class AuthService {
 
   async loginByTenant(tenantId: string, username: string, password: string, meta?: any) {
     await getDb(); // ensure connection pool is initialized
+    const db = await getDb();
     const user = await queryOne<any>(
-      `SELECT user_id AS userId, username, nickname, password, tenant_id AS tenantId, is_admin AS isAdmin, status
+      `SELECT user_id AS userId, username, nickname, password, password_algorithm AS passwordAlgorithm,
+              tenant_id AS tenantId, is_admin AS isAdmin, status
        FROM sys_user WHERE username = :un AND tenant_id = :tid AND deleted = 0`, { un: username, tid: tenantId });
-    if (!user || !(await import('../../shared/utils/password.js')).verifyPassword(password, user.password)) throw new UnauthorizedError('用户名或密码错误');
+
+    if (!user) throw new UnauthorizedError('用户名或密码错误');
+
+    // 根据 password_algorithm 选择验证方式
+    const passwordModule = await import('../../shared/utils/password.js');
+    const algorithm = user.passwordAlgorithm || 'md5';
+    const isValid = await passwordModule.verifyPassword(password, user.password, algorithm);
+
+    if (!isValid) throw new UnauthorizedError('用户名或密码错误');
+
+    // MD5 老用户登录成功 → 标记需要迁移，但不阻塞登录
+    // 迁移时机：用户下次修改密码时，新密码会用 Argon2id 存储
+    // 此处记录日志便于运维跟踪未迁移用户数量
+    if (algorithm === 'md5') {
+      logger.info('[auth] MD5 user logged in (migration pending)', {
+        userId: user.userId,
+        username: user.username,
+        hint: 'User will be migrated to Argon2id on next password change',
+      });
+    }
+
     if (user.status === '1') throw new UnauthorizedError('用户已被停用');
     const profile = await this.profile(user.userId, tenantId);
     const payload: any = { userId: user.userId, username: user.username, tenantId };

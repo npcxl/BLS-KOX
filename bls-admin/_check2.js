@@ -1,0 +1,13 @@
+const fs = require('fs');
+const c = fs.readFileSync('src/pages/user/login/index.tsx', 'utf-8');
+console.log('tenantLoading:', c.includes('tenantLoading'));
+console.log('hidden:', c.includes('hidden'));
+console.log('submitting:', c.includes('submitting'));
+console.log('catch message:', c.includes("error?.response?.data?.message"));
+console.log('gradient:', c.includes('linear-gradient'));
+console.log('alipayobjects:', c.includes('alipayobjects'));
+console.log('rememberPassword:', c.includes('rememberPassword'));
+console.log('rememberUsername:', c.includes('rememberUsername'));
+console.log('tenantId guard:', c.includes('if (!values.tenantId)'));
+console.log('submittingRef:', c.includes('submittingRef'));
+console.log('console.log(error):', c.includes('console.log(error)'));

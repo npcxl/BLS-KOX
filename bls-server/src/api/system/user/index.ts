@@ -8,6 +8,7 @@ import { getRequestContext } from '../../../core/request-context';
 import { logSecurity } from '../../../core/security-audit';
 import { SecurityEventType } from '../../../core/security-audit';
 import { pickAllowed, USER_PROFILE_FIELDS, USER_CREATE_FIELDS, USER_EDIT_FIELDS } from '../../../shared/utils/mass-assignment';
+import { hashPasswordArgon2 } from '../../../shared/utils/password';
 import { appendEvent, EventTypes } from '../../../outbox/outbox';
 import { sessionCenter } from '../../../security/session/session-center';
 import { logger } from '../../../core/logger';
@@ -66,8 +67,16 @@ router.put('/profile', jwtAuth(), async (ctx: Context) => {
 
 router.post('/add', jwtAuth(), hasPerm('system:user:add'), async (ctx: Context) => {
   const db = (await getDb()) as any;
-  const data = pickAllowed((ctx.request.body ?? {}) as any, USER_CREATE_FIELDS);
+  const body = (ctx.request.body ?? {}) as any;
+  const data = pickAllowed(body, USER_CREATE_FIELDS);
   const tid = tenantId();
+
+  // 密码使用 Argon2id 哈希
+  if (data.password) {
+    data.password = await hashPasswordArgon2(String(data.password));
+    (data as any).password_algorithm = 'argon2id';
+  }
+
   // 业务写入与 Outbox 事件写入同一事务 → 原子性: 任一失败整体回滚
   await db.transaction().execute(async (trx: any) => {
     await trx.insertInto(T).values({ ...data, tenant_id: tid, deleted: 0 } as any).execute();
@@ -89,6 +98,48 @@ router.put('/edit', jwtAuth(), hasPerm('system:user:edit'), async (ctx: Context)
   const tid = tenantId();
   await db.updateTable(T).set(data as any).where('user_id','=',body.userId).where('tenant_id','=',tid).execute();
   ctx.body = { code: 200, message: '修改成功' };
+});
+
+/** 修改当前用户密码 */
+router.put('/changePassword', jwtAuth(), async (ctx: Context) => {
+  const u = ctx.state.user as any;
+  const db = (await getDb()) as any;
+  const body = (ctx.request.body ?? {}) as any;
+  const { oldPassword, newPassword } = body;
+  if (!oldPassword || !newPassword) {
+    ctx.body = { code: 400, message: '旧密码和新密码不能为空' };
+    return;
+  }
+  if (newPassword.length < 6) {
+    ctx.body = { code: 400, message: '新密码长度不能少于6位' };
+    return;
+  }
+
+  // 查询用户当前密码
+  const user = await db.selectFrom(T)
+    .select(['password', 'password_algorithm'])
+    .where('user_id', '=', u.userId)
+    .where('tenant_id', '=', u.tenantId)
+    .where('deleted', '=', 0)
+    .executeTakeFirst() as any;
+
+  if (!user) { ctx.body = { code: 404, message: '用户不存在' }; return; }
+
+  // 验证旧密码
+  const { verifyPassword } = await import('../../../shared/utils/password.js');
+  const algorithm = user.password_algorithm || 'md5';
+  const valid = await verifyPassword(String(oldPassword), user.password, algorithm);
+  if (!valid) { ctx.body = { code: 400, message: '旧密码不正确' }; return; }
+
+  // 新密码使用 Argon2id 哈希
+  const newHash = await hashPasswordArgon2(String(newPassword));
+  await db.updateTable(T)
+    .set({ password: newHash, password_algorithm: 'argon2id', password_update_time: new Date() } as any)
+    .where('user_id', '=', u.userId)
+    .execute();
+
+  await logSecurity(ctx, SecurityEventType.PERM_CHANGE, '修改密码').catch(() => {});
+  ctx.body = { code: 200, message: '密码修改成功' };
 });
 
 router.delete('/remove', jwtAuth(), hasPerm('system:user:remove'), async (ctx: Context) => {

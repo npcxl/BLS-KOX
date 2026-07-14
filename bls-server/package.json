@@ -27,6 +27,7 @@
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@koa/cors": "~5.0.0",
     "@types/exceljs": "^0.5.3",
+    "argon2": "^0.44.0",
     "dotenv": "~17.4.2",
     "exceljs": "^4.4.0",
     "ioredis": "^5.11.1",
