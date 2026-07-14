@@ -48,7 +48,6 @@ const Login: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const formRef = useRef<any>(null);
-  const rememberUsernameKey = 'rememberLoginUsername';
   const { initialState, setInitialState } = useModel('@@initialState');
   const { styles } = useStyles();
   const { message } = App.useApp();
@@ -67,11 +66,10 @@ const Login: React.FC = () => {
         if (cancelled) return;
         const list = res.data ?? [];
         setTenantOptions(list);
-        const savedTenantId = localStorage.getItem('lastTenantId') ?? undefined;
+        const savedTenantId = tokenStore.getLastTenantId() ?? undefined;
         const firstTenantId = list.find((item) => item.tenantId === savedTenantId)?.tenantId ?? list[0]?.tenantId;
         setDefaultTenantId(firstTenantId);
-        // 仅记住用户名，不存储密码（安全考量）
-        const rememberedUsername = localStorage.getItem(rememberUsernameKey) ?? undefined;
+        const rememberedUsername = tokenStore.getRememberedUsername() ?? undefined;
         if (firstTenantId !== undefined) {
           formRef.current?.setFieldsValue({
             tenantId: firstTenantId,
@@ -136,18 +134,18 @@ const Login: React.FC = () => {
           refreshToken: msg.refreshToken ?? '',
         });
         if (msg.user) {
-          localStorage.setItem('currentUser', JSON.stringify(msg.user));
+          tokenStore.setCurrentUser(msg.user);
         }
         const tenantId = values.tenantId;
         if (tenantId !== undefined) {
-          localStorage.setItem('lastTenantId', String(tenantId));
+          tokenStore.setLastTenantId(String(tenantId));
         }
         if (values.rememberUsername) {
           if (values.username) {
-            localStorage.setItem(rememberUsernameKey, values.username);
+            tokenStore.setRememberedUsername(values.username);
           }
         } else {
-          localStorage.removeItem(rememberUsernameKey);
+          tokenStore.clearRememberedUsername();
         }
         message.success(
           intl.formatMessage({ id: 'pages.login.success', defaultMessage: '登录成功！' }),

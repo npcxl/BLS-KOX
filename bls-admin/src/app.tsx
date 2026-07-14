@@ -24,6 +24,7 @@ import React from "react";
 import defaultSettings from "../config/defaultSettings";
 import { errorConfig } from "./requestErrorConfig";
 import { ensureValidSession, redirectToLogin, setLoginPath } from "@/auth/auth-manager";
+import { tokenStore } from "@/auth/token-store";
 import {
   publicThemeConfig,
   themeCurrent,
@@ -221,7 +222,7 @@ export async function getInitialState(): Promise<{
         url: currentUserPath,
       });
       if (msg.data) {
-        localStorage.setItem("currentUser", JSON.stringify(msg.data));
+        tokenStore.setCurrentUser(msg.data);
       }
       return msg.data;
     } catch (_error) {

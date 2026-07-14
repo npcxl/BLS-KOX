@@ -16,6 +16,7 @@ import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 import { useEffect, useMemo, useState } from 'react';
 import { useModel } from '@umijs/max';
 import { currentUser as queryCurrentUser } from '@/services/ant-design-pro/api';
+import { tokenStore } from '@/auth/token-store';
 import { updateProfile } from '@/services/system/user';
 import { useDict } from '@/hooks/useDict';
 import { useFileUpload } from '@/hooks/useFileUpload';
@@ -130,7 +131,7 @@ export default function AccountSettingsPage() {
 
         const resUser = await queryCurrentUser({ url: '/api/auth/profile' });
         if (resUser.data) {
-          localStorage.setItem('currentUser', JSON.stringify(resUser.data));
+          tokenStore.setCurrentUser(resUser.data);
           setInitialState((state) => ({ ...state, currentUser: resUser.data }));
           form.setFieldsValue({
             nickname: resUser.data.nickname,
@@ -173,7 +174,7 @@ export default function AccountSettingsPage() {
 
       const res = await queryCurrentUser({ url: '/api/auth/profile' });
       if (res.data) {
-        localStorage.setItem('currentUser', JSON.stringify(res.data));
+        tokenStore.setCurrentUser(res.data);
         setInitialState((state) => ({ ...state, currentUser: res.data }));
         form.setFieldsValue({
           nickname: res.data.nickname,
