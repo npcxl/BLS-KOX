@@ -34,10 +34,11 @@ export class ConfigService {
     return fn(tid);
   }
 
-  /** P14: auth-sensitive — tenant context required, no platform fallback */
-  async isMultiLoginEnabled(): Promise<boolean> {
+  /** P14: auth-sensitive — tenant context required, no platform fallback.
+   *  Accepts optional tenantId for login flows where JWT context is not yet established. */
+  async isMultiLoginEnabled(tid?: string): Promise<boolean> {
     const fn = this._getConfigFn ?? getDynamicConfig;
-    const cfg = await fn(getTenantOrFail());
+    const cfg = await fn(tid ?? getTenantOrFail());
     return cfg.multiLogin;
   }
 }

@@ -130,6 +130,13 @@ export const errorConfig: RequestConfig = {
 
       // HTTP 401 处理（兜底：只有请求拦截器刷新失败或服务端主动吊销时才到这里）
       if (error?.response?.status === 401) {
+        const requestUrl = error?.config?.url ?? '';
+
+        // 登录接口返回 401 → 不刷新、不跳转，交给登录组件自己显示错误
+        if (requestUrl.includes('/api/auth/login')) {
+          return;
+        }
+
         const responseCode = error?.response?.data?.code;
 
         // skipAuthRefresh 标记的请求 → 直接跳登录
@@ -253,5 +260,37 @@ export const errorConfig: RequestConfig = {
       return ensureFreshToken(config);
     },
   ],
-  responseInterceptors: [],
+  responseInterceptors: [
+    // 自动将 MySQL tinyint(1) 字段 (0/1) 转换为 boolean
+    (response: any) => {
+      if (response?.data) {
+        convertTinyIntToBoolean(response.data);
+      }
+      return response;
+    },
+  ],
 };
+
+/** 递归遍历对象，将已知 tinyint(1) 字段从 0/1 数字转为 boolean */
+const TINYINT_FIELDS = new Set([
+  'visible', 'searchable', 'editable', 'copyable', 'ellipsis', 'required',
+  'enabled', 'isAdmin', 'isDefault', 'softDelete', 'deleted',
+  'fixedHeader', 'fixSiderbar', 'colorWeak', 'multiLogin', 'demoEnabled',
+  'success',
+]);
+
+function convertTinyIntToBoolean(obj: any): void {
+  if (!obj || typeof obj !== 'object') return;
+  if (Array.isArray(obj)) {
+    for (const item of obj) convertTinyIntToBoolean(item);
+    return;
+  }
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (TINYINT_FIELDS.has(key) && (val === 0 || val === 1)) {
+      obj[key] = val === 1;
+    } else if (val && typeof val === 'object') {
+      convertTinyIntToBoolean(val);
+    }
+  }
+}

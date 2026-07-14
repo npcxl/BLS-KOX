@@ -11,7 +11,7 @@ function normalizePermissions(value: PermissionInput): string[] {
 export function usePermission(required?: PermissionInput, mode: 'any' | 'all' = 'any') {
   const { initialState } = useModel('@@initialState');
   const userPerms = initialState?.currentUser?.perms ?? [];
-  const isAdmin = initialState?.currentUser?.isAdmin === '1';
+  const isAdmin = String(initialState?.currentUser?.isAdmin ?? '0') === '1';
 
   const requiredPerms = useMemo(() => normalizePermissions(required), [required]);
 

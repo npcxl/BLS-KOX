@@ -77,7 +77,7 @@ export class AuthService {
     const accessToken = signToken(payload);
     const refreshToken = signRefreshToken(payload);
     const configSvc = new ConfigService();
-    const multi = await configSvc.isMultiLoginEnabled();
+    const multi = await configSvc.isMultiLoginEnabled(tenantId);
 
     // 保存 session 到 Redis
     const client = getRedisClient();

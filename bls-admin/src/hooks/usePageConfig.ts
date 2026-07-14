@@ -7,9 +7,9 @@ function columnToProColumn(col: PageColumnConfigRecord, dictValueEnum?: Record<s
   const colDef: ProColumns<any> = {
     title: col.title,
     dataIndex: col.dataIndex,
-    search: col.searchable,
-    ellipsis: col.ellipsis,
-    copyable: col.copyable,
+    search: !!col.searchable,
+    ellipsis: !!col.ellipsis,
+    copyable: !!col.copyable,
   };
 
   if (col.valueType) {
@@ -33,7 +33,7 @@ function columnToFormColumn(col: PageColumnConfigRecord): ProFormColumnsType<any
     colDef.valueType = col.valueType as any;
   }
 
-  if (col.required) {
+  if (!!col.required) {
     colDef.formItemProps = {
       rules: [{ required: true, message: `请输入${col.title}` }],
     };
@@ -96,14 +96,14 @@ export function usePageConfig(pageCode: string) {
   }, [pageCode]);
 
   const proColumns: ProColumns<any>[] = columns
-    .filter((col) => col.visible)
+    .filter((col) => !!col.visible)
     .map((col) => {
       const dictEnum = col.valueEnumCode ? dictValueEnums.get(col.valueEnumCode) : undefined;
       return columnToProColumn(col, dictEnum);
     });
 
   const formColumns: ProFormColumnsType<any>[] = columns
-    .filter((col) => col.editable)
+    .filter((col) => !!col.editable)
     .map((col) => columnToFormColumn(col));
 
   return { columns, proColumns, formColumns, loading };

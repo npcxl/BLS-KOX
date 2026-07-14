@@ -189,7 +189,8 @@ export default function CrudTablePage<T extends Record<string, any>>({
       const dataIndex = String(column.dataIndex ?? "");
       const config = configMap.get(dataIndex);
       if (!config) return true;
-      return config.visible !== false;
+      if (!config.visible) return false;
+      return true;
     });
   }, [columnConfig, columns]);
 

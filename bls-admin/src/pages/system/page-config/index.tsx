@@ -113,7 +113,7 @@ export default function PageConfigPage() {
     {
       title: "可见", dataIndex: "visible", width: 56, align: "center" as const,
       render: (_: any, __: any, index: number) => (
-        <Switch size="small" checked={columns[index]?.visible !== false}
+        <Switch size="small" checked={!!columns[index]?.visible}
           onChange={(v) => updateColumn(index, "visible", v)} />
       ),
     },
@@ -198,7 +198,7 @@ export default function PageConfigPage() {
         columnId: item.columnId,
         pageCode: selectedCode,
         orderNum: Number(item.orderNum ?? i + 1),
-        visible: item.visible !== false,
+        visible: !!item.visible,
         ellipsis: !!item.ellipsis,
         searchable: !!item.searchable,
         editable: !!item.editable,
@@ -262,7 +262,7 @@ export default function PageConfigPage() {
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <Text strong={active} style={{ fontSize: 13 }}>{item.pageName}</Text>
-                    {item.enabled ? (
+                    {!!item.enabled ? (
                       <Tag color="green" style={{ marginRight: 0, fontSize: 10, lineHeight: "18px", padding: "0 4px" }}>启用</Tag>
                     ) : (
                       <Tag style={{ marginRight: 0, fontSize: 10, lineHeight: "18px", padding: "0 4px" }}>停用</Tag>

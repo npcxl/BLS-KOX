@@ -217,8 +217,8 @@ export default function AccountSettingsPage() {
                 <Descriptions.Item label="用户名">{currentUser.username}</Descriptions.Item>
                 <Descriptions.Item label="昵称">{currentUser.nickname}</Descriptions.Item>
                 <Descriptions.Item label="部门">{currentUser.deptName || '-'}</Descriptions.Item>
-                <Descriptions.Item label="状态">{statusValueEnum[currentUser.status || '']?.text || '-'}</Descriptions.Item>
-                <Descriptions.Item label="管理员">{yesNoValueEnum[currentUser.isAdmin || '']?.text || '-'}</Descriptions.Item>
+                <Descriptions.Item label="状态">{statusValueEnum[String(currentUser.status ?? '')]?.text || '-'}</Descriptions.Item>
+                <Descriptions.Item label="管理员">{yesNoValueEnum[String(currentUser.isAdmin ?? '')]?.text || '-'}</Descriptions.Item>
               </Descriptions>
             </Space>
           </ProCard>
