@@ -13,6 +13,7 @@ const Settings: ProLayoutProps & {
   fixedHeader: false,
   fixSiderbar: true,
   colorWeak: false,
+  splitMenus: false,
   title: "system",
   logo: false,
   iconfontUrl: "",

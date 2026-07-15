@@ -4,6 +4,7 @@ import {
   ProFormText,
 } from '@ant-design/pro-components';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useModel } from '@umijs/max';
 import { Button, message } from 'antd';
 import React, { useState } from 'react';
 import { queryCurrent } from '../service';
@@ -13,6 +14,9 @@ import useStyles from './index.style';
 
 const BaseView: React.FC = () => {
   const { styles } = useStyles();
+  const queryClient = useQueryClient();
+  const { initialState } = useModel('@@initialState');
+  const fetchUserInfo = initialState?.fetchUserInfo;
 
   const { data: currentUser, isLoading: loading } = useQuery({
     queryKey: ['current-user'],
@@ -42,6 +46,8 @@ const BaseView: React.FC = () => {
     });
     if (res.code === 200) {
       message.success('更新基本信息成功');
+      await fetchUserInfo?.();
+      queryClient.invalidateQueries({ queryKey: ['current-user'] });
     }
   };
 
@@ -92,7 +98,7 @@ const BaseView: React.FC = () => {
             </ProForm>
           </div>
           <div className={styles.right}>
-            <AvatarView avatar={getAvatarURL()} />
+            <AvatarView avatar={getAvatarURL()} fetchUserInfo={fetchUserInfo} />
           </div>
         </>
       )}
@@ -101,7 +107,7 @@ const BaseView: React.FC = () => {
 };
 export default BaseView;
 
-const AvatarView = ({ avatar }: { avatar: string }) => {
+const AvatarView = ({ avatar, fetchUserInfo }: { avatar: string; fetchUserInfo?: () => Promise<any> }) => {
   const { styles } = useStyles();
   const queryClient = useQueryClient();
   const [avatarUrl, setAvatarUrl] = useState(avatar);
@@ -113,6 +119,7 @@ const AvatarView = ({ avatar }: { avatar: string }) => {
         const res = await updateProfile({ userId: '', avatar: result.url } as any);
         if (res.code === 200) {
           setAvatarUrl(result.url);
+          await fetchUserInfo?.();
           queryClient.invalidateQueries({ queryKey: ['current-user'] });
           message.success('头像更新成功');
         } else {

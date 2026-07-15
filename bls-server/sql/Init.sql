@@ -898,6 +898,10 @@ INSERT INTO `sys_theme_config` VALUES ('000501','000000','light','#722ED1','mix'
 /*!40000 ALTER TABLE `sys_theme_config` ENABLE KEYS */;
 UNLOCK TABLES;
 
+-- Migration: add split_menus and sider_menu_type columns for existing databases
+-- ALTER TABLE `sys_theme_config` ADD COLUMN `split_menus` tinyint NOT NULL DEFAULT '0' COMMENT '自动分割菜单' AFTER `color_weak`;
+-- ALTER TABLE `sys_theme_config` ADD COLUMN `sider_menu_type` varchar(20) NOT NULL DEFAULT 'sub' COMMENT '侧边菜单类型:sub/group' AFTER `split_menus`;
+
 --
 -- Table structure for table `sys_upload_audit`
 --

@@ -183,6 +183,8 @@ function parseThemeSettings(theme: any): {
       fixedHeader: toBoolean(theme.fixedHeader, false),
       fixSiderbar: toBoolean(theme.fixSiderbar, true),
       colorWeak: toBoolean(theme.colorWeak, false),
+      splitMenus: toBoolean(theme.splitMenus, false),
+      siderMenuType: theme.siderMenuType ?? 'sub',
 
       title: theme.title,
       logo: theme.logo ?? defaultSettings.logo,
@@ -408,6 +410,8 @@ export const layout: RunTimeLayoutConfig = ({
     fixedHeader: settings.fixedHeader ? 1 : 0,
     fixSiderbar: settings.fixSiderbar ? 1 : 0,
     colorWeak: settings.colorWeak ? 1 : 0,
+    splitMenus: settings.splitMenus ? 1 : 0,
+    siderMenuType: (settings as any).siderMenuType ?? 'sub',
     title: settings.title ?? "",
     logo:
       typeof (settings as any).logo === "string" && (settings as any).logo ? (settings as any).logo : null,

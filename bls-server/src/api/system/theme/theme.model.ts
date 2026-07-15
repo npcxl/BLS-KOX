@@ -8,6 +8,8 @@ export interface ThemeConfig {
   fixedHeader: 0 | 1;
   fixSiderbar: 0 | 1;
   colorWeak: 0 | 1;
+  splitMenus: 0 | 1;
+  siderMenuType: 'sub' | 'group';
   title: string;
   logo: string | null;
   iconfontUrl: string | null;
@@ -34,6 +36,8 @@ export interface ThemeInput {
   fixedHeader?: 0 | 1;
   fixSiderbar?: 0 | 1;
   colorWeak?: 0 | 1;
+  splitMenus?: 0 | 1;
+  siderMenuType?: 'sub' | 'group';
   title: string;
   logo?: string | null;
   iconfontUrl?: string | null;
