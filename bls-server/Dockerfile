@@ -24,8 +24,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV APP_PORT=7001
 
+# argon2 原生模块编译依赖（生产阶段也需要）
+RUN apk add --no-cache python3 make g++
+
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force && apk del python3 make g++
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/sql ./sql

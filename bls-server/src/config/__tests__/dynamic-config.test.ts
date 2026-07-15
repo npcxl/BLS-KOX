@@ -158,13 +158,13 @@ describe('Dynamic Config', () => {
     expect(onWriteIdx).toBeLessThan(insertIdx);
   });
 
-  it('CRUD edit: onWrite called BEFORE query.execute (fail-closed order)', async () => {
+  it('CRUD edit: onWrite called BEFORE query execute (fail-closed order)', async () => {
     const mod = await import('../../core/crud.js');
     const fnStr = mod.defineCrudModule.toString();
     // Find the edit handler section
     const editIdx = fnStr.indexOf("router.put('/edit'");
     const onWriteIdx2 = fnStr.indexOf('onWrite?.()', editIdx);
-    const execIdx2 = fnStr.indexOf('query.execute()', editIdx);
+    const execIdx2 = fnStr.indexOf('.execute()', editIdx);
     expect(onWriteIdx2).toBeGreaterThan(editIdx);
     expect(execIdx2).toBeGreaterThan(editIdx);
     expect(onWriteIdx2).toBeLessThan(execIdx2);
