@@ -59,7 +59,7 @@ router.get('/system-status', jwtAuth(), async (ctx: Context) => {
 router.get('/recent-logs', jwtAuth(), async (ctx: Context) => {
   await getDb();
   const logs = await query<any>(
-    'SELECT title, username, business_type AS businessType, create_time AS createTime FROM sys_operation_log ORDER BY create_time DESC LIMIT 5',
+    'SELECT title, username, business_type AS businessType, operator_time AS createTime FROM sys_operation_log ORDER BY operator_time DESC LIMIT 5',
   );
   ctx.body = { code: 200, data: logs ?? [] };
 });

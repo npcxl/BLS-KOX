@@ -1,53 +1,50 @@
 import { UploadOutlined } from '@ant-design/icons';
 import {
   ProForm,
-  ProFormDependency,
-  ProFormFieldSet,
-  ProFormSelect,
   ProFormText,
-  ProFormTextArea,
 } from '@ant-design/pro-components';
-import { useQuery } from '@tanstack/react-query';
-import { Button, Input, message, Upload } from 'antd';
-import React from 'react';
-import { queryCity, queryCurrent, queryProvince } from '../service';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Button, message } from 'antd';
+import React, { useState } from 'react';
+import { queryCurrent } from '../service';
+import { updateProfile } from '@/services/system/user';
+import { useFileUpload } from '@/hooks/useFileUpload';
 import useStyles from './index.style';
-
-const validatorPhone = (
-  _rule: any,
-  value: string[],
-  callback: (message?: string) => void,
-) => {
-  if (!value[0]) {
-    callback('Please input your area code!');
-  }
-  if (!value[1]) {
-    callback('Please input your phone number!');
-  }
-  callback();
-};
 
 const BaseView: React.FC = () => {
   const { styles } = useStyles();
 
   const { data: currentUser, isLoading: loading } = useQuery({
     queryKey: ['current-user'],
-    queryFn: () => queryCurrent().then((res) => res.data),
+    queryFn: () =>
+      queryCurrent().then((res) => ({
+        userId: res.data?.userId,
+        name: res.data?.nickname || res.data?.username,
+        avatar: res.data?.avatar,
+        email: (res.data as any)?.email,
+        phone: (res.data as any)?.phone,
+      })),
   });
+
   const getAvatarURL = () => {
-    if (currentUser) {
-      if (currentUser.avatar) {
-        return currentUser.avatar;
-      }
-      const url =
-        'https://gw.alipayobjects.com/zos/rmsportal/BiazfanxmamNRoxxVxka.png';
-      return url;
+    if (currentUser?.avatar) {
+      return currentUser.avatar;
     }
-    return '';
+    return 'https://gw.alipayobjects.com/zos/rmsportal/BiazfanxmamNRoxxVxka.png';
   };
-  const handleFinish = async () => {
-    message.success('更新基本信息成功');
+
+  const handleFinish = async (values: any) => {
+    const res = await updateProfile({
+      userId: currentUser?.userId || '',
+      nickname: values.name,
+      email: values.email,
+      phone: values.phone,
+    });
+    if (res.code === 200) {
+      message.success('更新基本信息成功');
+    }
   };
+
   return (
     <div className={styles.baseView}>
       {loading ? null : (
@@ -62,23 +59,9 @@ const BaseView: React.FC = () => {
                 },
                 render: (_, dom) => dom[1],
               }}
-              initialValues={{
-                ...currentUser,
-                phone: currentUser?.phone?.split('-'),
-              }}
+              initialValues={currentUser ?? {}}
               requiredMark={false}
             >
-              <ProFormText
-                width="md"
-                name="email"
-                label="邮箱"
-                rules={[
-                  {
-                    required: true,
-                    message: '请输入您的邮箱!',
-                  },
-                ]}
-              />
               <ProFormText
                 width="md"
                 name="name"
@@ -90,122 +73,22 @@ const BaseView: React.FC = () => {
                   },
                 ]}
               />
-              <ProFormTextArea
-                name="profile"
-                label="个人简介"
-                rules={[
-                  {
-                    required: true,
-                    message: '请输入个人简介!',
-                  },
-                ]}
-                placeholder="个人简介"
-              />
-              <ProFormSelect
-                width="sm"
-                name="country"
-                label="国家/地区"
-                rules={[
-                  {
-                    required: true,
-                    message: '请输入您的国家或地区!',
-                  },
-                ]}
-                options={[
-                  {
-                    label: '中国',
-                    value: 'China',
-                  },
-                ]}
-              />
-
-              <ProForm.Group title="所在省市" size={8}>
-                <ProFormSelect
-                  rules={[
-                    {
-                      required: true,
-                      message: '请输入您的所在省!',
-                    },
-                  ]}
-                  width="sm"
-                  fieldProps={{
-                    labelInValue: true,
-                  }}
-                  name="province"
-                  request={async () => {
-                    return queryProvince().then(({ data }) => {
-                      return data.map((item) => {
-                        return {
-                          label: item.name,
-                          value: item.id,
-                        };
-                      });
-                    });
-                  }}
-                />
-                <ProFormDependency name={['province']}>
-                  {({ province }) => {
-                    return (
-                      <ProFormSelect
-                        params={{
-                          key: province?.value,
-                        }}
-                        name="city"
-                        width="sm"
-                        rules={[
-                          {
-                            required: true,
-                            message: '请输入您的所在城市!',
-                          },
-                        ]}
-                        disabled={!province}
-                        request={async () => {
-                          if (!province?.key) {
-                            return [];
-                          }
-                          return queryCity(province.key || '').then(
-                            ({ data }) => {
-                              return data.map((item) => {
-                                return {
-                                  label: item.name,
-                                  value: item.id,
-                                };
-                              });
-                            },
-                          );
-                        }}
-                      />
-                    );
-                  }}
-                </ProFormDependency>
-              </ProForm.Group>
               <ProFormText
                 width="md"
-                name="address"
-                label="街道地址"
+                name="email"
+                label="邮箱"
                 rules={[
                   {
-                    required: true,
-                    message: '请输入您的街道地址!',
+                    type: 'email',
+                    message: '请输入有效的邮箱地址!',
                   },
                 ]}
               />
-              <ProFormFieldSet
+              <ProFormText
+                width="md"
                 name="phone"
-                label="联系电话"
-                rules={[
-                  {
-                    required: true,
-                    message: '请输入您的联系电话!',
-                  },
-                  {
-                    validator: validatorPhone,
-                  },
-                ]}
-              >
-                <Input className={styles.area_code} />
-                <Input className={styles.phone_number} />
-              </ProFormFieldSet>
+                label="手机号"
+              />
             </ProForm>
           </div>
           <div className={styles.right}>
@@ -220,21 +103,55 @@ export default BaseView;
 
 const AvatarView = ({ avatar }: { avatar: string }) => {
   const { styles } = useStyles();
+  const queryClient = useQueryClient();
+  const [avatarUrl, setAvatarUrl] = useState(avatar);
+
+  const { uploading, upload } = useFileUpload({
+    defaultData: { accessType: 'public', moduleName: 'avatar' },
+    onSuccess: async (result) => {
+      if (result.url) {
+        const res = await updateProfile({ userId: '', avatar: result.url } as any);
+        if (res.code === 200) {
+          setAvatarUrl(result.url);
+          queryClient.invalidateQueries({ queryKey: ['current-user'] });
+          message.success('头像更新成功');
+        } else {
+          message.error(res.message || '头像更新失败');
+        }
+      } else {
+        message.error('获取头像URL失败');
+      }
+    },
+    onError: () => {
+      message.error('头像上传失败');
+    },
+  });
+
+  const handleFileSelect = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        upload({ file, filename: file.name });
+      }
+    };
+    input.click();
+  };
 
   return (
     <>
       <div className={styles.avatar_title}>头像</div>
       <div className={styles.avatar}>
-        <img src={avatar} alt="avatar" />
+        <img src={avatarUrl || avatar} alt="avatar" />
       </div>
-      <Upload showUploadList={false}>
-        <div className={styles.button_view}>
-          <Button>
-            <UploadOutlined />
-            更换头像
-          </Button>
-        </div>
-      </Upload>
+      <div className={styles.button_view}>
+        <Button loading={uploading} onClick={handleFileSelect}>
+          <UploadOutlined />
+          更换头像
+        </Button>
+      </div>
     </>
   );
 };

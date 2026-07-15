@@ -423,7 +423,7 @@ export const layout: RunTimeLayoutConfig = ({
     ...initialState?.settings,
       menuDataRender: () => {
         const dashboardTitle =
-          initialState?.systemMap?.['sys.dashboard.name'] || '欢迎';
+          initialState?.systemMap?.['sys.dashboard.name'] || '首页';
         return mapBackendMenus(initialState?.currentUser?.menus, dashboardTitle);
       },
     selectedKeys: normalizeSelectedKeys(history.location.pathname),

@@ -76,7 +76,7 @@
     "@biomejs/biome": "^2.4.16",
     "@commitlint/cli": "^21.0.0",
     "@commitlint/config-conventional": "^21.0.0",
-    "@tailwindcss/postcss": "^4.3.0",
+    "@tailwindcss/postcss": "^4.3.2",
     "@types/d3": "^7.4.3",
     "@types/express": "^5.0.6",
     "@types/md5": "^2.3.6",
