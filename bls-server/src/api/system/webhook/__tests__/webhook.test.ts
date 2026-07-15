@@ -1,5 +1,5 @@
 /**
- * P12: Webhook — 真实行为测试 (mock DNS/DB/enqueue/权限)
+ * Webhook — 真实行为测试 (mock DNS/DB/enqueue/权限)
  */
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { createHmac } from 'crypto';
@@ -34,7 +34,7 @@ function makeCtx(overrides: Record<string, any> = {}): any {
   };
 }
 
-describe('P12 Webhook', () => {
+describe('Webhook', () => {
   // ====== DNS mock ======
 
   it('DNS: 解析到公网 IP → 通过', async () => {
@@ -171,7 +171,7 @@ describe('P12 Webhook', () => {
     expect(arg.jobData.url).toBe('https://x.com/hook');
     expect(arg.jobData.secret).toBe('s3cret');
     expect(arg.jobData.event).toBe('USER_CREATED');
-    // P12 核心断言
+    // 核心断言
     expect(arg.tenantId).toBe('T001');
     expect(arg.jobData.tenantId).toBe('T001');
   });

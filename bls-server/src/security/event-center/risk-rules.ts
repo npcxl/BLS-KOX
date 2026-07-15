@@ -1,5 +1,5 @@
 /**
- * P10: Security Risk Rules Engine
+ * Security Risk Rules Engine
  *
  * 风险评分 + 规则引擎 + 自动处置
  */

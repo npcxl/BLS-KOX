@@ -10,7 +10,7 @@ import { assertTenantResource } from '../../../security/ownership';
 const router = new Router({ prefix: '/system/dept' });
 const T = 'sys_dept';
 
-/** 构建部门树（兼容 snake_case / camelCase） */
+/** 构建部门树（兼容 snake_case / camelCase），每个部门下插入所属用户 */
 function buildTree(rows: any[]) {
   const get = (r: any, k: string, ck: string) => String(r[ck] ?? r[k] ?? "");
   const map = new Map<string, any>();
@@ -55,6 +55,21 @@ router.get('/list', jwtAuth(), hasPerm('system:dept:list'), async (ctx: Context)
   }
 
   ctx.body = { code: 200, data: buildTree(rows) };
+});
+
+/** 查询某部门下的用户列表 */
+router.get('/:deptId/users', jwtAuth(), async (ctx: Context) => {
+  const tid = getCurrentTenantId();
+  const deptId = ctx.params.deptId;
+  const db = await getDb();
+  const users = await db.selectFrom('sys_user')
+    .select(['user_id', 'username', 'nickname', 'status', 'email', 'phone'])
+    .where('deleted', '=', 0)
+    .where('tenant_id', '=', tid)
+    .where('dept_id', '=', deptId)
+    .orderBy('create_time', 'asc')
+    .execute();
+  ctx.body = { code: 200, data: users };
 });
 router.post('/add', jwtAuth(), hasPerm('system:dept:add'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;

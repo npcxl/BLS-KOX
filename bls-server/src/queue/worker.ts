@@ -1,5 +1,5 @@
 /**
- * P6: Job Worker
+ * Job Worker
  *
  * - atomic claim (queue.ts)
  * - retry / exponential backoff / timeout

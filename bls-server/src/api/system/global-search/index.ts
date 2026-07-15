@@ -3,6 +3,7 @@ import { Context } from 'koa';
 import { getDb } from '../../../core/database';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
+import { pickAllowed, toSnake } from '../../../shared/utils/mass-assignment';
 
 const router = new Router({ prefix: '/system/global-search' });
 const T = 'sys_global_search_config';
@@ -54,8 +55,16 @@ router.get('/config/list', jwtAuth(), hasPerm('system:global-search:config:list'
 });
 router.post('/config/save', jwtAuth(), hasPerm('system:global-search:config:save'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;
-  if (b.searchId) await db.updateTable(T).set(b).where('search_id','=',b.searchId).execute();
-  else await db.insertInto(T).values(b).execute();
+  const allowed = [
+    'searchId', 'moduleKey', 'moduleName', 'permission', 'routePath',
+    'sourceTable', 'bizIdField', 'titleField', 'subtitleField', 'contentFields',
+    'tenantField', 'ownerField', 'deptField', 'createdByField', 'statusField',
+    'deletedField', 'enabled', 'sort', 'remark',
+  ];
+  const data = pickAllowed(b, allowed);
+  const snake = toSnake(data);
+  if (b.searchId) await db.updateTable(T).set(snake).where('search_id','=',b.searchId).execute();
+  else await db.insertInto(T).values({ ...snake, deleted: 0 }).execute();
   ctx.body = { code: 200, message: '保存成功' };
 });
 router.delete('/config/:id', jwtAuth(), hasPerm('system:global-search:config:delete'), async (ctx: Context) => {

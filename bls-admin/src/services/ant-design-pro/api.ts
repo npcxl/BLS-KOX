@@ -61,6 +61,45 @@ export async function tenantLoginOptions(options?: { [key: string]: any }) {
   });
 }
 
+/** 仪表盘统计 GET /api/system/dashboard/stats */
+export async function getDashboardStats(options?: { [key: string]: any }) {
+  return request<API.ResponseResult<{
+    userCount: number;
+    roleCount: number;
+    menuCount: number;
+    logCount: number;
+  }>>('/api/system/dashboard/stats', {
+    method: 'GET',
+    ...(options || {}),
+  });
+}
+
+/** 系统状态 GET /api/system/dashboard/system-status */
+export async function getSystemStatus(options?: { [key: string]: any }) {
+  return request<API.ResponseResult<{
+    cpuLoad: number;
+    memUsage: number;
+    uptime: number;
+    nodeUptime: number;
+  }>>('/api/system/dashboard/system-status', {
+    method: 'GET',
+    ...(options || {}),
+  });
+}
+
+/** 最近操作日志 GET /api/system/dashboard/recent-logs */
+export async function getRecentLogs(options?: { [key: string]: any }) {
+  return request<API.ResponseResult<Array<{
+    title: string;
+    username: string;
+    businessType: string;
+    createTime: string;
+  }>>('/api/system/dashboard/recent-logs', {
+    method: 'GET',
+    ...(options || {}),
+  });
+}
+
 /** 公开主题配置 GET /api/system/config/public-theme */
 export async function publicThemeConfig(options?: { [key: string]: any }) {
   return request<API.ResponseResult<API.SysConfig>>('/api/system/config/public-theme', {

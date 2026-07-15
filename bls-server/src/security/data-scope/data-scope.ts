@@ -11,8 +11,8 @@
  *   SELF              — 仅自己的数据
  *   CUSTOM            — 自定义规则
  *
- * P9-FIX-01: 修复 IN 占位符重名 Bug，改用 Kysely 原生 where 回调
- * P9-FIX-02: 支持列名映射，不再硬编码 dept_id / user_id / create_by
+ * FIX-01: 修复 IN 占位符重名 Bug，改用 Kysely 原生 where 回调
+ * FIX-02: 支持列名映射，不再硬编码 dept_id / user_id / create_by
  */
 
 export type DataScopeType = 'ALL' | 'TENANT' | 'DEPT' | 'DEPT_AND_CHILDREN' | 'SELF' | 'CUSTOM';

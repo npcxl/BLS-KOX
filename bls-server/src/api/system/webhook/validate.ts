@@ -1,5 +1,5 @@
 /**
- * P12: Webhook URL 安全校验 — SSRF 防护
+ * Webhook URL 安全校验 — SSRF 防护
  *
  * 两阶段校验:
  *   1. URL 静态检查（协议/hostname/内网IP）
@@ -59,7 +59,7 @@ async function dnsCheck(hostname: string): Promise<{ valid: boolean; error?: str
     }
   }
 
-  // P12-FIX-01: DNS 完全失败（IPv4+IPv6 都解析不到）→ 拒绝
+  // FIX-01: DNS 完全失败（IPv4+IPv6 都解析不到）→ 拒绝
   if (allAddresses.length === 0) {
     return { valid: false, error: `DNS 解析失败: ${hostname}` };
   }

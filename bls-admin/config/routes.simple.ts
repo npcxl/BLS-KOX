@@ -12,7 +12,7 @@ export default [
   },
   {
     path: '/welcome',
-    name: '欢迎',
+    name: '首页',
     icon: 'smile',
     component: './Welcome',
   },

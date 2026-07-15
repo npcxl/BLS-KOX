@@ -63,7 +63,7 @@ function resolveMenuIcon(icon?: string | null) {
 
 function mapBackendMenus(
   menus: API.MenuTreeItem[] = [],
-  dashboardTitle = '仪表盘'
+  dashboardTitle = '首页'
 ): any[] {
   const backendMenus = menus
     .filter((item) => item.menuType !== "2" && item.path !== "/dashboard")
@@ -105,7 +105,7 @@ function mapBackendMenus(
       key: "/dashboard",
       path: "/dashboard",
       name: dashboardTitle,
-      icon: <AntIcons.DashboardOutlined />,
+      icon: <AntIcons.HomeOutlined />,
       locale: false,
     },
     ...backendMenus,
@@ -422,7 +422,7 @@ export const layout: RunTimeLayoutConfig = ({
     ...initialState?.settings,
       menuDataRender: () => {
         const dashboardTitle =
-          initialState?.systemMap?.['sys.dashboard.name'] || '仪表盘';
+          initialState?.systemMap?.['sys.dashboard.name'] || '欢迎';
         return mapBackendMenus(initialState?.currentUser?.menus, dashboardTitle);
       },
     selectedKeys: normalizeSelectedKeys(history.location.pathname),

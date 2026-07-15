@@ -1,5 +1,5 @@
 /**
- * P5 Observability — prom-client 统一 Registry
+ * Observability — prom-client 统一 Registry
  *
  * 所有指标定义在此文件，使用 prom-client 标准库。
  * GET /api/metrics 通过 metricsRegistry.metrics() 输出 Prometheus exposition format。
@@ -107,6 +107,60 @@ export const dbQueryErrorsTotal = new Counter({
   registers: [metricsRegistry],
 });
 
+// ========== Database Connection Pool ==========
+
+export const dbPoolTotalConnections = new Gauge({
+  name: 'bls_kox_db_pool_total_connections',
+  help: 'Total connections in pool (all created)',
+  registers: [metricsRegistry],
+  async collect() {
+    try {
+      const { pool } = require('../core/database');
+      this.set((pool as any).pool?._allConnections?.length ?? 0);
+    } catch {}
+  },
+});
+
+export const dbPoolActiveConnections = new Gauge({
+  name: 'bls_kox_db_pool_active_connections',
+  help: 'Currently active (in-use) connections',
+  registers: [metricsRegistry],
+  async collect() {
+    try {
+      const { pool } = require('../core/database');
+      const all = (pool as any).pool?._allConnections ?? [];
+      const active = all.filter((c: any) => c._fatalError === undefined).length;
+      this.set(active);
+    } catch {}
+  },
+});
+
+export const dbPoolIdleConnections = new Gauge({
+  name: 'bls_kox_db_pool_idle_connections',
+  help: 'Currently idle connections',
+  registers: [metricsRegistry],
+  async collect() {
+    try {
+      const { pool } = require('../core/database');
+      const free = (pool as any).pool?._freeConnections?.length ?? 0;
+      this.set(free);
+    } catch {}
+  },
+});
+
+export const dbPoolWaitingRequests = new Gauge({
+  name: 'bls_kox_db_pool_waiting_requests',
+  help: 'Requests waiting for a connection',
+  registers: [metricsRegistry],
+  async collect() {
+    try {
+      const { pool } = require('../core/database');
+      const queue = (pool as any).pool?._connectionQueue?.length ?? 0;
+      this.set(queue);
+    } catch {}
+  },
+});
+
 // ========== Redis ==========
 
 export const redisOperationDurationSeconds = new Histogram({
@@ -155,7 +209,7 @@ export const websocketConnections = new Gauge({
   registers: [metricsRegistry],
 });
 
-// ========== P6: Queue / Worker ==========
+// ========== Queue / Worker ==========
 
 export const jobQueueWaiting = new Gauge({
   name: 'bls_kox_job_queue_waiting',
@@ -184,7 +238,7 @@ export const jobQueueCompletedTotal = new Counter({
   registers: [metricsRegistry],
 });
 
-// ========== P7: Outbox ==========
+// ========== Outbox ==========
 
 export const outboxPending = new Gauge({
   name: 'bls_kox_outbox_pending',

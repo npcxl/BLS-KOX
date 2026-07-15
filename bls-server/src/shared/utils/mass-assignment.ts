@@ -39,3 +39,12 @@ export const FORBIDDEN_FIELDS = [
   'tenantId', 'tenant_id', 'userId', 'user_id',
   'roleIds', 'perms', 'deleted',
 ];
+
+/** 驼峰 → 下划线转换（用于 Kysely 的 INSERT/UPDATE） */
+export function toSnake(obj: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    result[key.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase())] = value;
+  }
+  return result;
+}

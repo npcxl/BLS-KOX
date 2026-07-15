@@ -1,5 +1,5 @@
 /**
- * P12: Webhook 投递 Job
+ * Webhook 投递 Job
  */
 import { createHmac } from 'crypto';
 import type { JobDefinition } from '../job-types';

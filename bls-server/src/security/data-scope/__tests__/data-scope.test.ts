@@ -1,11 +1,11 @@
 /**
- * P9: Data Scope — 专项测试
+ * Data Scope — 专项测试
  */
 import { describe, it, expect } from 'vitest';
 import { resolveMaxScope, buildScopeWhere } from '../data-scope';
 import type { DataScopeType } from '../data-scope';
 
-describe('P9 Data Scope Core', () => {
+describe('Data Scope Core', () => {
   // ====== resolveMaxScope ======
 
   it('resolveMaxScope: 单角色 ALL → ALL', () => {
@@ -106,7 +106,7 @@ describe('P9 Data Scope Core', () => {
     expect(fn).not.toBeNull();
   });
 
-  // ====== P9: CUD 路由 Data Scope 集成验证 ======
+  // ====== CUD 路由 Data Scope 集成验证 ======
 
   // 模拟 Kysely ExpressionBuilder
   function mockEb(field: string, op?: string, val?: any): any {

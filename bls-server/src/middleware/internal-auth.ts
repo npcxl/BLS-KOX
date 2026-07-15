@@ -1,5 +1,5 @@
 /**
- * P11: Internal Auth — Service Token + IP Allowlist
+ * Internal Auth — Service Token + IP Allowlist
  *
  * 校验流程:
  *   1. IP 白名单检查（支持 CIDR 简化匹配）

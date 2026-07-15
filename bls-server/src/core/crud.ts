@@ -3,11 +3,12 @@
  *
  * 自动生成: GET /list, GET /:id, POST /add, PUT /edit, DELETE /remove, PUT /status
  *
- * P9 Data Scope: 全路由覆盖 (list / edit / delete / status)
+ *  Data Scope: 全路由覆盖 (list / edit / delete / status)
  */
 import Router from 'koa-router';
 import { z } from 'zod';
-import { getDb } from './database';
+import { getDb, transaction as dbTransaction } from './database';
+import type { PoolConnection } from 'mysql2/promise';
 import { ValidationError } from './errors';
 import { success, pageSuccess } from './response';
 import { jwtAuth } from '../middleware/auth';
@@ -29,10 +30,56 @@ export interface CrudModuleConfig {
   name?: string;
   permPrefix?: string;
   schema?: { create?: z.ZodType; update?: z.ZodType };
-  /** P9: 数据权限列名映射。设为 false 显式关闭（默认关闭） */
+  /**  数据权限列名映射。设为 false 显式关闭（默认关闭） */
   dataScope?: false | DataScopeColumnMapping;
-  /** P14: 写入后回调（add/edit/delete/status），用于清缓存等 */
+  /** 写入后回调（add/edit/delete/status），用于清缓存等 */
   onWrite?: () => void | Promise<void>;
+  /**是否使用事务包裹写操作（add/edit/delete/status）。默认 false，向后兼容 */
+  transactional?: boolean;
+  /** 事务完成回调，可用于在事务提交后执行副作用（如清除缓存、发送事件） */
+  onTransactionCommitted?: () => void | Promise<void>;
+}
+
+/**  将 mysql2 PoolConnection 包装成 Kysely-like 接口，支持事务内复用现有 CRUD 代码 */
+function wrapConnection(conn: PoolConnection, table: string): any {
+  return {
+    /** 执行原生 SQL，用于事务中替代 Kysely query builder */
+    executeRaw: (sql: string, params: any[]) => conn.execute(sql, params),
+    insertInto: (t: string) => ({
+      values: (vals: Record<string, any>) => ({
+        execute: () => {
+          const keys = Object.keys(vals);
+          const placeholders = keys.map(() => '?').join(', ');
+          const sql = `INSERT INTO ${t} (${keys.join(', ')}) VALUES (${placeholders})`;
+          return conn.execute(sql, Object.values(vals));
+        },
+      }),
+    }),
+    updateTable: (t: string) => ({
+      set: (vals: Record<string, any>) => ({
+        where: (col: string, op: string, val: any) => ({
+          where: (...args: any[]) => {
+            let sql = `UPDATE ${t} SET ${Object.keys(vals).map(k => `${k} = ?`).join(', ')} WHERE ${col} ${op === 'in' ? 'IN' : '='} ?`;
+            const params = [...Object.values(vals), op === 'in' ? args[1] : val];
+            return { execute: () => conn.execute(sql, params) };
+          },
+          execute: () => {
+            const sql = `UPDATE ${t} SET ${Object.keys(vals).map(k => `${k} = ?`).join(', ')} WHERE ${col} = ?`;
+            return conn.execute(sql, [...Object.values(vals), val]);
+          },
+        }),
+        execute: () => {
+          const sql = `UPDATE ${t} SET ${Object.keys(vals).map(k => `${k} = ?`).join(', ')}`;
+          return conn.execute(sql, Object.values(vals));
+        },
+      }),
+    }),
+    deleteFrom: (t: string) => ({
+      where: (col: string, op: string, val: any) => ({
+        execute: () => conn.execute(`DELETE FROM ${t} WHERE ${col} ${op === 'in' ? 'IN' : '='} ?`, [val]),
+      }),
+    }),
+  };
 }
 
 /** ========= 核心工厂 ========= */
@@ -49,7 +96,18 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
   const permit = (action: string) =>
     permPrefix ? hasPerm(`${permPrefix}:${action}`) : (async (_ctx: Context, next: any) => next());
 
-  // ====== P9: Data Scope 辅助函数 ======
+  /** 可选事务包装器。当 config.transactional 为 true 时使用数据库事务包裹写操作。
+   *  事务内通过 raw connection 执行 SQL，事务提交后触发 onTransactionCommitted 回调。 */
+  const withOptionalTransaction = async <T>(runner: (db: any) => Promise<T>): Promise<T> => {
+    if (!config.transactional) return runner((await getDb()) as any);
+    return dbTransaction(async (conn: PoolConnection) => {
+      const result = await runner(wrapConnection(conn, table));
+      await config.onTransactionCommitted?.();
+      return result;
+    });
+  };
+
+  // ======  Data Scope 辅助函数 ======
 
   /** 递归查指定部门的所有子孙部门（DEPT_AND_CHILDREN 真正递归） */
   async function resolveDeptTree(db: any, rootDeptIds: string[]): Promise<string[]> {
@@ -127,7 +185,6 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
 
   // ========== POST /add ==========
   router.post('/add', jwtAuth(), permit('add'), async (ctx: Context) => {
-    const db = (await getDb()) as any;
     let data = (ctx.request.body ?? {}) as Record<string, any>;
     if (config.schema?.create) {
       const parsed = config.schema.create.safeParse(data);
@@ -138,9 +195,11 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
     const tid = getCurrentTenantId() ?? '000000';
     const values: Record<string, any> = { [pk]: id, [tenantField]: data[tenantField] ?? tid, ...data };
     if (softDelete && values.deleted === undefined) values.deleted = 0;
-    // P14: fail-closed — 租户校验在写入前，阻止跨租户/无租户写入
+    // fail-closed — 租户校验在写入前，阻止跨租户/无租户写入
     await config.onWrite?.();
-    await db.insertInto(table).values(toSnake(values)).execute();
+    await withOptionalTransaction(async (txDb) => {
+      await txDb.insertInto(table).values(toSnake(values)).execute();
+    });
     success(ctx, { [pk]: values[pk] }, '新增成功');
   });
 
@@ -163,14 +222,16 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
     const tenantId = getCurrentTenantId();
     if (tenantId) query = query.where(tenantField, '=', tenantId);
 
-    // P9 Data Scope
+    // Data Scope
     const scopeWhere = await buildScopeWhereFn(db, ctx);
     if (scopeWhere) query = query.where(scopeWhere);
 
     if (softDelete) query = query.where('deleted', '=', 0);
 
     await config.onWrite?.();
-    await query.execute();
+    await withOptionalTransaction(async (txDb) => {
+      await txDb.updateTable(table).set(toSnake(data)).where(pk, '=', pkValue).execute();
+    });
     success(ctx, null, '修改成功');
   });
 
@@ -192,12 +253,18 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
     const tenantId = getCurrentTenantId();
     if (tenantId) query = query.where(tenantField, '=', tenantId);
 
-    // P9 Data Scope
+    // Data Scope
     const scopeWhere = await buildScopeWhereFn(db, ctx);
     if (scopeWhere) query = query.where(scopeWhere);
 
     await config.onWrite?.();
-    await query.execute();
+    await withOptionalTransaction(async (txDb) => {
+      if (softDelete) {
+        await txDb.updateTable(table).set({ deleted: 1 }).where(pk, 'in', idList).execute();
+      } else {
+        await txDb.deleteFrom(table).where(pk, 'in', idList).execute();
+      }
+    });
     success(ctx, null, '删除成功');
   });
 
@@ -214,14 +281,16 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
     const tenantId = getCurrentTenantId();
     if (tenantId) query = query.where(tenantField, '=', tenantId);
 
-    // P9 Data Scope
+    // Data Scope
     const scopeWhere = await buildScopeWhereFn(db, ctx);
     if (scopeWhere) query = query.where(scopeWhere);
 
     if (softDelete) query = query.where('deleted', '=', 0);
 
     await config.onWrite?.();
-    await query.execute();
+    await withOptionalTransaction(async (txDb) => {
+      await txDb.updateTable(table).set({ [statusField]: status }).where(pk, '=', String(id)).execute();
+    });
     success(ctx, null, '状态修改成功');
   });
 

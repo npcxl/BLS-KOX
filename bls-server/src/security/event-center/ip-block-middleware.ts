@@ -1,5 +1,5 @@
 /**
- * P10: Blocked IP 中间件
+ * Blocked IP 中间件
  *
  * 在请求入口检查 IP 是否被封禁（Redis + 持久化黑名单）
  * 被封禁的 IP 直接返回 403

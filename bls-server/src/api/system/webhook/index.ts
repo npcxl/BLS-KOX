@@ -1,5 +1,5 @@
 /**
- * P12: Webhook Platform
+ * Webhook Platform
  */
 import Router from 'koa-router';
 import type { Context } from 'koa';

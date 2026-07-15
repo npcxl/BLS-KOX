@@ -34,15 +34,7 @@ describe('Metrics Integration', () => {
     expect(output).toContain('bls_kox_active_sessions');
     expect(output).toContain('bls_kox_websocket_connections');
 
-    // P7: Outbox
-    expect(output).toContain('bls_kox_outbox_pending');
-    expect(output).toContain('bls_kox_outbox_published_total');
-    expect(output).toContain('bls_kox_outbox_dead_total');
-    expect(output).toContain('bls_kox_outbox_retry_total');
-    expect(output).toContain('bls_kox_outbox_publish_duration_seconds');
-
-
-    // P7: Outbox
+    // Outbox
     expect(output).toContain('bls_kox_outbox_pending');
     expect(output).toContain('bls_kox_outbox_published_total');
     expect(output).toContain('bls_kox_outbox_dead_total');

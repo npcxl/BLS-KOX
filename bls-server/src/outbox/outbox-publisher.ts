@@ -1,5 +1,5 @@
 /**
- * P7: Outbox Publisher
+ * Outbox Publisher
  *
  * - 轮询 pending 事件
  * - 原子 claim (outbox.ts)

@@ -1,10 +1,10 @@
 /**
- * P11: API Versioning — 专项测试
+ * API Versioning — 专项测试
  */
 import { describe, it, expect } from 'vitest';
 import { apiVersion, API_PREFIXES } from '../api-version';
 
-describe('P11 API Versioning', () => {
+describe('API Versioning', () => {
   it('API_PREFIXES 定义存在', () => {
     expect(API_PREFIXES.V1).toBe('/api/v1');
     expect(API_PREFIXES.OPENAPI_V1).toBe('/openapi/v1');
@@ -53,7 +53,7 @@ describe('P11 API Versioning', () => {
     expect(ctx.state.apiVersion).toBe('v1');
   });
 
-  // ====== P11: 路由版本化 ======
+  // ====== 路由版本化 ======
 
   it('/api/v1/system/user → apiVersion = v1', async () => {
     const ctx: any = { path: '/api/v1/system/user', state: {}, set: () => {}, get: () => '' };

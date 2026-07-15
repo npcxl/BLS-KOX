@@ -1,5 +1,5 @@
 /**
- * P13: File Security — 专项测试
+ * File Security — 专项测试
  */
 import { describe, it, expect, vi } from 'vitest';
 import {
@@ -18,7 +18,7 @@ function makeCtx(overrides: Record<string,any>={}): any {
   };
 }
 
-describe('P13 File Security', () => {
+describe('File Security', () => {
   // ====== validateExtension ======
   it('.jpg 通过', () => expect(validateExtension('photo.jpg').valid).toBe(true));
   it('.svg 拒绝', () => expect(validateExtension('icon.svg').valid).toBe(false));

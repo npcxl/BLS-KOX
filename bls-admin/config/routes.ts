@@ -45,8 +45,8 @@ export default [
   },
   {
     path: "/dashboard",
-    name: "仪表盘",
-    icon: "dashboard",
+    name: "首页",
+    icon: "home",
     component: "./dashboard",
   },
   {

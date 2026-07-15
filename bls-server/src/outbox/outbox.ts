@@ -1,10 +1,10 @@
 /**
- * P7: Outbox Pattern 核心
+ * Outbox Pattern 核心
  *
  * 设计要点:
  * - 事务内写入: appendEvent(db, ...) 与业务共享同一个 trx, 保证原子性
  * - 原子领取: fetchPending 在事务内 SELECT ... FOR UPDATE SKIP LOCKED → UPDATE processing
- * - Stale Recovery (P0 修复): 仅依据 processing_at 判断 processing 是否卡死,
+ * - Stale Recovery: 仅依据 processing_at 判断 processing 是否卡死,
  *   不再使用 next_retry_at (next_retry_at 只用于 pending 事件的退避调度)
  * - Dead Letter: retryCount >= 3 → dead
  * - At-Least-Once: 同一 eventType 下所有 handler 顺序执行, 任一失败则整体重试
@@ -68,7 +68,7 @@ export async function fetchPending(db: any): Promise<OutboxEvent | null> {
       .where('status', '=', 'pending').where('next_retry_at', '<=', new Date())
       .orderBy('created_at', 'asc').limit(1).forUpdate().skipLocked().executeTakeFirst();
     if (!r) return null;
-    // 领取时记录 processing_at (P0 修复关键): 之后 stale 判定只看 processing_at
+    // 领取时记录 processing_at: 之后 stale 判定只看 processing_at
     await trx.updateTable(TABLE).set({
       status: 'processing',
       retry_count: (r.retry_count ?? 0) + 1,
@@ -113,7 +113,7 @@ export async function markFailed(db: any, eventId: string, record: OutboxEvent, 
 }
 
 /**
- * Stale Recovery (P0 修复)
+ * Stale Recovery
  * 仅依据 processing_at 判断: processing 且 processing_at 超过 STALE_TIMEOUT
  * 视为处理实例崩溃/卡死, 回收到 pending 重新入队。
  * 不再使用 next_retry_at —— pending 阶段 next_retry_at 始终为"可领取时间",

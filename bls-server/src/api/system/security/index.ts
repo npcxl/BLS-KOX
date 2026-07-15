@@ -1,5 +1,5 @@
 /**
- * P10: Security Center API
+ * Security Center API
  *
  * 路由:
  *   GET    /system/security/stats        — 安全态势统计

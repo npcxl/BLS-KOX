@@ -1,5 +1,5 @@
 /**
- * P13: 文件安全模块
+ * 文件安全模块
  */
 import { extname } from 'path';
 import { randomUUID } from 'crypto';
@@ -35,7 +35,7 @@ const TYPE_EXT_MAP: Record<string, Set<string>> = {
   webp: new Set(['.webp']),
 };
 
-// P13-FIX-03: SVG disabled
+// SVG disabled
 // 严格模块名正则：仅字母/数字/下划线/连字符，不含路径分隔符
 const MODULE_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/;
 const ALLOWED_MODULES = new Set(['common', 'avatar', 'attachment', 'import', 'export', 'public', 'private']);

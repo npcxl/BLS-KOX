@@ -1,8 +1,9 @@
-import { SearchOutlined, SettingOutlined } from "@ant-design/icons";
+import { DeleteOutlined, PlusOutlined, SearchOutlined, SettingOutlined } from "@ant-design/icons";
 import { PageContainer } from "@ant-design/pro-components";
-import { Button, Empty, Form, Input, InputNumber, Layout, message, Select, Switch, Table, Tag, Typography } from "antd";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Button, Empty, Form, Input, InputNumber, Layout, message, Popconfirm, Select, Switch, Table, Tag, Typography } from "antd";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getPageColumnConfig, getPageConfig, listPageConfigs, savePageConfig, type PageColumnConfigRecord, type PageConfigRecord } from "@/services/system/page-config";
+import { useDebounce } from "@/hooks/useDebounce";
 
 const { Sider, Content } = Layout;
 const { Text } = Typography;
@@ -19,6 +20,53 @@ const formTypeOptions = [
   { label: "密码", value: "password" },
   { label: "开关", value: "switch" },
 ];
+
+/** 防抖输入框：本地即时更新 + 300ms 后提交 */
+function DebouncedInput(props: {
+  value: string;
+  onCommit: (v: string) => void;
+  placeholder?: string;
+  style?: React.CSSProperties;
+  fontFamily?: string;
+  delay?: number;
+}) {
+  const { value, onCommit, placeholder, style, fontFamily, delay = 300 } = props;
+  const [local, setLocal] = useState(value);
+  const debounced = useDebounce(local, delay);
+  useEffect(() => { if (debounced !== value) onCommit(debounced); }, [debounced]);
+  useEffect(() => { setLocal(value); }, [value]);
+  return (
+    <Input
+      size="small"
+      value={local}
+      placeholder={placeholder}
+      onChange={(e) => setLocal(e.target.value)}
+      style={{ padding: "2px 6px", background: "#fafafa", fontFamily, ...style }}
+    />
+  );
+}
+
+/** 防抖 InputNumber */
+function DebouncedNumber(props: {
+  value: number | undefined;
+  onCommit: (v: number | null) => void;
+  delay?: number;
+}) {
+  const { value, onCommit, delay = 300 } = props;
+  const [local, setLocal] = useState<number | null>(value ?? null);
+  const debounced = useDebounce(local, delay);
+  useEffect(() => { if (debounced !== (value ?? null)) onCommit(debounced); }, [debounced]);
+  useEffect(() => { setLocal(value ?? null); }, [value]);
+  return (
+    <InputNumber
+      size="small"
+      value={local ?? undefined}
+      onChange={(v) => setLocal(typeof v === 'number' ? v : null)}
+      style={{ width: 50, background: "#fafafa" }}
+      min={0}
+    />
+  );
+}
 
 export default function PageConfigPage() {
   const [pageList, setPageList] = useState<PageConfigRecord[]>([]);
@@ -75,39 +123,115 @@ export default function PageConfigPage() {
     return () => { active = false; };
   }, [selectedCode, form]);
 
-  // 更新单个列字段
+  const [version, setVersion] = useState(0);
+  const [autoSaving, setAutoSaving] = useState(false);
+
+  // 新增列
+  const addColumn = useCallback(() => {
+    const newCol: PageColumnConfigRecord = {
+      columnId: `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      pageCode: selectedCode,
+      title: '',
+      dataIndex: '',
+      orderNum: columns.length + 1,
+      visible: true,
+      ellipsis: false,
+      searchable: false,
+      editable: true,
+      copyable: false,
+      required: false,
+      valueType: 'text',
+      valueEnumCode: '',
+      placeholder: '',
+    };
+    setColumns((prev) => [...prev, newCol]);
+    setVersion(v => v + 1);
+    autoSaveRef.current?.();
+  }, [columns.length, selectedCode]);
+
+  // 删除列
+  const deleteColumn = useCallback((index: number) => {
+    setColumns((prev) => {
+      const next = [...prev];
+      next.splice(index, 1);
+      return next;
+    });
+    setVersion(v => v + 1);
+    autoSaveRef.current?.();
+  }, []);
+
+  // 更新单个列字段 + 自动保存
   const updateColumn = useCallback((index: number, field: string, value: any) => {
     setColumns((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
       return next;
     });
+    setVersion(v => v + 1);
+    autoSaveRef.current?.();
   }, []);
+
+  // 自动保存防抖（600ms 内多次调用只执行最后一次）
+  const autoSaveTimer = useRef<any>(null);
+  const autoSaveRef = useRef<() => void>(() => {});
+  autoSaveRef.current = () => {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    setAutoSaving(true);
+    autoSaveTimer.current = setTimeout(async () => {
+      try {
+        const values = form.getFieldsValue();
+        const page = {
+          ...selectedPage,
+          pageCode: selectedCode,
+          pageName: values.pageName,
+          enabled: Boolean(values.enabled),
+          sort: values.sort ?? 0,
+          remark: values.remark,
+        } as PageConfigRecord;
+        const payload = columnsRef.current.map((item, i) => ({
+          ...item,
+          columnId: item.columnId,
+          pageCode: selectedCode,
+          orderNum: Number(item.orderNum ?? i + 1),
+          visible: !!item.visible,
+          ellipsis: !!item.ellipsis,
+          searchable: !!item.searchable,
+          editable: !!item.editable,
+          copyable: !!item.copyable,
+          required: !!item.required,
+        }));
+        await savePageConfig({ page, columns: payload });
+        message.success('已保存');
+      } catch { /* silent */ }
+      finally { setAutoSaving(false); }
+    }, 600);
+  };
+
+  // columns 引用，供 autoSave 闭包获取最新值
+  const columnsRef = useRef(columns);
+  columnsRef.current = columns;
 
   // 列定义
   const columnDefs = useMemo(() => [
     {
       title: "字段名", dataIndex: "title", width: 120,
       render: (_: any, __: any, index: number) => (
-        <Input size="small" value={columns[index]?.title ?? ""}
-          onChange={(e) => updateColumn(index, "title", e.target.value)}
-          style={{ padding: "2px 6px", background: "#fafafa" }} />
+        <DebouncedInput value={columns[index]?.title ?? ""}
+          onCommit={(v) => updateColumn(index, "title", v)} />
       ),
     },
     {
       title: "字段标识", dataIndex: "dataIndex", width: 130,
       render: (_: any, __: any, index: number) => (
-        <Input size="small" value={columns[index]?.dataIndex ?? ""}
-          onChange={(e) => updateColumn(index, "dataIndex", e.target.value)}
-          style={{ padding: "2px 6px", background: "#fafafa", fontFamily: "monospace" }} />
+        <DebouncedInput value={columns[index]?.dataIndex ?? ""}
+          onCommit={(v) => updateColumn(index, "dataIndex", v)} fontFamily="monospace" />
       ),
     },
     {
       title: "排序", dataIndex: "orderNum", width: 60, align: "center" as const,
       render: (_: any, __: any, index: number) => (
-        <InputNumber size="small" value={columns[index]?.orderNum}
-          onChange={(v) => updateColumn(index, "orderNum", v)}
-          style={{ width: 50, background: "#fafafa" }} min={0} />
+        <DebouncedNumber value={columns[index]?.orderNum}
+          onCommit={(v) => updateColumn(index, "orderNum", v)} />
       ),
     },
     {
@@ -164,20 +288,33 @@ export default function PageConfigPage() {
     {
       title: "字典编码", dataIndex: "valueEnumCode", width: 130,
       render: (_: any, __: any, index: number) => (
-        <Input size="small" value={columns[index]?.valueEnumCode ?? ""}
-          onChange={(e) => updateColumn(index, "valueEnumCode", e.target.value)}
-          placeholder="可选" style={{ padding: "2px 6px", background: "#fafafa", fontFamily: "monospace" }} />
+        <DebouncedInput value={columns[index]?.valueEnumCode ?? ""}
+          onCommit={(v) => updateColumn(index, "valueEnumCode", v)}
+          placeholder="可选" fontFamily="monospace" />
       ),
     },
     {
       title: "占位提示", dataIndex: "placeholder", ellipsis: true,
       render: (_: any, __: any, index: number) => (
-        <Input size="small" value={columns[index]?.placeholder ?? ""}
-          onChange={(e) => updateColumn(index, "placeholder", e.target.value)}
-          placeholder="提示文案" style={{ padding: "2px 6px", background: "#fafafa" }} />
+        <DebouncedInput value={columns[index]?.placeholder ?? ""}
+          onCommit={(v) => updateColumn(index, "placeholder", v)}
+          placeholder="提示文案" />
       ),
     },
-  ], [columns, updateColumn]);
+    {
+      title: "操作", width: 60, align: "center" as const, fixed: "right" as const,
+      render: (_: any, __: any, index: number) => (
+        <Popconfirm
+          title="确认删除此列？"
+          onConfirm={() => deleteColumn(index)}
+          okText="删除"
+          cancelText="取消"
+        >
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+        </Popconfirm>
+      ),
+    },
+  ], [columns, updateColumn, deleteColumn]);
 
   // 保存
   const handleSave = async () => {
@@ -217,8 +354,8 @@ export default function PageConfigPage() {
       title="页面配置"
       subTitle="管理各页面的列配置"
       extra={[
-        <Button key="save" type="primary" loading={saving} onClick={handleSave} icon={<SettingOutlined />}>
-          保存配置
+        <Button key="save" type="primary" loading={saving || autoSaving} onClick={handleSave} icon={<SettingOutlined />}>
+          {autoSaving ? '保存中...' : '保存配置'}
         </Button>,
       ]}
     >
@@ -302,16 +439,24 @@ export default function PageConfigPage() {
 
         <div className="thin-scrollbar" style={{ flex: 1, overflow: "auto", padding: 8, scrollbarWidth: "thin", scrollbarColor: "#d9d9d9 transparent" }}>
           {loading ? null : (
-            <Table<PageColumnConfigRecord>
-              rowKey="columnId"
-              dataSource={columns}
-              pagination={false}
-              size="small"
-              loading={loading}
-              columns={columnDefs}
-              scroll={{ x: 1200 }}
-              locale={{ emptyText: <Empty description="暂无列配置" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-            />
+            <>
+              <Table<PageColumnConfigRecord>
+                key={version}
+                rowKey="columnId"
+                dataSource={columns}
+                pagination={false}
+                size="small"
+                loading={loading}
+                columns={columnDefs}
+                scroll={{ x: 1300 }}
+                locale={{ emptyText: <Empty description="暂无列配置" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+              />
+              <div style={{ padding: "8px 0", textAlign: "center" }}>
+                <Button type="dashed" icon={<PlusOutlined />} onClick={addColumn} style={{ width: "100%" }}>
+                  新增列
+                </Button>
+              </div>
+            </>
           )}
         </div>
       </Content>

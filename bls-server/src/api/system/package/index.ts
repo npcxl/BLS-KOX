@@ -44,7 +44,7 @@ router.get('/options', jwtAuth(), hasPerm('system:package:list'), async (ctx: Co
 
 router.post('/add', jwtAuth(), hasPerm('system:package:add'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;
-  await db.insertInto(T).values({package_id:generateSnowflakeId(), package_name:b.packageName, package_code:b.packageCode, status:b.status??'0', remark:b.remark??null}).execute();
+  await db.insertInto(T).values({package_id:generateSnowflakeId(), package_name:b.packageName, package_code:b.packageCode, status:b.status??'0', remark:b.remark??null, deleted:0}).execute();
   ctx.body = { code: 200, message: '新增成功' };
 });
 router.put('/edit', jwtAuth(), hasPerm('system:package:edit'), async (ctx: Context) => {

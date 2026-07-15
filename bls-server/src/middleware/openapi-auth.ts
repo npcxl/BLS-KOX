@@ -1,5 +1,5 @@
 /**
- * P11: OpenAPI Auth — API Key + HMAC + Timestamp + Nonce
+ * OpenAPI Auth — API Key + HMAC + Timestamp + Nonce
  *
  * 校验流程:
  *   1. X-Api-Key → 查找 api_key 对应 secret

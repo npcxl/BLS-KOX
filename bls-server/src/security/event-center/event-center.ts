@@ -1,5 +1,5 @@
 /**
- * P10: Security Event Center
+ * Security Event Center
  *
  * 统一安全事件采集 → 聚合 → 评分 → 告警 → 处置
  */
@@ -27,7 +27,7 @@ export async function collectEvent(params: {
   userId?: string;
 }): Promise<{ riskScore: number; actions: SecurityAction[] }> {
   try {
-    // P10-FIX-01: SELECT 改用 query()，不绕 Array.isArray 兜底
+    // FIX-01: SELECT 改用 query()，不绕 Array.isArray 兜底
     const rows = await query<any>(
       `SELECT event_type, COUNT(*) as cnt
        FROM sys_security_log

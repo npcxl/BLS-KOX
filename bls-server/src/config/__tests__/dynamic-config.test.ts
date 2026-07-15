@@ -1,5 +1,5 @@
 /**
- * P14: Dynamic Config — 真实 Mock Redis/DB 专项测试
+ * Dynamic Config — 真实 Mock Redis/DB 专项测试
  */
 import { describe, it, expect, vi } from 'vitest';
 import { parseConfigValue, getDynamicConfig, invalidateConfigCache } from '../dynamic-config';
@@ -38,7 +38,7 @@ function makeDbForFetchConfig(rows: Record<string, string>[] = []) {
   return { selectFrom: vi.fn().mockReturnValue({ selectAll, select: selectAll }), _whereCalls: whereCalls };
 }
 
-describe('P14 Dynamic Config', () => {
+describe('Dynamic Config', () => {
   // ====== parseConfigValue ======
   it('parse: "0"→false, "1"→true', () => {
     const c = parseConfigValue({ 'sys.login.multiDevice': '0', 'sys.demo.enabled': '1' });

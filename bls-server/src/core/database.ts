@@ -95,7 +95,7 @@ kyselyPool.on('enqueue', () => {
 });
 
 // ========== 连接错误检测（ECONNRESET 等） ==========
-/** P5: 统一 DB 操作观测包装 */
+/** 统一 DB 操作观测包装 */
 async function observeDbOperation<T>(operation: string, fn: () => Promise<T>): Promise<T> {
   const end = dbQueryDurationSeconds.startTimer({ operation });
   try {

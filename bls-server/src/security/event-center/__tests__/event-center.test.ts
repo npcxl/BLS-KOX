@@ -1,11 +1,11 @@
 /**
- * P10: Security Event Center — 专项测试
+ * Security Event Center — 专项测试
  */
 import { describe, it, expect, vi } from 'vitest';
 import { evaluateRisk, getOverallRisk, DEFAULT_RULES, type ScoredEvent, type SecurityAction } from '../risk-rules';
 import { SecurityEventType, RiskLevel } from '../../../core/security-audit';
 
-describe('P10 Security Event Center', () => {
+describe('Security Event Center', () => {
   // ====== Risk Rules Engine ======
 
   it('DEFAULT_RULES has 6 rules', () => {
@@ -108,7 +108,7 @@ describe('P10 Security Event Center', () => {
     expect(typeof audit.writeSecurityLog).toBe('function');
   });
 
-  // ====== P10-FIX-04: 关键行为测试 ======
+  // ====== FIX-04: 关键行为测试 ======
 
   it('blocked IP middleware: normal IP passes through', async () => {
     const mod = await import('../ip-block-middleware.js');
@@ -168,7 +168,7 @@ describe('P10 Security Event Center', () => {
     // security-audit.ts writeSecurityLog 中 source !== 'event-center' 才调 collectEvent
   });
 
-  // ====== P10-FIX-02: 处置循环防护验证 ======
+  // ====== FIX-02: 处置循环防护验证 ======
 
   it('security-audit source guard: event-center events skip collectEvent', async () => {
     const auditModule = await import('../../../core/security-audit.js');
@@ -178,7 +178,7 @@ describe('P10 Security Event Center', () => {
     expect(fnStr).toBeTruthy();
   });
 
-  // ====== P10-FIX-03: getSecurityStats 不再返回 riskScore ======
+  // ====== FIX-03: getSecurityStats 不再返回 riskScore ======
 
   it('getSecurityStats: returns recentEvents + blockedIPs, no riskScore placeholder', async () => {
     // CI 环境没有数据库，跳过集成测试
@@ -193,7 +193,7 @@ describe('P10 Security Event Center', () => {
     expect(typeof result.blockedIPs).toBe('number');
   });
 
-  // ====== P10 关键行为：处置动作完整链路 ======
+  // ====== 关键行为：处置动作完整链路 ======
 
   it('executeActions: BLOCK_IP sets Redis key (conceptual)', () => {
     // executeActions 中 BLOCK_IP 调用 redis.set('security:blocked_ip:{ip}', '1', 'EX', 3600)

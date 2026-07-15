@@ -98,7 +98,7 @@ function makeProcessingRow(id: string, processingAt: Date): any {
   };
 }
 
-describe('P7 Outbox', () => {
+describe('Outbox', () => {
   it('atomic claim: only one of two concurrent fetchPending claims the same event', async () => {
     const db = new FakeDb();
     await appendEvent(db, { tenantId: 't1', eventType: 'X' });
@@ -143,7 +143,7 @@ describe('P7 Outbox', () => {
     expect(row.processing_at).toBeNull();
   });
 
-  it('stale recovery (P0): old processing -> pending; new processing -> stays processing', async () => {
+  it('stale recovery: old processing -> pending; new processing -> stays processing', async () => {
     const db = new FakeDb();
     db.rows.push(makeProcessingRow('e-old', new Date(Date.now() - 10 * 60 * 1000)));
     db.rows.push(makeProcessingRow('e-new', new Date()));

@@ -1,5 +1,5 @@
 /**
- * P7 Outbox Subscribers 注册示例
+ * Outbox Subscribers 注册示例
  *
  * ========================================
  * 重要: At-Least-Once 语义与幂等性要求

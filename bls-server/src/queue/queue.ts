@@ -1,5 +1,5 @@
 /**
- * P6: MySQL-backed Job Queue
+ * MySQL-backed Job Queue
  *
  * - 原子 claim: SELECT FOR UPDATE SKIP LOCKED + UPDATE in transaction
  * - 多 Worker 安全: SKIP LOCKED

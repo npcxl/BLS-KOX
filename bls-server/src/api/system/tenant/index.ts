@@ -44,7 +44,7 @@ router.get('/public-list', async (ctx: Context) => {
 
 router.post('/add', jwtAuth(), hasPerm('system:tenant:add'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;
-  await db.insertInto(T).values({tenant_id:generateSnowflakeId(), tenant_name:b.tenantName, package_id:b.packageId??null, expire_time:b.expireTime??null, domain_name:b.domainName??null, contact_user:b.contactUser??null, contact_phone:b.contactPhone??null, status:'0', remark:b.remark??null}).execute();
+  await db.insertInto(T).values({tenant_id:generateSnowflakeId(), tenant_name:b.tenantName, package_id:b.packageId??null, expire_time:b.expireTime??null, domain_name:b.domainName??null, contact_user:b.contactUser??null, contact_phone:b.contactPhone??null, status:'0', remark:b.remark??null, deleted:0}).execute();
   ctx.body = { code: 200, message: '新增成功' };
 });
 router.put('/edit', jwtAuth(), hasPerm('system:tenant:edit'), async (ctx: Context) => {

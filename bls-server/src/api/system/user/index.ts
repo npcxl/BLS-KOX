@@ -7,8 +7,9 @@ import { ForbiddenError } from '../../../core/errors';
 import { getRequestContext } from '../../../core/request-context';
 import { logSecurity } from '../../../core/security-audit';
 import { SecurityEventType } from '../../../core/security-audit';
-import { pickAllowed, USER_PROFILE_FIELDS, USER_CREATE_FIELDS, USER_EDIT_FIELDS } from '../../../shared/utils/mass-assignment';
+import { pickAllowed, toSnake, USER_PROFILE_FIELDS, USER_CREATE_FIELDS, USER_EDIT_FIELDS } from '../../../shared/utils/mass-assignment';
 import { hashPasswordArgon2 } from '../../../shared/utils/password';
+import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { appendEvent, EventTypes } from '../../../outbox/outbox';
 import { sessionCenter } from '../../../security/session/session-center';
 import { logger } from '../../../core/logger';
@@ -61,7 +62,7 @@ router.put('/profile', jwtAuth(), async (ctx: Context) => {
   const u = ctx.state.user as any;
   const data = pickAllowed((ctx.request.body ?? {}) as any, USER_PROFILE_FIELDS);
   if (Object.keys(data).length === 0) { ctx.body = { code: 400, message: '没有可更新字段' }; return; }
-  await (await getDb()).updateTable(T).set(data as any).where('user_id','=',u.userId).where('tenant_id','=',u.tenantId).execute();
+  await (await getDb()).updateTable(T).set(toSnake(data) as any).where('user_id','=',u.userId).where('tenant_id','=',u.tenantId).execute();
   ctx.body = { code: 200, message: '修改成功' };
 });
 
@@ -71,15 +72,25 @@ router.post('/add', jwtAuth(), hasPerm('system:user:add'), async (ctx: Context) 
   const data = pickAllowed(body, USER_CREATE_FIELDS);
   const tid = tenantId();
 
-  // 密码使用 Argon2id 哈希
-  if (data.password) {
-    data.password = await hashPasswordArgon2(String(data.password));
-    (data as any).password_algorithm = 'argon2id';
+  // 密码使用 Argon2id 哈希（未填则读取系统参数 sys.user.defaultPassword，兜底 123456）
+  if (!data.password) {
+    const defaultPwd = await db.selectFrom('sys_config')
+      .select('config_value')
+      .where('config_key', '=', 'sys.user.defaultPassword')
+      .where('tenant_id', '=', tid)
+      .limit(1)
+      .executeTakeFirst() as any;
+    data.password = defaultPwd?.config_value || '123456';
   }
+  data.password = await hashPasswordArgon2(String(data.password));
+  (data as any).password_algorithm = 'argon2id';
+
+  // 驼峰 → 下划线映射 + 生成主键
+  const snakeData = { user_id: generateSnowflakeId(), ...toSnake(data), tenant_id: tid, deleted: 0 };
 
   // 业务写入与 Outbox 事件写入同一事务 → 原子性: 任一失败整体回滚
   await db.transaction().execute(async (trx: any) => {
-    await trx.insertInto(T).values({ ...data, tenant_id: tid, deleted: 0 } as any).execute();
+    await trx.insertInto(T).values(snakeData as any).execute();
     await appendEvent(trx, {
       tenantId: tid,
       eventType: EventTypes.USER_CREATED,
@@ -96,7 +107,7 @@ router.put('/edit', jwtAuth(), hasPerm('system:user:edit'), async (ctx: Context)
   const data = pickAllowed(body, USER_EDIT_FIELDS);
   if (Object.keys(data).length === 0) { ctx.body = { code: 400, message: '没有可更新字段' }; return; }
   const tid = tenantId();
-  await db.updateTable(T).set(data as any).where('user_id','=',body.userId).where('tenant_id','=',tid).execute();
+  await db.updateTable(T).set(toSnake(data) as any).where('user_id','=',body.userId).where('tenant_id','=',tid).execute();
   ctx.body = { code: 200, message: '修改成功' };
 });
 

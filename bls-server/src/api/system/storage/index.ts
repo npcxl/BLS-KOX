@@ -6,7 +6,7 @@ import { getCurrentTenantId } from '../../../middleware/tenant';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
 import { assertTenantResource } from '../../../security/ownership';
-import { pickAllowed } from '../../../shared/utils/mass-assignment';
+import { pickAllowed, toSnake } from '../../../shared/utils/mass-assignment';
 import { createStorageProvider } from './storage.factory';
 import type { StorageConfig } from './storage.model';
 import { validateFile, generateObjectKey, validateUploadMeta, sanitizeFilename, validateFileSize } from '../../../security/file-security';
@@ -36,7 +36,7 @@ router.post('/add', jwtAuth(), hasPerm('system:storage:add'), async (ctx: Contex
   const db = (await getDb()) as any;
   const data = pickAllowed((ctx.request.body ?? {}) as any, STORAGE_FIELDS);
   if (Object.keys(data).length === 0) { ctx.body = { code: 400, message: '没有有效字段' }; return; }
-  await db.insertInto('sys_storage_config').values({...data, tenant_id: getCurrentTenantId()??'000000', deleted:0} as any).execute();
+  await db.insertInto('sys_storage_config').values({...toSnake(data), tenant_id: getCurrentTenantId()??'000000', deleted:0} as any).execute();
   ctx.body = { code: 200, message: '新增成功' };
 });
 router.put('/edit', jwtAuth(), hasPerm('system:storage:edit'), async (ctx: Context) => {
@@ -45,7 +45,7 @@ router.put('/edit', jwtAuth(), hasPerm('system:storage:edit'), async (ctx: Conte
   const data = pickAllowed(b, STORAGE_FIELDS);
   if (Object.keys(data).length === 0) { ctx.body = { code: 400, message: '没有有效字段' }; return; }
   const tid = getCurrentTenantId();
-  await db.updateTable('sys_storage_config').set(data as any).where('storage_id','=',b.storageId).where('tenant_id','=',tid).execute();
+  await db.updateTable('sys_storage_config').set(toSnake(data) as any).where('storage_id','=',b.storageId).where('tenant_id','=',tid).execute();
   ctx.body = { code: 200, message: '修改成功' };
 });
 router.delete('/remove', jwtAuth(), hasPerm('system:storage:remove'), async (ctx: Context) => {
@@ -78,7 +78,7 @@ export async function handleUpload(
   const metaResult = validateUploadMeta(moduleName, accessType);
   if (!metaResult.valid) { ctx.body = { code: 400, message: metaResult.reason }; return; }
 
-  // P13: fail-closed — 租户上下文缺失直接拒绝（不查 DB）
+  // fail-closed — 租户上下文缺失直接拒绝（不查 DB）
   const tid = getTenantFn();
   if (!tid) {
     ctx.body = { code: 401, message: '租户上下文缺失' };
@@ -118,7 +118,7 @@ export async function handleUpload(
   const mimeType = file.mimetype || 'application/octet-stream';
   const fileSize = file.size || 0;
 
-  // P14: 动态上传大小限制
+  // 动态上传大小限制
   let maxSizeBytes = 100 * 1024 * 1024;
   try {
     const dc = (getConfigFn ?? getDynamicConfig)(tid);
@@ -133,7 +133,7 @@ export async function handleUpload(
     securityLogFn({ eventType: SecurityEventType.SECURITY_VALIDATION_FAILED, title: `文件上传被拒绝: ${secResult.reason}`, detail: { originalName, mimeType, fileSize }, source: 'file-security' }).catch(() => {});
     return;
   }
-  // P14: 动态大小限制
+  // 动态大小限制
   secResult = validateFileSize(fileSize, maxSizeBytes);
   if (!secResult.valid) {
     ctx.body = { code: 400, message: secResult.reason };

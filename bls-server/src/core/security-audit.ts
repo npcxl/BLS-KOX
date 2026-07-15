@@ -166,8 +166,8 @@ export async function writeSecurityLog(input: SecurityLogInput): Promise<void> {
     if (input.eventType === SecurityEventType.LOGIN_FAILED) loginFailedTotal.inc();
     if (input.eventType === SecurityEventType.REFRESH_TOKEN_REUSE) refreshReuseDetectedTotal.inc();
 
-    // P10: 接入 Event Center — 采集 → 聚合 → 评分 → 自动处置（运行时 require 打破循环依赖）
-    // P10-FIX-02: source === 'event-center' 不二次 collectEvent，防处置循环
+    // 接入 Event Center — 采集 → 聚合 → 评分 → 自动处置（运行时 require 打破循环依赖）
+    // FIX-02: source === 'event-center' 不二次 collectEvent，防处置循环
     const source = input.source ?? 'system';
     if (source !== 'event-center') {
       const clientIp = actor.clientIp ?? 'unknown';

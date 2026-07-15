@@ -4,6 +4,9 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# argon2 原生模块编译依赖
+RUN apk add --no-cache python3 make g++
+
 COPY package.json package-lock.json ./
 RUN npm ci
 

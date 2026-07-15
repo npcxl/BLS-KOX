@@ -1,5 +1,5 @@
 /**
- * P11: API Versioning — 路由级集成测试
+ * API Versioning — 路由级集成测试
  */
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'crypto';
@@ -7,7 +7,7 @@ import { apiVersion, API_PREFIXES } from '../api-version';
 import { openApiAuth } from '../openapi-auth';
 import { internalAuth } from '../internal-auth';
 
-describe('P11 API Versioning — Route Integration', () => {
+describe('API Versioning — Route Integration', () => {
   // ====== FIX-01: /api/v1/ 真实映射 ======
 
   it('/api/v1/system/user → rewrite 为 /api/system/user', () => {

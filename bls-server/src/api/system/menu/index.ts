@@ -45,7 +45,7 @@ router.get('/package-tree', jwtAuth(), async (ctx: Context) => {
 });
 router.post('/add', jwtAuth(), hasPerm('system:menu:add'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;
-  await db.insertInto(T).values({menu_id:generateSnowflakeId(), parent_id:b.parentId??'000000', menu_name:b.menuName, path:b.path??null, component:b.component??null, perms:b.perms??null, icon:b.icon??null, menu_type:b.menuType??'1', sort_num:b.sortNum??0, status:'0'}).execute();
+  await db.insertInto(T).values({menu_id:generateSnowflakeId(), parent_id:b.parentId??'000000', menu_name:b.menuName, path:b.path??null, component:b.component??null, perms:b.perms??null, icon:b.icon??null, menu_type:b.menuType??'1', sort_num:b.sortNum??0, status:'0', deleted:0}).execute();
   ctx.body = { code: 200, message: '新增成功' };
 });
 router.put('/edit', jwtAuth(), hasPerm('system:menu:edit'), async (ctx: Context) => {

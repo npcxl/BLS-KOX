@@ -32,7 +32,7 @@ export class AuthService {
               avatar, gender, email, phone, dept_id AS deptId, is_admin AS isAdmin, status
        FROM sys_user WHERE user_id = :uid AND deleted = 0`, { uid: userId });
     if (!user) throw new UnauthorizedError('用户不存在');
-    // 角色信息（含 P9 data_scope）
+    // 角色信息（含 data_scope）
     const roles = await query<{ roleKey: string; dataScope: string }>(
       `SELECT r.role_key AS roleKey, r.data_scope AS dataScope
        FROM sys_role r JOIN sys_user_role ur ON r.role_id = ur.role_id

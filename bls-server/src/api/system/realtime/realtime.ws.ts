@@ -4,8 +4,27 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { verifyToken } from '../../../shared/utils/jwt';
 import { env } from '../../../config/env';
 import { websocketConnections } from '../../../observability/metrics';
-import os from 'os';
-async function getSystemRealtimeInfo() { return { cpu: os.loadavg(), mem: process.memoryUsage(), uptime: process.uptime() }; }
+
+let lastWsCpu = process.cpuUsage();
+let lastWsTime = Date.now();
+
+function getSystemRealtimeInfo() {
+  const now = Date.now();
+  const elapsed = now - lastWsTime || 1;
+  const cpu = process.cpuUsage(lastWsCpu);
+  lastWsCpu = process.cpuUsage();
+  lastWsTime = now;
+  const cpuPercent = Math.round(((cpu.user + cpu.system) / (elapsed * 1000)) * 100);
+  const mem = process.memoryUsage();
+  const info = {
+    cpu: Math.min(cpuPercent, 100),
+    mem: { rss: Number(mem.rss), heapUsed: Number(mem.heapUsed), heapTotal: Number(mem.heapTotal) },
+    uptime: Math.floor(process.uptime()),
+  };
+  // 验证可序列化
+  try { JSON.stringify(info); } catch (e) { console.error('[realtime-ws] serialize failed', e); return {}; }
+  return info;
+}
 
 const HEARTBEAT_INTERVAL = 15000;
 const BROADCAST_INTERVAL = 3000;

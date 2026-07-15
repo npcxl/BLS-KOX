@@ -13,7 +13,7 @@ export const config = {
   table: 'sys_config', pkField: 'config_id',
   searchFields: ['config_key', 'config_name'],
   name: '系统参数', permPrefix: 'system:config', softDelete: false,
-  /** P14: fail-closed — 缺失租户抛错，由 CRUD 框架捕获并阻止写入 */
+  /** fail-closed — 缺失租户抛错，由 CRUD 框架捕获并阻止写入 */
   onWrite: () => {
     const tid = getTenantOrFail();
     invalidateConfigCache(tid).catch(() => {});
@@ -34,7 +34,7 @@ export class ConfigService {
     return fn(tid);
   }
 
-  /** P14: auth-sensitive — tenant context required, no platform fallback.
+  /** auth-sensitive — tenant context required, no platform fallback.
    *  Accepts optional tenantId for login flows where JWT context is not yet established. */
   async isMultiLoginEnabled(tid?: string): Promise<boolean> {
     const fn = this._getConfigFn ?? getDynamicConfig;
@@ -43,8 +43,8 @@ export class ConfigService {
   }
 }
 
-// P14: publicSystem excludes sensitive configs; injectable for testing
-const SYS_KEYS = ['sys.app.name','sys.demo.enabled','sys.upload.maxSize','sys.version','sys.app.logo','sys.user.defaultAvatar'];
+// publicSystem excludes sensitive configs; injectable for testing
+const SYS_KEYS = ['sys.app.name','sys.demo.enabled','sys.upload.maxSize','sys.version','sys.app.logo','sys.user.defaultAvatar','sys.user.defaultPassword'];
 export async function fetchSystemConfigs(_dbFn?: () => any, _tenantFn?: () => string | null) {
   const dbFn = _dbFn ?? getDb;
   const tenantFn = _tenantFn ?? getCurrentTenantId;

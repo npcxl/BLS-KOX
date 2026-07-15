@@ -49,7 +49,7 @@ vi.mock('../shared/constants/security-error-code', () => ({
 
 describe('Replay Protection Middleware', () => {
   it('should export replayProtectionMiddleware', async () => {
-    const mod = await import('../middlewares/replayProtection.js');
+    const mod = await import('../middleware/replay-protection.js');
     expect(typeof mod.replayProtectionMiddleware).toBe('function');
   });
 });

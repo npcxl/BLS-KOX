@@ -1,5 +1,5 @@
 /**
- * P14: Dynamic Configuration Center
+ * Dynamic Configuration Center
  *
  * Strict schema enforced on both Redis cache and DB reads.
  * Numbers/booleans: strict parsing, no loose coercion.
@@ -65,7 +65,7 @@ export function parseConfigValue(raw: Record<string, any>): DynamicConfig {
   return out;
 }
 
-// P14: injectable deps for testability
+// injectable deps for testability
 export async function getDynamicConfig(
   tenantId: string,
   _redisFn?: () => RedisLike | null,

@@ -1,5 +1,5 @@
 /**
- * P6: Job API
+ * Job API
  * POST /api/system/jobs — 提交任务 (hasPerm + 类型白名单)
  * GET  /api/system/jobs/:jobId — 查询状态
  * GET  /api/system/jobs — 列表

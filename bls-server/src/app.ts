@@ -1,3 +1,8 @@
+// ====== OpenTelemetry Tracing — 必须在所有其他 import 之前初始化 ======
+// 确保 mysql2 / ioredis 等模块在被 instrumentation 插件 hook 之后才加载
+import { initTracing } from './observability/tracing';
+initTracing();
+
 import Koa from 'koa';
 import http from 'http';
 import helmet from 'koa-helmet';
@@ -9,7 +14,7 @@ import { createRouter } from './core/router';
 import { errorHandler } from './middleware/error-handler';
 import { logger } from './core/logger';
 import { tenantMiddleware } from './middleware/tenant';
-import { replayProtectionMiddleware } from './middlewares/replayProtection';
+import { replayProtectionMiddleware } from './middleware/replay-protection';
 import { httpMetricsMiddleware } from './middleware/http-metrics';
 import { requestContextMiddleware } from './core/request-context';
 import { rateLimitMiddleware } from './security/rate-limit/middleware';
@@ -56,7 +61,7 @@ export function createApp(): Koa {
   app.use(blockedIpMiddleware());
   app.use(rateLimitMiddleware());
 
-  // ====== P11: API Versioning ======
+  // ====== API Versioning ======
 
   // 1. 保存原始路径（后续 rewrite 后会变）
   app.use(async (ctx, next) => {
@@ -86,7 +91,7 @@ export function createApp(): Koa {
   app.use(router.routes());
   app.use(router.allowedMethods());
 
-  // ====== P11: /openapi/v1 — 独立鉴权 ======
+  // ====== /openapi/v1 — 独立鉴权 ======
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const KoaRouter = require('koa-router');
   const openapiR = new KoaRouter({ prefix: '/openapi/v1' });
@@ -99,7 +104,7 @@ export function createApp(): Koa {
   openapiR.use(router.routes());
   app.use(openapiR.routes());
 
-  // ====== P11: /internal — 内部服务鉴权 ======
+  // ====== /internal — 内部服务鉴权 ======
   const internalR = new KoaRouter({ prefix: '/internal' });
   internalR.use(internalAuth());
   internalR.get('/health', (ctx: any) => { ctx.body = { status: 'ok' }; });
@@ -118,7 +123,7 @@ export function createApp(): Koa {
 }
 
 if (require.main === module) {
-  // ====== P15: 生产环境安全启动校验 ======
+  // ====== 生产环境安全启动校验 ======
   if (process.env.NODE_ENV === 'production') {
     const issues: string[] = [];
     const WEAK_SECRETS = ['please_change_me', '123456', 'password', 'changeme', ''];
@@ -156,14 +161,14 @@ if (require.main === module) {
     logger.info(`${env.appName} started`, { host: env.host, port: env.port, nodeEnv: env.nodeEnv });
   });
 
-  // P6: 注册并启动 Worker
+  // 注册并启动 Worker
   worker.register(exportJob).register(importJob).register(notificationJob).register(webhookJob).start();
 
-  // P7: 注册订阅者并启动 Outbox Publisher
+  // 注册订阅者并启动 Outbox Publisher
   registerOutboxSubscribers();
   outboxPublisher.start();
 
-  // ========== P8: DR — 定时自动备份 ==========
+  // ========== DR — 定时自动备份 ==========
   const backupEnabled = (process.env.BACKUP_ENABLED ?? 'false') === 'true';
   if (backupEnabled) {
     const intervalH = parseInt(process.env.BACKUP_INTERVAL_HOURS ?? '24', 10);

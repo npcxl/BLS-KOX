@@ -1,5 +1,5 @@
 /**
- * P11: API Versioning Middleware
+ * API Versioning Middleware
  *
  * 路由前缀分类:
  *   /api/v1/*    — 前端业务接口 (默认)
