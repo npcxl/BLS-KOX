@@ -21,7 +21,6 @@ import React, { useRef, useState } from 'react';
 import useStyles from './Center.style';
 import Applications from './components/Applications';
 import Articles from './components/Articles';
-import Projects from './components/Projects';
 import type { CurrentUser, TagType, tabKeyType } from './data.d';
 import { queryCurrent } from './service';
 
@@ -191,9 +190,6 @@ const UserInfo: React.FC<{ user: Partial<CurrentUser> }> = ({ user }) => {
 };
 
 const TabContent: React.FC<{ tabValue: tabKeyType }> = ({ tabValue }) => {
-  if (tabValue === 'projects') {
-    return <Projects />;
-  }
   if (tabValue === 'applications') {
     return <Applications />;
   }

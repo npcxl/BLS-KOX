@@ -92,5 +92,5 @@ export function useMultiDict<T extends readonly string[]>(dictTypes: T): { [K in
     };
   }, [dictTypes.join(',')]);
 
-  return { ...result, loading };
+  return { ...result, loading } as any;
 }

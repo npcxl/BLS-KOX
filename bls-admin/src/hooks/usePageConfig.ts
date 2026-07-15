@@ -64,7 +64,7 @@ export function usePageConfig(pageCode: string) {
 
         const dictCodes = [...new Set(cols.map((c) => c.valueEnumCode).filter(Boolean) as string[])];
         if (dictCodes.length > 0) {
-          return Promise.all(
+          void Promise.all(
             dictCodes.map((code) =>
               fetchDictData(code)
                 .then((data: DictDataItem[]) => {

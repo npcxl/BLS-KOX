@@ -16,7 +16,7 @@
 - **安全内置，而非事后追加** — 防重放、限流、审计日志随框架自带
 - **多租户原生支持** — tenant_id 自动注入，跨租户访问自动告警
 - **一行配置生成接口** — `defineCrudModule()` 生成完整的 list/add/edit/remove/status
-- **现代化 TypeScript 全栈** — Koa + Kysely ORM + Zod + React 18 + Ant Design Pro 5
+- **现代化 TypeScript 全栈** — Koa + Kysely ORM + Zod + React 19 + Ant Design Pro 6
 - **Docker 一键部署** — `docker compose up -d`
 
 **适合**：学习后端架构 · 快速搭建管理后台 · SaaS 原型开发 · 权限系统参考 · 二次开发
@@ -152,7 +152,7 @@ BLS-KOX/
 - [x] File Security
 - [x] Configuration Center
 
-详见 [docs/roadmap.md](./docs/roadmap.md)。
+路线图请关注 [GitHub Issues](https://github.com/npcxl/BLS-KOX/issues)。
 
 ## 🤝 Contributing
 

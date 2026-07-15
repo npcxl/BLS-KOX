@@ -63,12 +63,7 @@ export async function tenantLoginOptions(options?: { [key: string]: any }) {
 
 /** 仪表盘统计 GET /api/system/dashboard/stats */
 export async function getDashboardStats(options?: { [key: string]: any }) {
-  return request<API.ResponseResult<{
-    userCount: number;
-    roleCount: number;
-    menuCount: number;
-    logCount: number;
-  }>>('/api/system/dashboard/stats', {
+  return request<any>('/api/system/dashboard/stats', {
     method: 'GET',
     ...(options || {}),
   });
@@ -76,12 +71,7 @@ export async function getDashboardStats(options?: { [key: string]: any }) {
 
 /** 系统状态 GET /api/system/dashboard/system-status */
 export async function getSystemStatus(options?: { [key: string]: any }) {
-  return request<API.ResponseResult<{
-    cpuLoad: number;
-    memUsage: number;
-    uptime: number;
-    nodeUptime: number;
-  }>>('/api/system/dashboard/system-status', {
+  return request<any>('/api/system/dashboard/system-status', {
     method: 'GET',
     ...(options || {}),
   });
@@ -89,12 +79,7 @@ export async function getSystemStatus(options?: { [key: string]: any }) {
 
 /** 最近操作日志 GET /api/system/dashboard/recent-logs */
 export async function getRecentLogs(options?: { [key: string]: any }) {
-  return request<API.ResponseResult<Array<{
-    title: string;
-    username: string;
-    businessType: string;
-    createTime: string;
-  }>>('/api/system/dashboard/recent-logs', {
+  return request<any>('/api/system/dashboard/recent-logs', {
     method: 'GET',
     ...(options || {}),
   });

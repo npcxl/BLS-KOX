@@ -252,6 +252,7 @@ export const errorConfig: RequestConfig = {
       } else {
         message.error('Request error, please retry.');
       }
+      return;
     },
   },
   requestInterceptors: [

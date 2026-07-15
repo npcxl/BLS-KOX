@@ -65,9 +65,7 @@ export function initTracing(): void {
       new KoaInstrumentation({
         // suppressInternalInstrumentation: true 在较新版本才支持，先保持默认
       }),
-      new MySQL2Instrumentation({
-        enhancedDatabaseReporting: true,
-      }),
+      new MySQL2Instrumentation(),
       new IORedisInstrumentation({
         requireParentSpan: true,
       }),

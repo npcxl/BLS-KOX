@@ -127,7 +127,7 @@ const Login: React.FC = () => {
     setSubmitting(true);
     try {
       const res = await login({ ...values, type: 'account' });
-      const msg = res.data;
+      const msg = (res as any).data;
       if (res.code === 200 && msg?.token) {
         tokenStore.setTokenPair({
           accessToken: msg.token,

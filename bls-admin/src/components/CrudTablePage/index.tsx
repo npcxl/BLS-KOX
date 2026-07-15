@@ -401,7 +401,7 @@ export default function CrudTablePage<T extends Record<string, any>>({
               key="create"
               type="primary"
               icon={<PlusOutlined />}
-              onClick={crud.openCreate}
+              onClick={() => crud.openCreate()}
             >
               {createButtonText}
             </Button>

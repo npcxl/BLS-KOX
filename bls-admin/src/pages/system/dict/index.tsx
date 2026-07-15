@@ -108,7 +108,7 @@ function DictTypeList({ onEnter }: { onEnter: (record: DictTypeRecord) => void }
         search={{ labelWidth: 96 }}
         pagination={{ defaultPageSize: 10, showSizeChanger: true }}
         toolBarRender={() => [
-          <Button key="create" type="primary" icon={<PlusOutlined />} onClick={crud.openCreate}>
+          <Button key="create" type="primary" icon={<PlusOutlined />} onClick={() => crud.openCreate()}>
             新增类型
           </Button>,
         ]}
@@ -229,7 +229,7 @@ function DictDataDetail({ record, onBack }: { record: DictTypeRecord; onBack: ()
           <Button key="back" icon={<ArrowLeftOutlined />} onClick={onBack}>
             返回
           </Button>,
-          <Button key="create" type="primary" icon={<PlusOutlined />} onClick={crud.openCreate}>
+          <Button key="create" type="primary" icon={<PlusOutlined />} onClick={() => crud.openCreate()}>
             新增数据
           </Button>,
         ]}
