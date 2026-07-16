@@ -2,6 +2,7 @@ package com.bls.server.security;
 
 import cn.hutool.core.util.StrUtil;
 import com.bls.server.common.AppException;
+import com.bls.server.distributed.trace.TraceContext;
 import com.bls.server.service.SessionService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -67,8 +68,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             }
 
-            // Set context
+            // Set context + trace info
             TenantContext.set(tenantId, userId, null);
+            TraceContext.setTenantId(tenantId);
+            TraceContext.setUserId(userId);
             JwtAuthenticationToken auth = new JwtAuthenticationToken(loginUser, token);
             SecurityContextHolder.getContext().setAuthentication(auth);
 

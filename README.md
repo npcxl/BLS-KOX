@@ -111,6 +111,20 @@
 | Prometheus Metrics | `/api/metrics`，HTTP/Security/DB/Redis/WS 全量指标 |
 | Docker 部署 | `docker compose up -d` 一键启动 |
 
+## 🔀 双后端定位
+
+BLS-KOX 提供两套后端，**各有特点，按需选择**：
+
+| | Koa (TypeScript) | Java (Spring Boot) |
+|------|-------------------|---------------------|
+| **定位** | 轻量灵活，快速二开 | 工程化稳定，企业级 |
+| **亮点** | `defineCrudModule()` 一行配置生成 CRUD | 注解式 AOP + Spring 生态 |
+| **适合** | Node.js 全栈、快速原型 | Java 团队、企业项目、微服务演进 |
+
+两套后端共享同一套前端、MySQL、Redis、`sql/Init.sql`、API 规范。切换后端只需改代理地址。
+
+> 详见 [双后端定位对比](./docs/backend-comparison.md)
+
 ## 🛠 Tech Stack
 
 | 层 | 技术 |
@@ -297,16 +311,22 @@ BLS-KOX/
 | 文档 | 说明 |
 |------|------|
 | [快速开始](./docs/getting-started.md) | 环境要求、安装、启动、演示账号 |
+| [双后端定位](./docs/backend-comparison.md) | Koa vs Java 定位差异、对比表、如何选择 |
 | [架构设计](./docs/architecture.md) | 请求链路、中间件、双后端总览 |
 | [Koa 后端](./docs/backend-koa.md) | Koa + TypeScript 架构、CRUD 工厂、中间件链 |
 | [Java 后端](./docs/backend-java.md) | Spring Boot 架构、Security、MyBatis-Plus、JWT |
 | [API 兼容性](./docs/api-compatibility.md) | 双后端 API 规范、返回结构、字段命名一致性 |
+| [分布式能力](./docs/distributed-capabilities.md) | 分布式锁、幂等、限流、链路追踪 |
+| [缓存策略](./docs/cache.md) | Redis 缓存设计、Key 规范、故障降级 |
+| [限流](./docs/rate-limit.md) | 多维度限流、Lua 脚本、注解使用 |
+| [幂等性](./docs/idempotency.md) | 请求级幂等、Idempotency-Key、状态机 |
+| [微服务路线图](./docs/microservices-roadmap.md) | 模块化单体 → 微服务拆分路线 |
 | [多租户](./docs/multi-tenant.md) | 数据隔离、权限守卫 |
 | [认证体系](./docs/auth.md) | Token、Session Center、时序图 |
 | [RBAC 权限](./docs/rbac.md) | 角色-菜单-按钮 |
 | [CRUD 工厂](./docs/crud.md) | Koa defineCrudModule + Java 演进方案 |
 | [安全能力](./docs/security.md) | 防重放、限流、审计 |
-| [可观测性](./docs/observability.md) | Metrics、告警 |
+| [可观测性](./docs/observability.md) | Metrics、告警、日志 |
 | [API 版本化](./docs/api-versioning.md) | 路由前缀、OpenAPI、Internal |
 | [部署指南](./docs/deployment.md) | Docker、生产环境 |
 
@@ -322,6 +342,7 @@ BLS-KOX/
 - [x] Webhook
 - [x] File Security
 - [x] Configuration Center
+- [x] 分布式能力预留（锁 / 幂等 / 限流 / Trace）
 
 路线图请关注 [GitHub Issues](https://github.com/npcxl/BLS-KOX/issues)。
 
