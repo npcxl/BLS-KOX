@@ -15,7 +15,7 @@ import {
   setRefreshGlobalSettingsHandler,
 } from "@/services/system/settings";
 import * as AntIcons from "@ant-design/icons";
-import type { Settings as LayoutSettings } from "@ant-design/pro-components";
+import type { ProSettings, Settings as LayoutSettings } from "@ant-design/pro-components";
 import { SettingDrawer } from "@ant-design/pro-components";
 import type { RequestConfig, RunTimeLayoutConfig } from "@umijs/max";
 import { history, Link } from "@umijs/max";
@@ -120,17 +120,17 @@ function normalizeSelectedKeys(pathname: string) {
 }
 
 function getHeaderTitle(
-  settings?: Record<string, unknown>,
+  settings?: ThemeLayoutSettings,
   systemMap?: Record<string, string>,
 ) {
   return (settings?.title as string) ?? systemMap?.title ?? defaultSettings.title;
 }
 
 function getHeaderLogo(
-  settings?: Record<string, unknown>,
+  settings?: ThemeLayoutSettings,
   systemMap?: Record<string, string>,
 ) {
-  return (settings?.logo as string) ?? systemMap?.logo ?? defaultSettings.logo;
+  return (settings?.logo as string) ?? systemMap?.logo ?? undefined;
 }
 
 function buildSystemMap(systemList: API.SysConfig[]): Record<string, string> {
@@ -198,7 +198,11 @@ function parseThemeSettings(theme: any): {
   };
 }
 
-type ThemeLayoutSettings = Partial<LayoutSettings>;
+type ThemeLayoutSettings = Partial<LayoutSettings> & {
+  siderMenuType?: string;
+  splitMenus?: boolean;
+  locale?: boolean;
+};
 
 type ThemeMeta = {
   themeId?: string;
@@ -270,8 +274,7 @@ export async function getInitialState(): Promise<{
     };
   };
 
-  // @ts-ignore antd-pro 6 ProSettings type mismatch (build passes)
-  const refreshSettings = async (): Promise<any> => {
+  const refreshSettings = async (): Promise<{ theme?: ThemeLayoutSettings; themeMeta?: ThemeMeta }> => {
     const { location } = history;
     const isLoggedIn = !isPublicRoute(location.pathname);
 
@@ -286,7 +289,7 @@ export async function getInitialState(): Promise<{
         latest = await fetchAuthSettings();
       } catch {
         // Auth Settings 失败不静默 fallback，只保留现有值
-        return {};
+        return { theme: undefined, themeMeta: undefined };
       }
     } else {
       latest = await fetchPublicSettings();
@@ -317,15 +320,15 @@ export async function getInitialState(): Promise<{
   if (isPublicRoute(location.pathname)) {
     const result = await fetchPublicSettings();
     const systemMap = result.systemMap;
-    const mergedSettings = {
+    const mergedSettings: ThemeLayoutSettings = {
       ...defaultSettings,
       ...result.theme,
-      title: (result.theme as any).title ?? systemMap["sys.app.name"] ?? defaultSettings.title,
+      title: result.theme.title ?? systemMap["sys.app.name"] ?? defaultSettings.title,
       logo:
-        (result.theme as any).logo ??
+        result.theme.logo ??
         systemMap["sys.app.logo"] ??
         (defaultSettings.logo as string | false),
-    } as ThemeLayoutSettings;
+    };
 
     return {
       fetchUserInfo,
@@ -346,10 +349,10 @@ export async function getInitialState(): Promise<{
     return {
       fetchUserInfo,
       refreshSettings,
-      settings: defaultSettings,
+      settings: defaultSettings as ThemeLayoutSettings,
       settingDrawerOpen: false,
       systemMap: {},
-    } as any;
+    };
   }
 
   // Session 有效 → 加载受保护的初始数据
@@ -367,22 +370,22 @@ export async function getInitialState(): Promise<{
     return {
       fetchUserInfo,
       refreshSettings,
-      settings: defaultSettings as any,
+      settings: defaultSettings as ThemeLayoutSettings,
       settingDrawerOpen: false,
       systemMap: {},
     };
   }
 
   const systemMap = initialTheme.systemMap;
-  const mergedSettings = {
-    ...defaultSettings,
-    ...initialTheme.theme,
-    title: (initialTheme.theme as any).title ?? systemMap["sys.app.name"] ?? defaultSettings.title,
-    logo:
-      (initialTheme.theme as any).logo ??
-      systemMap["sys.app.logo"] ??
-      (defaultSettings.logo as string | false),
-  } as ThemeLayoutSettings;
+    const mergedSettings: ThemeLayoutSettings = {
+      ...defaultSettings,
+      ...initialTheme.theme,
+      title: initialTheme.theme.title ?? systemMap["sys.app.name"] ?? defaultSettings.title,
+      logo:
+        initialTheme.theme.logo ??
+        systemMap["sys.app.logo"] ??
+        (defaultSettings.logo as string | false),
+    };
 
   // 加载用户信息
   const currentUser = await fetchUserInfo();
@@ -391,11 +394,11 @@ export async function getInitialState(): Promise<{
     fetchUserInfo,
     refreshSettings,
     currentUser,
-    settings: mergedSettings as any,
+    settings: mergedSettings,
     themeMeta: initialTheme.themeMeta,
     settingDrawerOpen: false,
     systemMap,
-  } as any;
+  };
 }
 
 export const layout: RunTimeLayoutConfig = ({
@@ -443,7 +446,7 @@ export const layout: RunTimeLayoutConfig = ({
     },
     actionsRender: () => {
       const localeEnabled =
-        (initialState?.settings as { locale?: boolean })?.locale !== false;
+        (initialState?.settings as ThemeLayoutSettings)?.locale !== false;
       return [
         <GlobalSearchModal key="global-search" />,
         localeEnabled && <LangDropdown key="lang" />,
@@ -516,14 +519,14 @@ export const layout: RunTimeLayoutConfig = ({
                 settingDrawerOpen: open,
               }));
             }}
-            settings={initialState?.settings}
+            settings={(initialState?.settings ?? {}) as ProSettings}
             onSettingChange={async (settings) => {
               const previousSettings = initialState?.settings ?? {};
               const themeMeta = initialState?.themeMeta ?? {};
-              const optimisticSettings = {
+              const optimisticSettings: ThemeLayoutSettings = {
                 ...previousSettings,
                 ...settings,
-              } as ThemeLayoutSettings;
+              };
 
               setInitialState((s) => ({
                 ...s,
@@ -541,8 +544,8 @@ export const layout: RunTimeLayoutConfig = ({
                 if (themeId) {
                   await updateTheme({
                     themeId,
-                    ...payload as any,
-                  });
+                    ...payload,
+                  } as any);
                 } else {
                   await addTheme(payload as any);
                 }
@@ -553,9 +556,9 @@ export const layout: RunTimeLayoutConfig = ({
                   ...s,
                   settings: {
                     ...defaultSettings,
-                    ...((latest as any).theme ?? {}),
+                    ...(latest.theme ?? {}),
                   },
-                  themeMeta: (latest as any).themeMeta ?? themeMeta,
+                  themeMeta: latest.themeMeta ?? themeMeta,
                 }));
               } catch (error) {
                 message.error("主题设置更新失败，正在恢复配置");
@@ -566,9 +569,9 @@ export const layout: RunTimeLayoutConfig = ({
                     ...s,
                     settings: {
                       ...defaultSettings,
-                      ...((restored as any).theme ?? {}),
+                      ...(restored.theme ?? {}),
                     },
-                    themeMeta: (restored as any).themeMeta ?? themeMeta,
+                    themeMeta: restored.themeMeta ?? themeMeta,
                   }));
                 } catch {
                   setInitialState((s) => ({

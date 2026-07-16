@@ -3,9 +3,7 @@ import type { ProLayoutProps } from "@ant-design/pro-components";
 /**
  * @name
  */
-const Settings: ProLayoutProps & {
-  logo?: any; //取any类型 暂无logo
-} = {
+const Settings: ProLayoutProps = {
   navTheme: "light",
   colorPrimary: "#1677ff",
   layout: "mix",
@@ -15,7 +13,6 @@ const Settings: ProLayoutProps & {
   colorWeak: false,
   splitMenus: false,
   title: "system",
-  logo: false,
   iconfontUrl: "",
   token: {
     // 参见ts声明，demo 见文档，通过token 修改样式

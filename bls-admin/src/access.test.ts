@@ -5,9 +5,14 @@ describe('access', () => {
   it('should return canAdmin true when user has admin access', () => {
     const initialState = {
       currentUser: {
-        userid: '1',
-        name: 'Admin User',
-        avatar: 'https://example.com/avatar.png',
+        userId: '1',
+        username: 'admin',
+        nickname: 'Admin User',
+        tenantId: '000000',
+        isAdmin: '1' as const,
+        roles: [],
+        perms: [],
+        menus: [],
         access: 'admin',
       },
     };
@@ -20,9 +25,14 @@ describe('access', () => {
   it('should return canAdmin false when user has non-admin access', () => {
     const initialState = {
       currentUser: {
-        userid: '2',
-        name: 'Regular User',
-        avatar: 'https://example.com/avatar.png',
+        userId: '2',
+        username: 'user',
+        nickname: 'Regular User',
+        tenantId: '000000',
+        isAdmin: '0' as const,
+        roles: [],
+        perms: [],
+        menus: [],
         access: 'user',
       },
     };
@@ -35,9 +45,14 @@ describe('access', () => {
   it('should return canAdmin false when user access is undefined', () => {
     const initialState = {
       currentUser: {
-        userid: '3',
-        name: 'Guest User',
-        avatar: 'https://example.com/avatar.png',
+        userId: '3',
+        username: 'guest',
+        nickname: 'Guest User',
+        tenantId: '000000',
+        isAdmin: '0' as const,
+        roles: [],
+        perms: [],
+        menus: [],
       },
     };
 

@@ -5,8 +5,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178c6)](https://www.typescriptlang.org/)
 [![Koa](https://img.shields.io/badge/Koa-3.x-333)](https://koajs.com/)
 [![Ant Design Pro](https://img.shields.io/badge/Ant%20Design%20Pro-6.x-1677ff)](https://pro.ant.design/)
+[![React](https://img.shields.io/badge/React-19.x-61dafb)](https://react.dev/)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue)](CHANGELOG.md)
-[![License](https://img.shields.io/badge/license-Mulan%20PSL%20v2-blue.svg)](LICENSE)
 
 > 基于 Koa + TypeScript 的开源多租户后台开发框架与管理系统模板。
 > 内置 RBAC、多租户隔离、JWT 会话体系、防重放、限流、安全审计、WebSocket、Prometheus Metrics。
@@ -49,20 +49,24 @@
 
 | 层 | 技术 |
 |----|------|
-| 前端 | React 18 + Ant Design Pro 6 + Umi 4 + TypeScript |
+| 前端 | React 19 + Ant Design Pro 6 + Umi 4 + TypeScript |
 | 后端 | Koa 3 + TypeScript + Kysely ORM + Zod |
 | 数据库 | MySQL 8.0 |
 | 缓存 | Redis 7 |
 | 部署 | Docker Compose + Nginx |
 
+## 🔧 环境要求
+
+| 依赖 | 最低版本 | 说明 |
+|------|----------|------|
+| Node.js | ≥ 22.0.0 | 运行时 |
+| MySQL | 8.0 | 数据库 |
+| Redis | 7.0 | 缓存 / 限流 / Session |
+| Docker | 20.10+ | 可选，一键部署使用 |
+
 ## 🏃 Quick Start
 
-### 环境要求
-- Node.js ≥ 22
-- MySQL 8.0
-- Redis 7
-
-### Docker 一键部署（推荐）
+### 方式一：Docker 一键部署（推荐）
 
 ```bash
 git clone https://github.com/npcxl/BLS-KOX.git && cd BLS-KOX
@@ -72,15 +76,15 @@ docker compose up -d --build
 docker compose ps
 ```
 
-访问：
-- 管理端：http://localhost
-- API：http://localhost/api
-- 健康检查：http://localhost/api/health
+启动成功后访问：
+- **管理端**：http://localhost
+- **API**：http://localhost/api
+- **健康检查**：http://localhost/api/health
 
-### 本地开发
+### 方式二：本地开发
 
 ```bash
-# 1. 启动 MySQL + Redis
+# 1. 启动 MySQL + Redis（使用 Docker）
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d mysql redis
 
 # 2. 后端
@@ -93,7 +97,7 @@ npm run dev                                    # http://localhost:6001
 # 3. 前端（新终端）
 cd ../bls-admin
 npm install
-npm start                                      # http://localhost:8000
+npm start                                      # http://localhost:9000
 ```
 
 ## 🔑 默认账号
@@ -103,8 +107,22 @@ npm start                                      # http://localhost:8000
 | 默认租户 | `000000` |
 | 默认账号 | `superadmin` |
 | 默认密码 | `123456` |
+| 租户管理员 | `admin / 123456`（租户 `100000`） |
 
 > ⚠️ **该账号仅适用于本地演示。生产部署前必须立即修改密码！** 详见 [SECURITY.md](./SECURITY.md)。
+
+### 一键运行成功标志
+
+Docker 部署成功后，执行 `docker compose ps` 应看到 4 个服务均为 `Up` (healthy)：
+
+```
+NAME                STATUS
+bls-kox-admin-1     Up (healthy)
+bls-kox-nginx-1     Up
+bls-kox-server-1    Up (healthy)
+bls-kox-mysql-1     Up (healthy)
+bls-kox-redis-1     Up (healthy)
+```
 
 ## 📁 Project Structure
 

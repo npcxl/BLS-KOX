@@ -29,7 +29,7 @@ import { logger } from '../core/logger';
 let sdk: NodeSDK | null = null;
 
 export function initTracing(): void {
-  const enabled = (process.env.OTEL_TRACES_ENABLED ?? 'true') === 'true';
+  const enabled = (process.env.OTEL_TRACES_ENABLED ?? 'false') === 'true';
   if (!enabled) {
     logger.info('[tracing] disabled via OTEL_TRACES_ENABLED');
     return;
