@@ -41,7 +41,20 @@ export function createApp(): Koa {
   const router = createRouter();
 
   app.use(errorHandler);
-  app.use(helmet({ contentSecurityPolicy: false }));
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://unpkg.com"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "https:"],
+        fontSrc: ["'self'", "data:"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+  }));
   app.use(cors({
     credentials: true,
     origin: (ctx) => {

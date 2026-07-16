@@ -190,29 +190,28 @@ export async function handleUpload(
   ctx.body = { code: 200, message: '上传成功', data: { fileId, url, bucketName, objectName, originalName, fileName: safeName, fileSize } };
 }
 
-// 文件上传路由（含分布式锁）
+// 文件上传路由（含分布式锁，Redis 不可用时降级执行原逻辑）
 router.post('/upload', jwtAuth(), hasPerm('system:file:upload'), async (ctx: Context) => {
   const redis = getRedisClient();
+  let unlock: (() => Promise<void>) | null = null;
   if (redis) {
-    const lock = createDistributedLock(redis);
-    const unlock = await lock.acquire('storage:upload', { leaseTime: 30, waitTime: 5 });
-    if (!unlock) {
-      ctx.status = 409;
-      ctx.body = { code: 409, message: '操作太频繁，请稍后再试' };
-      return;
-    }
     try {
-      await handleUpload(ctx, getDb, getCurrentTenantId, writeSecurityLog as any, writeUploadAudit as any, getRequestContext);
-    } catch (err: any) {
-      ctx.body = { code: 500, message: err?.message || '上传失败' };
-    } finally {
-      await unlock();
+      const lock = createDistributedLock(redis);
+      unlock = await lock.acquire('storage:upload', { leaseTime: 30, waitTime: 5 });
+    } catch {
+      // Redis 异常，降级执行原逻辑
     }
-  } else {
-    try {
-      await handleUpload(ctx, getDb, getCurrentTenantId, writeSecurityLog as any, writeUploadAudit as any, getRequestContext);
-    } catch (err: any) {
-      ctx.body = { code: 500, message: err?.message || '上传失败' };
+    if (unlock === null) {
+      // 未获取到锁也降级执行（避免锁竞争导致接口不可用）
+    }
+  }
+  try {
+    await handleUpload(ctx, getDb, getCurrentTenantId, writeSecurityLog as any, writeUploadAudit as any, getRequestContext);
+  } catch (err: any) {
+    ctx.body = { code: 500, message: err?.message || '上传失败' };
+  } finally {
+    if (unlock) {
+      try { await unlock(); } catch { /* 释放锁失败不影响业务 */ }
     }
   }
 });

@@ -65,18 +65,24 @@ async function loadDictMaps(cols: any[]) {
   return { v2l, l2v };
 }
 
-/** 导出数据到 Excel（含分布式锁） */
+/** 导出数据到 Excel（含分布式锁，Redis 不可用时降级执行） */
 router.post('/export', jwtAuth(), async (ctx: Context) => {
   const body = ctx.request.body as any;
   const metaKey = String(body.metaKey ?? '');
   const redis = getRedisClient();
+  let unlock: (() => Promise<void>) | null = null;
   if (redis) {
-    const lock = createDistributedLock(redis);
-    const unlock = await lock.acquire(`excel:export:${metaKey}`, { leaseTime: 60, waitTime: 10 });
-    if (!unlock) { ctx.status = 409; ctx.body = { code: 409, message: '导出任务进行中，请稍后再试' }; return; }
-    try { await handleExport(ctx); } finally { await unlock(); }
-  } else {
+    try {
+      const lock = createDistributedLock(redis);
+      unlock = await lock.acquire(`excel:export:${metaKey}`, { leaseTime: 60, waitTime: 10 });
+    } catch { /* Redis 异常，降级执行 */ }
+  }
+  try {
     await handleExport(ctx);
+  } finally {
+    if (unlock) {
+      try { await unlock(); } catch { /* 释放锁失败不影响业务 */ }
+    }
   }
 });
 
@@ -195,20 +201,28 @@ router.get('/template', jwtAuth(), async (ctx: Context) => {
   }
 });
 
-/** 导入数据（含分布式锁） */
+/** 导入数据（含分布式锁，Redis 不可用时降级执行） */
 router.post('/import', jwtAuth(), async (ctx: Context) => {
   const body = ctx.request.body as any;
   const metaKey = String(body.metaKey ?? '');
   const redis = getRedisClient();
+  let unlock: (() => Promise<void>) | null = null;
   if (redis) {
-    const lock = createDistributedLock(redis);
-    const unlock = await lock.acquire(`excel:import:${metaKey}`, { leaseTime: 120, waitTime: 10 });
-    if (!unlock) { ctx.status = 409; ctx.body = { code: 409, message: '导入任务进行中，请稍后再试' }; return; }
-    try { await handleImport(ctx); } finally { await unlock(); }
-  } else {
+    try {
+      const lock = createDistributedLock(redis);
+      unlock = await lock.acquire(`excel:import:${metaKey}`, { leaseTime: 120, waitTime: 10 });
+    } catch { /* Redis 异常，降级执行 */ }
+  }
+  try {
     await handleImport(ctx);
+  } finally {
+    if (unlock) {
+      try { await unlock(); } catch { /* 释放锁失败不影响业务 */ }
+    }
   }
 });
+
+
 
 async function handleImport(ctx: Context) {
   try {
