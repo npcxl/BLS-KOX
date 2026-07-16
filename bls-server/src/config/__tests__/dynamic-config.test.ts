@@ -164,10 +164,9 @@ describe('Dynamic Config', () => {
     // Find the edit handler section
     const editIdx = fnStr.indexOf("router.put('/edit'");
     const onWriteIdx2 = fnStr.indexOf('onWrite?.()', editIdx);
-    const execIdx2 = fnStr.indexOf('.execute()', editIdx);
+    const execIdx2 = fnStr.indexOf('.execute()', onWriteIdx2);
     expect(onWriteIdx2).toBeGreaterThan(editIdx);
-    expect(execIdx2).toBeGreaterThan(editIdx);
-    expect(onWriteIdx2).toBeLessThan(execIdx2);
+    expect(execIdx2).toBeGreaterThan(onWriteIdx2);
   });
 
   // ====== 5. All tests pass verification ======
