@@ -9,18 +9,21 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.Serializable;
 import java.util.*;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
  * 通用 CRUD Service 基类 — 对齐 Koa defineCrudModule() 设计。
- * 子类实现 list/add/edit/remove 的抽象方法。
+ * 子类通过构造函数传入 entityFactory 避免反射推断实体类型。
  */
 public abstract class BaseCrudService<T, M extends BaseMapper<T>, C, E> {
 
     protected final M mapper;
+    protected final Supplier<T> entityFactory;
 
-    public BaseCrudService(M mapper) {
+    public BaseCrudService(M mapper, Supplier<T> entityFactory) {
         this.mapper = mapper;
+        this.entityFactory = entityFactory;
     }
 
     /** 分页列表查询 */
@@ -60,23 +63,9 @@ public abstract class BaseCrudService<T, M extends BaseMapper<T>, C, E> {
         mapper.deleteByIds(ids);
     }
 
-    /** 子类可覆盖以提供自定义实体创建 */
-    @SuppressWarnings("unchecked")
+    /** 通过 entityFactory 创建新实例，子类也可 override */
     protected T newEntity() {
-        try {
-            java.lang.reflect.Type[] types = mapper.getClass().getGenericInterfaces();
-            for (java.lang.reflect.Type t : types) {
-                if (t instanceof java.lang.reflect.ParameterizedType pt) {
-                    if (pt.getRawType() == BaseMapper.class) {
-                        return (T) ((Class<?>) pt.getActualTypeArguments()[0])
-                                .getDeclaredConstructor().newInstance();
-                    }
-                }
-            }
-            throw new RuntimeException("Cannot infer entity type from mapper");
-        } catch (Exception e) {
-            throw new RuntimeException("newEntity failed", e);
-        }
+        return entityFactory.get();
     }
 
     /** 快捷分页 + 搜索辅助方法 */

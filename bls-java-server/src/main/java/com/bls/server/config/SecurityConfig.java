@@ -60,8 +60,7 @@ public class SecurityConfig {
                 // Public endpoints
                 .requestMatchers("/api/auth/login", "/api/auth/logout", "/api/auth/refresh").permitAll()
                 .requestMatchers("/api/health", "/health", "/api/ready", "/ready", "/api/metrics").permitAll()
-                .requestMatchers("/api/docs", "/api/openapi.json", "/api/swagger-ui/**", "/api/v3/api-docs/**").permitAll()
-                .requestMatchers("/doc.html", "/webjars/**", "/v3/api-docs/**").permitAll()
+                .requestMatchers("/doc.html", "/webjars/**", "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/internal/**").permitAll()
                 .requestMatchers("/openapi/**").permitAll()
                 .requestMatchers("/ws/**").permitAll()

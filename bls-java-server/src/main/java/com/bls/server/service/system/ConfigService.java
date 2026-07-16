@@ -16,7 +16,7 @@ import java.util.*;
 @Service
 public class ConfigService extends BaseCrudService<SysConfig, SysConfigMapper, ConfigCreateRequest, ConfigEditRequest> {
 
-    public ConfigService(SysConfigMapper mapper) { super(mapper); }
+    public ConfigService(SysConfigMapper mapper) { super(mapper, SysConfig::new); }
 
     @Override
     public ApiResponse<List<Map<String, Object>>> list(int pageNum, int pageSize, String keyword) {

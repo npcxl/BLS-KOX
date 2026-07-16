@@ -58,7 +58,8 @@ public class DictController {
 
     @Data
     public static class DictDataQueryRequest {
-        @NotBlank private String dictType;
+        private String dictType;
+        private String dictTypeId;
         private Integer pageNum = 1;
         private Integer pageSize = 10;
     }

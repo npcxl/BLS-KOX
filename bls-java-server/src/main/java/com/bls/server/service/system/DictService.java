@@ -93,11 +93,21 @@ public class DictService {
 
     public ApiResponse<List<Map<String, Object>>> listDictData(DictDataQueryRequest request) {
         String tenantId = TenantContext.getTenantId();
-        // request.getDictType() is the dict type identifier, resolve to PK
-        SysDictType dt = dictTypeMapper.selectOne(new LambdaQueryWrapper<SysDictType>()
-                .eq(SysDictType::getTenantId, tenantId)
-                .eq(SysDictType::getDictType, request.getDictType())
-                .eq(SysDictType::getDeleted, 0));
+
+        // Support both dictType (type code like "sys_status") and dictTypeId (PK like "DT003")
+        SysDictType dt = null;
+        if (request.getDictTypeId() != null && !request.getDictTypeId().isBlank()) {
+            dt = dictTypeMapper.selectOne(new LambdaQueryWrapper<SysDictType>()
+                    .eq(SysDictType::getTenantId, tenantId)
+                    .eq(SysDictType::getDictTypeId, request.getDictTypeId())
+                    .eq(SysDictType::getDeleted, 0));
+        }
+        if (dt == null && request.getDictType() != null && !request.getDictType().isBlank()) {
+            dt = dictTypeMapper.selectOne(new LambdaQueryWrapper<SysDictType>()
+                    .eq(SysDictType::getTenantId, tenantId)
+                    .eq(SysDictType::getDictType, request.getDictType())
+                    .eq(SysDictType::getDeleted, 0));
+        }
         if (dt == null) return ApiResponse.pageSuccess(Collections.emptyList(), 0);
 
         Page<SysDictData> page = new Page<>(request.getPageNum(), request.getPageSize());

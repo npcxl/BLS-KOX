@@ -26,7 +26,7 @@ public class RoleService extends BaseCrudService<SysRole, SysRoleMapper, RoleCre
     private final SysUserRoleMapper userRoleMapper;
 
     public RoleService(SysRoleMapper mapper, SysRoleMenuMapper roleMenuMapper, SysUserRoleMapper userRoleMapper) {
-        super(mapper);
+        super(mapper, SysRole::new);
         this.roleMenuMapper = roleMenuMapper;
         this.userRoleMapper = userRoleMapper;
     }

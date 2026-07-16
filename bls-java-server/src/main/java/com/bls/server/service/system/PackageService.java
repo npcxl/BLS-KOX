@@ -22,7 +22,7 @@ public class PackageService extends BaseCrudService<SysPackage, SysPackageMapper
     private final SysPackageMenuMapper packageMenuMapper;
 
     public PackageService(SysPackageMapper mapper, SysPackageMenuMapper packageMenuMapper) {
-        super(mapper);
+        super(mapper, SysPackage::new);
         this.packageMenuMapper = packageMenuMapper;
     }
 
