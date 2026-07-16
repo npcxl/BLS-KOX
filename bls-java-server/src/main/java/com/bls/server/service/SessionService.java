@@ -4,8 +4,6 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -13,13 +11,8 @@ import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Session Center - aligned with Koa sessionCenter.
- * Redis key pattern: session:{tenantId}:{userId}:{sessionId}
- */
 @Slf4j
 @Service
-@ConditionalOnBean(RedisConnectionFactory.class)
 public class SessionService {
 
     private final RedisTemplate<String, String> redisTemplate;
@@ -28,118 +21,130 @@ public class SessionService {
         this.redisTemplate = redisTemplate;
     }
 
-    private static final String SESSION_PREFIX = "session:";
-    private static final String SESSION_INDEX_PREFIX = "session:index:";
     private static final Duration DEFAULT_TTL = Duration.ofDays(7);
 
+    private boolean isRedisAvailable() {
+        return redisTemplate != null;
+    }
+
+    /** Safe wrapper — never throw on Redis failure */
+    private <T> T safeOp(String op, java.util.function.Supplier<T> fn, T fallback) {
+        if (!isRedisAvailable()) return fallback;
+        try {
+            return fn.get();
+        } catch (Exception e) {
+            log.debug("Redis {} failed: {}", op, e.getMessage());
+            return fallback;
+        }
+    }
+
+    private void safeVoid(String op, Runnable fn) {
+        if (!isRedisAvailable()) return;
+        try {
+            fn.run();
+        } catch (Exception e) {
+            log.debug("Redis {} failed: {}", op, e.getMessage());
+        }
+    }
+
     private String sessionKey(String tenantId, String userId, String sessionId) {
-        return SESSION_PREFIX + tenantId + ":" + userId + ":" + sessionId;
+        return "session:" + tenantId + ":" + userId + ":" + sessionId;
     }
 
     private String indexKey(String tenantId, String userId) {
-        return SESSION_INDEX_PREFIX + tenantId + ":" + userId;
+        return "session:index:" + tenantId + ":" + userId;
     }
 
     public void createSession(String tenantId, String userId, String sessionId) {
-        String key = sessionKey(tenantId, userId, sessionId);
-        String indexKey = indexKey(tenantId, userId);
-
-        SessionData data = new SessionData();
-        data.setSessionId(sessionId);
-        data.setUserId(userId);
-        data.setTenantId(tenantId);
-        data.setStatus("active");
-        data.setLoginTime(System.currentTimeMillis());
-        data.setLastActiveTime(System.currentTimeMillis());
-
-        redisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(data), DEFAULT_TTL);
-        redisTemplate.opsForSet().add(indexKey, sessionId);
-        redisTemplate.expire(indexKey, DEFAULT_TTL);
+        safeVoid("createSession", () -> {
+            String key = sessionKey(tenantId, userId, sessionId);
+            String idxKey = indexKey(tenantId, userId);
+            SessionData data = new SessionData();
+            data.setSessionId(sessionId);
+            data.setUserId(userId);
+            data.setTenantId(tenantId);
+            data.setStatus("active");
+            data.setLoginTime(System.currentTimeMillis());
+            data.setLastActiveTime(System.currentTimeMillis());
+            redisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(data), DEFAULT_TTL);
+            redisTemplate.opsForSet().add(idxKey, sessionId);
+            redisTemplate.expire(idxKey, DEFAULT_TTL);
+        });
     }
 
     public boolean validateSession(String tenantId, String userId, String sessionId) {
-        String key = sessionKey(tenantId, userId, sessionId);
-        String json = redisTemplate.opsForValue().get(key);
-        if (StrUtil.isBlank(json)) {
-            return false;
-        }
-        try {
+        return safeOp("validateSession", () -> {
+            String key = sessionKey(tenantId, userId, sessionId);
+            String json = redisTemplate.opsForValue().get(key);
+            if (StrUtil.isBlank(json)) return false;
             SessionData data = JSONUtil.toBean(json, SessionData.class);
             return "active".equals(data.getStatus());
-        } catch (Exception e) {
-            return false;
-        }
+        }, true); // fallback: allow when Redis is down
     }
 
     public void touchSession(String tenantId, String userId, String sessionId) {
-        String key = sessionKey(tenantId, userId, sessionId);
-        String json = redisTemplate.opsForValue().get(key);
-        if (StrUtil.isNotBlank(json)) {
-            try {
+        safeVoid("touchSession", () -> {
+            String key = sessionKey(tenantId, userId, sessionId);
+            String json = redisTemplate.opsForValue().get(key);
+            if (StrUtil.isNotBlank(json)) {
                 SessionData data = JSONUtil.toBean(json, SessionData.class);
                 data.setLastActiveTime(System.currentTimeMillis());
                 Long ttl = redisTemplate.getExpire(key, TimeUnit.SECONDS);
                 if (ttl != null && ttl > 0) {
                     redisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(data), Duration.ofSeconds(ttl));
                 }
-            } catch (Exception e) {
-                log.warn("Failed to touch session: {}", e.getMessage());
             }
-        }
+        });
     }
 
     public void revokeSession(String tenantId, String userId, String sessionId) {
-        String key = sessionKey(tenantId, userId, sessionId);
-        String indexKey = indexKey(tenantId, userId);
-        redisTemplate.delete(key);
-        redisTemplate.opsForSet().remove(indexKey, sessionId);
+        safeVoid("revokeSession", () -> {
+            String key = sessionKey(tenantId, userId, sessionId);
+            String idxKey = indexKey(tenantId, userId);
+            redisTemplate.delete(key);
+            redisTemplate.opsForSet().remove(idxKey, sessionId);
+        });
     }
 
     public void revokeAllSessions(String tenantId, String userId) {
-        String indexKey = indexKey(tenantId, userId);
-        Set<String> sessionIds = redisTemplate.opsForSet().members(indexKey);
-        if (sessionIds != null) {
-            for (String sessionId : sessionIds) {
-                String key = sessionKey(tenantId, userId, sessionId);
-                redisTemplate.delete(key);
+        safeVoid("revokeAllSessions", () -> {
+            String idxKey = indexKey(tenantId, userId);
+            Set<String> sessionIds = redisTemplate.opsForSet().members(idxKey);
+            if (sessionIds != null) {
+                for (String sessionId : sessionIds) {
+                    redisTemplate.delete(sessionKey(tenantId, userId, sessionId));
+                }
             }
-        }
-        redisTemplate.delete(indexKey);
+            redisTemplate.delete(idxKey);
+        });
     }
 
-    /**
-     * Store auth session for refresh token reuse detection.
-     */
-    public void storeAuthSession(String accessJti, String refreshJti, String userId, String tenantId, String refreshTokenHash) {
-        String key = "auth:session:" + accessJti;
-        AuthSessionData data = new AuthSessionData();
-        data.setUserId(userId);
-        data.setAccessJti(accessJti);
-        data.setRefreshJti(refreshJti);
-        data.setRefreshHash(refreshTokenHash);
-
-        redisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(data), DEFAULT_TTL);
-
-        // Also store refresh token mapping
-        String refreshKey = "auth:refresh:" + refreshJti;
-        redisTemplate.opsForValue().set(refreshKey, accessJti, DEFAULT_TTL);
+    public void storeAuthSession(String accessJti, String refreshJti, String userId,
+                                  String tenantId, String refreshTokenHash) {
+        safeVoid("storeAuthSession", () -> {
+            String key = "auth:session:" + accessJti;
+            AuthSessionData data = new AuthSessionData();
+            data.setUserId(userId);
+            data.setAccessJti(accessJti);
+            data.setRefreshJti(refreshJti);
+            data.setRefreshHash(refreshTokenHash);
+            redisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(data), DEFAULT_TTL);
+            redisTemplate.opsForValue().set("auth:refresh:" + refreshJti, accessJti, DEFAULT_TTL);
+        });
     }
 
     public AuthSessionData getAuthSession(String accessJti) {
-        String key = "auth:session:" + accessJti;
-        String json = redisTemplate.opsForValue().get(key);
-        if (StrUtil.isBlank(json)) return null;
-        try {
+        return safeOp("getAuthSession", () -> {
+            String key = "auth:session:" + accessJti;
+            String json = redisTemplate.opsForValue().get(key);
+            if (StrUtil.isBlank(json)) return null;
             return JSONUtil.toBean(json, AuthSessionData.class);
-        } catch (Exception e) {
-            return null;
-        }
+        }, null);
     }
 
     public void deleteAuthSession(String accessJti) {
-        if (redisTemplate == null) return;
-        String key = "auth:session:" + accessJti;
-        redisTemplate.delete(key);
+        safeVoid("deleteAuthSession", () ->
+            redisTemplate.delete("auth:session:" + accessJti));
     }
 
     @lombok.Data

@@ -22,7 +22,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -183,56 +182,57 @@ public class StorageController {
             ext = originalName.substring(originalName.lastIndexOf(".") + 1).toLowerCase();
         }
 
+        // Use user.dir as base path (cross-platform safe)
+        String userDir = System.getProperty("user.dir");
+        Path dirPath = Paths.get(userDir, "uploads", tenantId, moduleName);
+        String uuid = UUID.randomUUID().toString();
+        String fileName = ext.isEmpty() ? uuid : uuid + "." + ext;
+        String objectName = moduleName + "/" + fileName;
+        Path filePath = dirPath.resolve(fileName);
+
         try {
-            String dir = "uploads/" + tenantId + "/" + moduleName;
-            Path dirPath = Paths.get(dir);
             Files.createDirectories(dirPath);
-
-            String fileName = UUID.randomUUID().toString() + "." + ext;
-            String objectName = moduleName + "/" + fileName;
-            String filePath = dir + "/" + fileName;
-
-            file.transferTo(new File(filePath));
-
-            // Use default storage config
-            SysStorageConfig storageCfg = storageConfigMapper.selectOne(
-                    new LambdaQueryWrapper<SysStorageConfig>()
-                            .eq(SysStorageConfig::getTenantId, tenantId)
-                            .eq(SysStorageConfig::getDeleted, 0)
-                            .last("limit 1"));
-            String storageId = storageCfg != null ? storageCfg.getStorageId() : "local";
-            String bucketName = "private".equals(accessType)
-                    ? (storageCfg != null && storageCfg.getPrivateBucket() != null ? storageCfg.getPrivateBucket() : "private-assets")
-                    : (storageCfg != null && storageCfg.getPublicBucket() != null ? storageCfg.getPublicBucket() : "public-assets");
-
-            SysFile sysFile = new SysFile();
-            sysFile.setTenantId(tenantId);
-            sysFile.setStorageId(storageId);
-            sysFile.setBucketName(bucketName);
-            sysFile.setObjectName(objectName);
-            sysFile.setOriginalName(originalName);
-            sysFile.setFileName(fileName);
-            sysFile.setFileExt(ext);
-            sysFile.setMimeType(file.getContentType());
-            sysFile.setFileSize(file.getSize());
-            sysFile.setAccessType(accessType);
-            sysFile.setModuleName(moduleName);
-            sysFile.setCreateBy(userId);
-            fileMapper.insert(sysFile);
-
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("fileId", sysFile.getFileId());
-            result.put("url", sysFile.getUrl());
-            result.put("bucketName", bucketName);
-            result.put("objectName", objectName);
-            result.put("originalName", originalName);
-            result.put("fileName", fileName);
-            result.put("fileSize", file.getSize());
-            return ApiResponse.success(result, "上传成功");
+            Files.copy(file.getInputStream(), filePath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
-            log.error("File upload failed", e);
+            log.error("File upload failed, path={}", filePath, e);
             throw AppException.internal("文件上传失败");
         }
+
+        // Query default storage config
+        SysStorageConfig storageCfg = storageConfigMapper.selectOne(
+                new LambdaQueryWrapper<SysStorageConfig>()
+                        .eq(SysStorageConfig::getTenantId, tenantId)
+                        .eq(SysStorageConfig::getDeleted, 0)
+                        .last("limit 1"));
+        String storageId = storageCfg != null ? storageCfg.getStorageId() : "local";
+        String bucketName = "private".equals(accessType)
+                ? (storageCfg != null && storageCfg.getPrivateBucket() != null ? storageCfg.getPrivateBucket() : "private-assets")
+                : (storageCfg != null && storageCfg.getPublicBucket() != null ? storageCfg.getPublicBucket() : "public-assets");
+
+        SysFile sysFile = new SysFile();
+        sysFile.setTenantId(tenantId);
+        sysFile.setStorageId(storageId);
+        sysFile.setBucketName(bucketName);
+        sysFile.setObjectName(objectName);
+        sysFile.setOriginalName(originalName);
+        sysFile.setFileName(fileName);
+        sysFile.setFileExt(ext);
+        sysFile.setMimeType(file.getContentType());
+        sysFile.setFileSize(file.getSize());
+        sysFile.setAccessType(accessType);
+        sysFile.setModuleName(moduleName);
+        sysFile.setCreateBy(userId);
+        fileMapper.insert(sysFile);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("fileId", sysFile.getFileId());
+        result.put("url", sysFile.getUrl());
+        result.put("bucketName", bucketName);
+        result.put("objectName", objectName);
+        result.put("originalName", originalName);
+        result.put("fileName", fileName);
+        result.put("fileSize", file.getSize());
+        return ApiResponse.success(result, "上传成功");
     }
 
     // ========== 文件列表 ==========

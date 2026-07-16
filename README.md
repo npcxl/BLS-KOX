@@ -4,22 +4,27 @@
 [![License](https://img.shields.io/badge/license-Mulan%20PSL%20v2-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178c6)](https://www.typescriptlang.org/)
 [![Koa](https://img.shields.io/badge/Koa-3.x-333)](https://koajs.com/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.5-6db33f)](https://spring.io/)
+[![Java](https://img.shields.io/badge/Java-21-orange)](https://openjdk.org/)
 [![Ant Design Pro](https://img.shields.io/badge/Ant%20Design%20Pro-6.x-1677ff)](https://pro.ant.design/)
 [![React](https://img.shields.io/badge/React-19.x-61dafb)](https://react.dev/)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue)](CHANGELOG.md)
 
-> 基于 Koa + TypeScript 的开源多租户后台开发框架与管理系统模板。
+> 双后端并存的开源多租户后台开发框架与管理系统模板。
+> **一套前端、一套 MySQL、一套 Redis**，同时支持 Koa (TypeScript) 和 Spring Boot (Java 21) 两套后端。
 > 内置 RBAC、多租户隔离、JWT 会话体系、防重放、限流、安全审计、WebSocket、Prometheus Metrics。
 
 ## ✨ Why BLS-KOX
 
+- **双后端并存** — Koa (TypeScript) 与 Spring Boot (Java 21) 两套后端，API 完全兼容，按需选择或共存
 - **安全内置，而非事后追加** — 防重放、限流、审计日志随框架自带
 - **多租户原生支持** — tenant_id 自动注入，跨租户访问自动告警
-- **一行配置生成接口** — `defineCrudModule()` 生成完整的 list/add/edit/remove/status
-- **现代化 TypeScript 全栈** — Koa + Kysely ORM + Zod + React 19 + Ant Design Pro 6
+- **一行配置生成接口** — Koa `defineCrudModule()` 生成完整的 list/add/edit/remove/status
+- **现代化全栈** — React 19 + Ant Design Pro 6 + TypeScript 前端，双后端任意切换
+- **共享基础设施** — 同一套 MySQL 8.0 + Redis 7 + `sql/Init.sql`，两套后端共用
 - **Docker 一键部署** — `docker compose up -d`
 
-**适合**：学习后端架构 · 快速搭建管理后台 · SaaS 原型开发 · 权限系统参考 · 二次开发
+**适合**：学习后端架构 · 快速搭建管理后台 · SaaS 原型开发 · 权限系统参考 · 多语言后端对比 · 二次开发
 
 ## 📸 预览
 
@@ -30,57 +35,49 @@
 ## 🏗 Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                     bls-admin (React 19)                     │
-│            Ant Design Pro 6 · Umi 4 · TypeScript             │
-└───────────────────────────┬──────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                     bls-admin (React 19)                         │
+│            Ant Design Pro 6 · Umi 4 · TypeScript                 │
+└───────────────────────────┬──────────────────────────────────────┘
                             │ HTTP/WS
                             ▼
-┌──────────────────────────────────────────────────────────────┐
-│                       Nginx (反向代理)                        │
-│              static files · /api proxy · gzip                │
-└───────────────────────────┬──────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                       Nginx (反向代理)                            │
+│              static files · /api proxy · gzip                    │
+└───────────────────────────┬──────────────────────────────────────┘
                             │
-                            ▼
-┌──────────────────────────────────────────────────────────────┐
-│                   bls-server (Koa 3)                         │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │                 Middleware Layer                      │   │
-│  │  ┌──────────┬──────────┬──────────┬──────────────┐   │   │
-│  │  │  JWT     │  Tenant  │  RBAC    │  Rate Limit  │   │   │
-│  │  │  Auth    │  Inject  │  hasPerm │  Sliding Win │   │   │
-│  │  └──────────┴──────────┴──────────┴──────────────┘   │   │
-│  │  ┌──────────┬──────────┬──────────────┐              │   │
-│  │  │  Replay  │  IP      │  Data Scope  │              │   │
-│  │  │  Protect │  Block   │  ALL/TENANT/ │              │   │
-│  │  │  Nonce+  │  Redis+  │  DEPT/SELF   │              │   │
-│  │  │  HMAC    │  DB      │              │              │   │
-│  │  └──────────┴──────────┴──────────────┘              │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                            │                                 │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │               Service / CRUD Factory                  │   │
-│  │   defineCrudModule() → list/add/edit/remove/status   │   │
-│  │   Kysely ORM · Zod Validation · Auto API Scan        │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                            │                                 │
-│  ┌──────────┬──────────┬──────────┬─────────────────────┐   │
-│  │  MySQL   │  Redis   │  MinIO   │  Prometheus         │   │
-│  │  8.0     │  7       │  (可选)   │  /api/metrics       │   │
-│  └──────────┴──────────┴──────────┴─────────────────────┘   │
-└──────────────────────────────────────────────────────────────┘
-                            │
-        ┌───────────────────┼───────────────────┐
-        ▼                   ▼                   ▼
-┌───────────────┐  ┌───────────────┐  ┌───────────────┐
-│  Security     │  │  Audit        │  │  WebSocket    │
-│  Center       │  │  Logs         │  │  Real-time    │
-│  · 风险规则引擎 │  │  · 登录日志    │  │  Push         │
-│  · IP 封禁    │  │  · 操作审计    │  │               │
-│  · 会话中心    │  │  · 安全日志    │  │               │
-└───────────────┘  └───────────────┘  └───────────────┘
+              ┌─────────────┴─────────────┐
+              ▼                           ▼
+┌──────────────────────────┐  ┌──────────────────────────┐
+│  bls-server (Koa 3)      │  │  bls-java-server         │
+│  TypeScript · 默认后端    │  │  Spring Boot 3 · Java 21 │
+│                          │  │  可选后端 · API 兼容      │
+│  ┌────────────────────┐  │  │                          │
+│  │  Middleware Chain   │  │  │  ┌────────────────────┐  │
+│  │  JWT · Tenant ·    │  │  │  │  Security Chain     │  │
+│  │  RBAC · Rate Limit │  │  │  │  JWT Filter ·       │  │
+│  │  Replay · IP Block │  │  │  │  @PreAuthorize ·    │  │
+│  └────────────────────┘  │  │  │  TenantContext       │  │
+│                          │  │  └────────────────────┘  │
+│  ┌────────────────────┐  │  │                          │
+│  │  CRUD Factory       │  │  │  ┌────────────────────┐  │
+│  │  defineCrudModule() │  │  │  │  Controller+Service │  │
+│  │  Kysely ORM + Zod   │  │  │  │  +Mapper (MyBatis-  │  │
+│  └────────────────────┘  │  │  │  Plus)              │  │
+│                          │  │  └────────────────────┘  │
+└──────────┬───────────────┘  └──────────┬───────────────┘
+           │                             │
+           └──────────┬──────────────────┘
+                      │
+    ┌─────────────────┼─────────────────┐
+    ▼                 ▼                 ▼
+┌────────┐  ┌──────────────┐  ┌──────────────────┐
+│ MySQL  │  │    Redis 7   │  │   Prometheus     │
+│  8.0   │  │ Session/Limit│  │   /api/metrics   │
+└────────┘  └──────────────┘  └──────────────────┘
 ```
+
+> **关键设计**：两套后端共用同一套 MySQL 数据库（`sql/Init.sql`）、同一套 Redis、同一套前端代码。Nginx 通过 upstream 切换后端，前端无需任何修改。
 
 ## 🛡️ Security
 
@@ -119,11 +116,12 @@
 | 层 | 技术 |
 |----|------|
 | 前端 | React 19 + Ant Design Pro 6 + Umi 4 + TypeScript |
-| 后端 | Koa 3 + TypeScript + Kysely ORM + Zod（默认）|
-| 后端 (Java) | Spring Boot 3 + Java 21 + MyBatis-Plus（可选，API 兼容）|
-| 数据库 | MySQL 8.0 |
-| 缓存 | Redis 7 |
+| 后端 (Koa) | Koa 3 + TypeScript 6 + Kysely ORM + Zod（默认，主后端）|
+| 后端 (Java) | Spring Boot 3.3 + Java 21 + MyBatis-Plus 3.5 + Spring Security（可选，API 兼容并存）|
+| 数据库 | MySQL 8.0（两套后端共用同一库同一表结构）|
+| 缓存 | Redis 7（两套后端共用 Session / 限流 / 缓存）|
 | 部署 | Docker Compose + Nginx |
+| 文档 | Knife4j (Java) / Swagger (Koa)
 
 ### 📡 API 文档
 
@@ -254,36 +252,43 @@ bls-kox-redis-1     Up (healthy)
 
 ```
 BLS-KOX/
-├── bls-server/              # Koa + TypeScript 后端（默认）
+├── bls-server/              # Koa + TypeScript 后端（默认主后端）
 │   ├── src/
 │   │   ├── api/             # 业务接口（自动扫描注册）
-│   │   ├── core/            # CRUD 工厂、数据库、审计、日志
-│   │   ├── middleware/      # 认证/权限/租户/HTTP Metrics
+│   │   │   ├── auth/        # 登录/登出/刷新/用户信息
+│   │   │   ├── system/      # 用户/角色/菜单/部门/字典/配置等
+│   │   │   └── common/      # Excel 导入导出
+│   │   ├── core/            # CRUD 工厂 defineCrudModule()、数据库、审计、日志
+│   │   ├── middleware/      # JWT 认证/权限/租户/HTTP Metrics
 │   │   ├── middlewares/     # 防重放中间件
-│   │   ├── security/        # Ownership Guard、Session Center、限流
-│   │   ├── shared/          # JWT、Redis、Snowflake、工具
-│   │   └── observability/   # Prometheus 指标
-│   └── sql/                 # 数据库初始化
-├── bls-java-server/         # Spring Boot 3 + Java 21 后端（可选，API 兼容）
+│   │   ├── security/        # Ownership Guard、Session Center、限流、事件中心
+│   │   ├── shared/          # JWT、Redis、Snowflake、工具函数
+│   │   ├── observability/   # Prometheus 指标
+│   │   ├── queue/           # Job Worker（轮询 sys_jobs）
+│   │   └── outbox/          # Outbox Pattern 事务事件发布
+│   └── sql/                 # 数据库迁移
+├── bls-java-server/         # Spring Boot 3 + Java 21 后端（并存后端，API 兼容）
 │   └── src/main/java/com/bls/server/
-│       ├── common/          # 统一响应、异常处理
-│       ├── config/          # Security、Redis、MyBatis-Plus 配置
+│       ├── common/          # ApiResponse 统一响应、GlobalExceptionHandler
+│       ├── config/          # SecurityConfig、RedisConfig、MyBatisPlusConfig
 │       ├── controller/      # 控制器层
-│       │   ├── system/      # 用户/角色/菜单/部门/租户/字典/配置/套餐/文件
-│       │   └── common/      # Excel 导入导出
-│       ├── entity/          # 实体类
-│       ├── mapper/          # MyBatis-Plus Mapper
-│       ├── security/        # JWT、认证过滤器、租户上下文
-│       ├── service/         # 业务服务层
-│       │   └── system/      # 各模块 Service
+│       │   ├── AuthController       # 登录/登出/刷新/profile
+│       │   └── system/              # User/Role/Menu/Dept/Dict/Config 等
+│       ├── entity/          # MyBatis-Plus 实体类（@TableName 映射）
+│       ├── mapper/          # MyBatis-Plus BaseMapper 接口
+│       ├── security/        # JwtTokenProvider、JwtAuthFilter、LoginUser、TenantContext
+│       ├── service/         # 业务服务层（含各模块 Service 实现）
 │       └── websocket/       # WebSocket 实时推送
-├── bls-admin/               # React + Ant Design Pro 前端
+├── bls-admin/               # React + Ant Design Pro 前端（两套后端共用）
 │   └── src/
-│       ├── components/      # CrudTablePage、全局搜索等
-│       ├── hooks/           # usePageConfig、useCrudTable 等
-│       └── pages/           # 各业务页面
-├── deploy/                  # Prometheus 告警规则等
-├── docker-compose.yml       # 全栈编排
+│       ├── components/      # CrudTablePage、全局搜索、ExcelToolbar 等
+│       ├── hooks/           # usePageConfig、useCrudTable、useWebSocket 等
+│       └── pages/           # 各业务页面（dashboard / system / tenant）
+├── sql/                     # 共享数据库初始化 SQL（两套后端共用）
+│   └── Init.sql             # 完整表结构 + 最小种子数据
+├── deploy/                  # 部署配置（Prometheus 告警规则等）
+├── docker-compose.yml       # 全栈编排（Koa 默认）
+├── docker-compose.dev.yml   # 开发环境覆盖（暴露端口）
 └── docs/                    # 详细文档
 ```
 
@@ -292,11 +297,14 @@ BLS-KOX/
 | 文档 | 说明 |
 |------|------|
 | [快速开始](./docs/getting-started.md) | 环境要求、安装、启动、演示账号 |
-| [架构设计](./docs/architecture.md) | 请求链路、中间件 |
+| [架构设计](./docs/architecture.md) | 请求链路、中间件、双后端总览 |
+| [Koa 后端](./docs/backend-koa.md) | Koa + TypeScript 架构、CRUD 工厂、中间件链 |
+| [Java 后端](./docs/backend-java.md) | Spring Boot 架构、Security、MyBatis-Plus、JWT |
+| [API 兼容性](./docs/api-compatibility.md) | 双后端 API 规范、返回结构、字段命名一致性 |
 | [多租户](./docs/multi-tenant.md) | 数据隔离、权限守卫 |
 | [认证体系](./docs/auth.md) | Token、Session Center、时序图 |
 | [RBAC 权限](./docs/rbac.md) | 角色-菜单-按钮 |
-| [CRUD 工厂](./docs/crud.md) | 一行配置生成接口 |
+| [CRUD 工厂](./docs/crud.md) | Koa defineCrudModule + Java 演进方案 |
 | [安全能力](./docs/security.md) | 防重放、限流、审计 |
 | [可观测性](./docs/observability.md) | Metrics、告警 |
 | [API 版本化](./docs/api-versioning.md) | 路由前缀、OpenAPI、Internal |

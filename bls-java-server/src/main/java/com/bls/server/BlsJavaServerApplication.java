@@ -9,4 +9,5 @@ public class BlsJavaServerApplication {
     public static void main(String[] args) {
         SpringApplication.run(BlsJavaServerApplication.class, args);
     }
+
 }

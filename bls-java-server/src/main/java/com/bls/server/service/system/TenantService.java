@@ -25,8 +25,7 @@ public class TenantService {
 
     public ApiResponse<List<Map<String, Object>>> listTenants(TenantQueryRequest request) {
         Page<SysTenant> page = new Page<>(request.getPageNum(), request.getPageSize());
-        LambdaQueryWrapper<SysTenant> wrapper = new LambdaQueryWrapper<SysTenant>()
-                .eq(SysTenant::getDeleted, 0);
+        LambdaQueryWrapper<SysTenant> wrapper = new LambdaQueryWrapper<>();
 
         if (request.getKeyword() != null && !request.getKeyword().isBlank()) {
             wrapper.and(w -> w
@@ -58,8 +57,7 @@ public class TenantService {
 
     public List<Map<String, Object>> getPublicTenantList() {
         List<SysTenant> tenants = tenantMapper.selectList(new LambdaQueryWrapper<SysTenant>()
-                .eq(SysTenant::getStatus, "0")
-                .eq(SysTenant::getDeleted, 0));
+                .eq(SysTenant::getStatus, "0"));
 
         return tenants.stream().map(t -> {
             Map<String, Object> map = new LinkedHashMap<>();
@@ -112,8 +110,7 @@ public class TenantService {
         for (String tenantId : ids) {
             SysTenant tenant = tenantMapper.selectById(tenantId);
             if (tenant != null) {
-                tenant.setDeleted(1);
-                tenantMapper.updateById(tenant);
+                tenantMapper.deleteById(tenantId);
             }
         }
     }

@@ -127,6 +127,16 @@ public class LogController {
         return ApiResponse.pageSuccess(list, result.getTotal());
     }
 
+    @Operation(summary = "清空审计日志")
+    @DeleteMapping("/audit/clean")
+    @PreAuthorize("hasAuthority('PERM_system:log:audit:clean')")
+    public ApiResponse<Void> cleanAudit() {
+        String tenantId = TenantContext.getTenantId();
+        operationLogMapper.delete(new LambdaQueryWrapper<SysOperationLog>()
+                .eq(SysOperationLog::getTenantId, tenantId));
+        return ApiResponse.success(null, "清空成功");
+    }
+
     @Operation(summary = "审计日志详情")
     @GetMapping("/audit/detail/{id}")
     @PreAuthorize("hasAuthority('PERM_system:log:audit:detail')")

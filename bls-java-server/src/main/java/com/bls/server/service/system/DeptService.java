@@ -26,6 +26,7 @@ public class DeptService {
 
     public List<Map<String, Object>> getDeptTree() {
         String tenantId = TenantContext.getTenantId();
+        log.info("getDeptTree: tenantId={}", tenantId);
         List<SysDept> depts = deptMapper.selectList(new LambdaQueryWrapper<SysDept>()
                 .eq(SysDept::getTenantId, tenantId)
                 .eq(SysDept::getDeleted, 0)
@@ -46,7 +47,7 @@ public class DeptService {
                             return m;
                         }, Collectors.toList())));
 
-        return buildTree(depts, "0");
+        return buildTree(depts, "000000");
     }
 
     public List<Map<String, Object>> getDeptUsers(String deptId) {
@@ -61,6 +62,9 @@ public class DeptService {
             m.put("userId", u.getUserId());
             m.put("username", u.getUsername());
             m.put("nickname", u.getNickname());
+            m.put("status", u.getStatus());
+            m.put("email", u.getEmail());
+            m.put("phone", u.getPhone());
             m.put("deptId", u.getDeptId());
             return m;
         }).collect(Collectors.toList());

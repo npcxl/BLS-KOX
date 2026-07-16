@@ -28,6 +28,12 @@ public class PageConfigController {
     private final SysPageConfigMapper pageConfigMapper;
     private final SysPageColumnConfigMapper columnConfigMapper;
 
+    /** Fallback to platform tenant when no auth context (public endpoints) */
+    private String tid() {
+        String t = TenantContext.getTenantId();
+        return t != null ? t : "000000";
+    }
+
     @Data
     public static class ColumnConfigItem {
         private String columnId;
@@ -58,10 +64,9 @@ public class PageConfigController {
     @Operation(summary = "页面配置列表")
     @GetMapping("/list")
     public ApiResponse<List<Map<String, Object>>> list() {
-        String tenantId = TenantContext.getTenantId();
         List<SysPageConfig> configs = pageConfigMapper.selectList(
                 new LambdaQueryWrapper<SysPageConfig>()
-                        .eq(SysPageConfig::getTenantId, tenantId)
+                        .eq(SysPageConfig::getTenantId, tid())
                         .eq(SysPageConfig::getDeleted, 0));
         List<Map<String, Object>> list = configs.stream().map(c -> {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -76,11 +81,10 @@ public class PageConfigController {
     @Operation(summary = "获取页面配置")
     @GetMapping("/page/{pageCode}")
     public ApiResponse<Map<String, Object>> getPage(@PathVariable String pageCode) {
-        String tenantId = TenantContext.getTenantId();
         SysPageConfig config = pageConfigMapper.selectOne(
                 new LambdaQueryWrapper<SysPageConfig>()
                         .eq(SysPageConfig::getPageCode, pageCode)
-                        .eq(SysPageConfig::getTenantId, tenantId)
+                        .eq(SysPageConfig::getTenantId, tid())
                         .eq(SysPageConfig::getDeleted, 0));
         if (config == null) return ApiResponse.success(null);
         Map<String, Object> m = new LinkedHashMap<>();
@@ -93,11 +97,10 @@ public class PageConfigController {
     @Operation(summary = "获取页面列配置")
     @GetMapping("/page/{pageCode}/columns")
     public ApiResponse<List<Map<String, Object>>> getColumns(@PathVariable String pageCode) {
-        String tenantId = TenantContext.getTenantId();
         List<SysPageColumnConfig> columns = columnConfigMapper.selectList(
                 new LambdaQueryWrapper<SysPageColumnConfig>()
                         .eq(SysPageColumnConfig::getPageCode, pageCode)
-                        .eq(SysPageColumnConfig::getTenantId, tenantId)
+                        .eq(SysPageColumnConfig::getTenantId, tid())
                         .eq(SysPageColumnConfig::getDeleted, 0)
                         .orderByAsc(SysPageColumnConfig::getOrderNum));
         List<Map<String, Object>> list = columns.stream().map(c -> {
@@ -116,7 +119,7 @@ public class PageConfigController {
     @PostMapping("/save")
     @Transactional
     public ApiResponse<Void> save(@Valid @RequestBody PageConfigSaveRequest request) {
-        String tenantId = TenantContext.getTenantId();
+        String tenantId = tid();
         SysPageConfig config = pageConfigMapper.selectOne(
                 new LambdaQueryWrapper<SysPageConfig>()
                         .eq(SysPageConfig::getPageCode, request.getPageCode())
@@ -138,10 +141,8 @@ public class PageConfigController {
         }
 
         if (request.getColumns() != null) {
-            // Delete old columns
             columnConfigMapper.delete(new LambdaQueryWrapper<SysPageColumnConfig>()
                     .eq(SysPageColumnConfig::getPageCode, request.getPageCode()));
-            // Insert new columns
             for (ColumnConfigItem item : request.getColumns()) {
                 SysPageColumnConfig col = new SysPageColumnConfig();
                 col.setPageCode(request.getPageCode());
@@ -162,5 +163,22 @@ public class PageConfigController {
             }
         }
         return ApiResponse.success(null, "保存成功");
+    }
+
+    @Operation(summary = "删除页面配置")
+    @DeleteMapping("/page/{pageCode}")
+    @Transactional
+    public ApiResponse<Void> deletePage(@PathVariable String pageCode) {
+        SysPageConfig config = pageConfigMapper.selectOne(
+                new LambdaQueryWrapper<SysPageConfig>()
+                        .eq(SysPageConfig::getPageCode, pageCode)
+                        .eq(SysPageConfig::getTenantId, tid()));
+        if (config != null) {
+            config.setDeleted(1);
+            pageConfigMapper.updateById(config);
+            columnConfigMapper.delete(new LambdaQueryWrapper<SysPageColumnConfig>()
+                    .eq(SysPageColumnConfig::getPageCode, pageCode));
+        }
+        return ApiResponse.success(null, "删除成功");
     }
 }

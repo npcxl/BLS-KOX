@@ -93,10 +93,17 @@ public class DictService {
 
     public ApiResponse<List<Map<String, Object>>> listDictData(DictDataQueryRequest request) {
         String tenantId = TenantContext.getTenantId();
+        // request.getDictType() is the dict type identifier, resolve to PK
+        SysDictType dt = dictTypeMapper.selectOne(new LambdaQueryWrapper<SysDictType>()
+                .eq(SysDictType::getTenantId, tenantId)
+                .eq(SysDictType::getDictType, request.getDictType())
+                .eq(SysDictType::getDeleted, 0));
+        if (dt == null) return ApiResponse.pageSuccess(Collections.emptyList(), 0);
+
         Page<SysDictData> page = new Page<>(request.getPageNum(), request.getPageSize());
         LambdaQueryWrapper<SysDictData> wrapper = new LambdaQueryWrapper<SysDictData>()
                 .eq(SysDictData::getTenantId, tenantId)
-                .eq(SysDictData::getDictTypeId, request.getDictType())
+                .eq(SysDictData::getDictTypeId, dt.getDictTypeId())
                 .eq(SysDictData::getDeleted, 0)
                 .orderByAsc(SysDictData::getDictSort);
 
@@ -115,10 +122,19 @@ public class DictService {
         return ApiResponse.pageSuccess(list, result.getTotal());
     }
 
-    public List<Map<String, Object>> getDictDataByType(String dictType) {
+    public List<Map<String, Object>> getDictDataByType(String dictTypeCode) {
         String tenantId = TenantContext.getTenantId();
+        // dictTypeCode is the dict type identifier (e.g. "sys_status"), not the PK
+        // First find the dict_type_id
+        SysDictType dictType = dictTypeMapper.selectOne(new LambdaQueryWrapper<SysDictType>()
+                .eq(SysDictType::getTenantId, tenantId)
+                .eq(SysDictType::getDictType, dictTypeCode)
+                .eq(SysDictType::getDeleted, 0));
+        if (dictType == null) return Collections.emptyList();
+
         List<SysDictData> data = dictDataMapper.selectList(new LambdaQueryWrapper<SysDictData>()
                 .eq(SysDictData::getTenantId, tenantId)
+                .eq(SysDictData::getDictTypeId, dictType.getDictTypeId())
                 .eq(SysDictData::getStatus, "0")
                 .eq(SysDictData::getDeleted, 0)
                 .orderByAsc(SysDictData::getDictSort));

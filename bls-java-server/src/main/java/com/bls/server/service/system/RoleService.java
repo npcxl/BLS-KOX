@@ -1,15 +1,16 @@
 package com.bls.server.service.system;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.bls.server.common.ApiResponse;
-import com.bls.server.common.AppException;
 import com.bls.server.controller.system.RoleController.*;
-import com.bls.server.entity.*;
-import com.bls.server.mapper.*;
+import com.bls.server.core.BaseCrudService;
+import com.bls.server.entity.SysRole;
+import com.bls.server.entity.SysRoleMenu;
+import com.bls.server.entity.SysUserRole;
+import com.bls.server.mapper.SysRoleMapper;
+import com.bls.server.mapper.SysRoleMenuMapper;
+import com.bls.server.mapper.SysUserRoleMapper;
 import com.bls.server.security.TenantContext;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,133 +20,106 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
-public class RoleService {
+public class RoleService extends BaseCrudService<SysRole, SysRoleMapper, RoleCreateRequest, RoleEditRequest> {
 
-    private final SysRoleMapper roleMapper;
     private final SysRoleMenuMapper roleMenuMapper;
     private final SysUserRoleMapper userRoleMapper;
 
-    public ApiResponse<List<Map<String, Object>>> listRoles(RoleQueryRequest request) {
-        String tenantId = TenantContext.getTenantId();
+    public RoleService(SysRoleMapper mapper, SysRoleMenuMapper roleMenuMapper, SysUserRoleMapper userRoleMapper) {
+        super(mapper);
+        this.roleMenuMapper = roleMenuMapper;
+        this.userRoleMapper = userRoleMapper;
+    }
 
-        Page<SysRole> page = new Page<>(request.getPageNum(), request.getPageSize());
-        LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<SysRole>()
-                .eq(SysRole::getTenantId, tenantId)
-                .eq(SysRole::getDeleted, 0);
+    @Override
+    public ApiResponse<List<Map<String, Object>>> list(int pageNum, int pageSize, String keyword) {
+        return doList(pageNum, pageSize, keyword, w -> {
+            if (keyword != null && !keyword.isBlank()) {
+                w.and(ww -> ww.like(SysRole::getRoleName, keyword).or().like(SysRole::getRoleKey, keyword));
+            }
+        });
+    }
 
-        if (request.getKeyword() != null && !request.getKeyword().isBlank()) {
-            wrapper.and(w -> w
-                .like(SysRole::getRoleName, request.getKeyword())
-                .or().like(SysRole::getRoleKey, request.getKeyword()));
+    @Override
+    protected Map<String, Object> toMap(SysRole r) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("roleId", r.getRoleId()); m.put("roleName", r.getRoleName());
+        m.put("roleKey", r.getRoleKey()); m.put("dataScope", r.getDataScope());
+        m.put("status", r.getStatus()); m.put("createTime", r.getCreateTime());
+        m.put("remark", r.getRemark());
+        return m;
+    }
+
+    @Override
+    protected void assignCreate(SysRole e, RoleCreateRequest r) {
+        e.setTenantId(TenantContext.getTenantId());
+        e.setRoleName(r.getRoleName()); e.setRoleKey(r.getRoleKey());
+        e.setDataScope(r.getDataScope()); e.setStatus(r.getStatus());
+        e.setRemark(r.getRemark());
+    }
+
+    @Override
+    protected void assignEdit(SysRole e, RoleEditRequest r) {
+        if (r.getRoleName() != null) e.setRoleName(r.getRoleName());
+        if (r.getRoleKey() != null) e.setRoleKey(r.getRoleKey());
+        if (r.getDataScope() != null) e.setDataScope(r.getDataScope());
+        if (r.getStatus() != null) e.setStatus(r.getStatus());
+        if (r.getRemark() != null) e.setRemark(r.getRemark());
+    }
+
+    @Override
+    protected java.io.Serializable extractId(RoleEditRequest r) { return r.getRoleId(); }
+
+    @Override
+    @Transactional
+    public void remove(List<String> ids) {
+        for (String id : ids) {
+            SysRole role = mapper.selectById(id);
+            if (role != null) {
+                role.setDeleted(1); mapper.updateById(role);
+                roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>().eq(SysRoleMenu::getRoleId, id));
+                userRoleMapper.delete(new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getRoleId, id));
+            }
         }
+    }
 
-        wrapper.orderByDesc(SysRole::getCreateTime);
-        IPage<SysRole> result = roleMapper.selectPage(page, wrapper);
+    @Transactional
+    public void addWithMenus(RoleCreateRequest r, List<String> menuIds) {
+        add(r);
+        SysRole created = mapper.selectOne(new LambdaQueryWrapper<SysRole>()
+                .eq(SysRole::getRoleKey, r.getRoleKey())
+                .eq(SysRole::getTenantId, TenantContext.getTenantId())
+                .orderByDesc(SysRole::getCreateTime).last("limit 1"));
+        if (created != null && menuIds != null) {
+            for (String mid : menuIds) {
+                SysRoleMenu rm = new SysRoleMenu(); rm.setRoleId(created.getRoleId()); rm.setMenuId(mid);
+                roleMenuMapper.insert(rm);
+            }
+        }
+    }
 
-        List<Map<String, Object>> list = result.getRecords().stream().map(r -> {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("roleId", r.getRoleId());
-            map.put("roleName", r.getRoleName());
-            map.put("roleKey", r.getRoleKey());
-            map.put("dataScope", r.getDataScope());
-            map.put("status", r.getStatus());
-            map.put("createTime", r.getCreateTime());
-            map.put("remark", r.getRemark());
-            return map;
-        }).collect(Collectors.toList());
-
-        return ApiResponse.pageSuccess(list, result.getTotal());
+    @Transactional
+    public void editWithMenus(RoleEditRequest r, List<String> menuIds) {
+        edit(r);
+        if (menuIds != null) {
+            roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>().eq(SysRoleMenu::getRoleId, r.getRoleId()));
+            for (String mid : menuIds) {
+                SysRoleMenu rm = new SysRoleMenu(); rm.setRoleId(r.getRoleId()); rm.setMenuId(mid);
+                roleMenuMapper.insert(rm);
+            }
+        }
     }
 
     public List<String> getRoleMenuIds(String roleId) {
-        List<SysRoleMenu> roleMenus = roleMenuMapper.selectList(
-                new LambdaQueryWrapper<SysRoleMenu>().eq(SysRoleMenu::getRoleId, roleId));
-        return roleMenus.stream().map(SysRoleMenu::getMenuId).collect(Collectors.toList());
+        return roleMenuMapper.selectList(new LambdaQueryWrapper<SysRoleMenu>().eq(SysRoleMenu::getRoleId, roleId))
+                .stream().map(SysRoleMenu::getMenuId).collect(Collectors.toList());
     }
 
-    @Transactional
-    public void addRole(RoleCreateRequest request) {
-        String tenantId = TenantContext.getTenantId();
-
-        Long count = roleMapper.selectCount(new LambdaQueryWrapper<SysRole>()
-                .eq(SysRole::getRoleKey, request.getRoleKey())
-                .eq(SysRole::getTenantId, tenantId)
-                .eq(SysRole::getDeleted, 0));
-        if (count > 0) throw AppException.badRequest("角色标识已存在");
-
-        SysRole role = new SysRole();
-        role.setTenantId(tenantId);
-        role.setRoleName(request.getRoleName());
-        role.setRoleKey(request.getRoleKey());
-        role.setDataScope(request.getDataScope());
-        role.setStatus(request.getStatus());
-        role.setRemark(request.getRemark());
-        roleMapper.insert(role);
-
-        if (request.getMenuIds() != null) {
-            for (String menuId : request.getMenuIds()) {
-                SysRoleMenu rm = new SysRoleMenu();
-                rm.setRoleId(role.getRoleId());
-                rm.setMenuId(menuId);
-                roleMenuMapper.insert(rm);
-            }
-        }
-    }
-
-    @Transactional
-    public void editRole(RoleEditRequest request) {
-        String tenantId = TenantContext.getTenantId();
-        SysRole role = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>()
-                .eq(SysRole::getRoleId, request.getRoleId())
-                .eq(SysRole::getTenantId, tenantId));
-
-        if (role == null) throw AppException.notFound("角色不存在");
-
-        if (request.getRoleName() != null) role.setRoleName(request.getRoleName());
-        if (request.getRoleKey() != null) role.setRoleKey(request.getRoleKey());
-        if (request.getDataScope() != null) role.setDataScope(request.getDataScope());
-        if (request.getStatus() != null) role.setStatus(request.getStatus());
-        if (request.getRemark() != null) role.setRemark(request.getRemark());
-        roleMapper.updateById(role);
-
-        if (request.getMenuIds() != null) {
-            roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>()
-                    .eq(SysRoleMenu::getRoleId, request.getRoleId()));
-            for (String menuId : request.getMenuIds()) {
-                SysRoleMenu rm = new SysRoleMenu();
-                rm.setRoleId(request.getRoleId());
-                rm.setMenuId(menuId);
-                roleMenuMapper.insert(rm);
-            }
-        }
-    }
-
-    @Transactional
     public void assignMenus(String roleId, List<String> menuIds) {
-        roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>()
-                .eq(SysRoleMenu::getRoleId, roleId));
-        for (String menuId : menuIds) {
-            SysRoleMenu rm = new SysRoleMenu();
-            rm.setRoleId(roleId);
-            rm.setMenuId(menuId);
+        roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>().eq(SysRoleMenu::getRoleId, roleId));
+        for (String mid : menuIds) {
+            SysRoleMenu rm = new SysRoleMenu(); rm.setRoleId(roleId); rm.setMenuId(mid);
             roleMenuMapper.insert(rm);
-        }
-    }
-
-    @Transactional
-    public void removeRoles(List<String> ids) {
-        String tenantId = TenantContext.getTenantId();
-        for (String roleId : ids) {
-            SysRole role = roleMapper.selectOne(new LambdaQueryWrapper<SysRole>()
-                    .eq(SysRole::getRoleId, roleId)
-                    .eq(SysRole::getTenantId, tenantId));
-            if (role != null) {
-                role.setDeleted(1);
-                roleMapper.updateById(role);
-                roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>().eq(SysRoleMenu::getRoleId, roleId));
-                userRoleMapper.delete(new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getRoleId, roleId));
-            }
         }
     }
 }

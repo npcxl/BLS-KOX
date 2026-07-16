@@ -42,7 +42,8 @@ public class LoginUserService {
             roles = Collections.emptyList();
             permissions = Collections.emptyList();
         } else {
-            List<SysRole> roleList = roleMapper.selectBatchIds(roleIds);
+            List<SysRole> roleList = roleMapper.selectList(
+                    new LambdaQueryWrapper<SysRole>().in(SysRole::getRoleId, roleIds));
             roles = roleList.stream()
                     .filter(r -> "0".equals(r.getStatus()) && r.getDeleted() == 0)
                     .map(r -> LoginUser.RoleInfo.builder()
@@ -62,7 +63,8 @@ public class LoginUserService {
             if (menuIds.isEmpty()) {
                 permissions = Collections.emptyList();
             } else {
-                List<SysMenu> menus = menuMapper.selectBatchIds(menuIds);
+                List<SysMenu> menus = menuMapper.selectList(
+                        new LambdaQueryWrapper<SysMenu>().in(SysMenu::getMenuId, menuIds));
                 permissions = menus.stream()
                         .map(SysMenu::getPerms)
                         .filter(p -> p != null && !p.isEmpty())

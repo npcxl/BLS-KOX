@@ -20,7 +20,7 @@ import { SettingDrawer } from "@ant-design/pro-components";
 import type { RequestConfig, RunTimeLayoutConfig } from "@umijs/max";
 import { history, Link } from "@umijs/max";
 import { message } from "antd";
-import React from "react";
+import React, { useRef } from "react";
 import defaultSettings from "../config/defaultSettings";
 import { errorConfig } from "./requestErrorConfig";
 import { ensureValidSession, redirectToLogin, setLoginPath } from "@/auth/auth-manager";
@@ -405,6 +405,9 @@ export const layout: RunTimeLayoutConfig = ({
   initialState,
   setInitialState,
 }) => {
+  // 守卫：SettingDrawer 会在挂载时自动调用一次 onSettingChange，这里跳过首次自动同步
+  const isFirstSettingChangeRef = useRef(true);
+
   const buildThemePayload = (settings: ThemeLayoutSettings) => ({
     navTheme: settings.navTheme,
     colorPrimary: settings.colorPrimary,
@@ -496,6 +499,13 @@ export const layout: RunTimeLayoutConfig = ({
             }}
             settings={(initialState?.settings ?? {}) as ProSettings}
             onSettingChange={async (settings) => {
+              // SettingDrawer 挂载时会自动调用一次 onSettingChange 以同步 URL 参数，
+              // 此处跳过首次自动触发，避免在用户未真正修改设置时就调用 /theme/edit
+              if (isFirstSettingChangeRef.current) {
+                isFirstSettingChangeRef.current = false;
+                return;
+              }
+
               const previousSettings = initialState?.settings ?? {};
               const themeMeta = initialState?.themeMeta ?? {};
               const optimisticSettings: ThemeLayoutSettings = {

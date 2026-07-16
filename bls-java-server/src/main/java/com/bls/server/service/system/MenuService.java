@@ -33,7 +33,7 @@ public class MenuService {
         wrapper.orderByAsc(SysMenu::getSortNum);
         List<SysMenu> menus = menuMapper.selectList(wrapper);
 
-        return buildTree(menus, "0");
+        return buildTree(menus, "000000");
     }
 
     @Transactional

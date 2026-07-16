@@ -1,6 +1,8 @@
 package com.bls.server.controller.system;
 
 import com.bls.server.common.ApiResponse;
+import com.bls.server.core.BaseCrudController;
+import com.bls.server.entity.SysRole;
 import com.bls.server.service.system.RoleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -8,7 +10,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
-import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,17 +19,21 @@ import java.util.Map;
 @Tag(name = "角色管理")
 @RestController
 @RequestMapping("/api/system/role")
-@RequiredArgsConstructor
-public class RoleController {
+public class RoleController extends BaseCrudController<SysRole, RoleController.RoleCreateRequest, RoleController.RoleEditRequest> {
 
     private final RoleService roleService;
 
-    @Data
-    public static class RoleQueryRequest {
-        private Integer pageNum = 1;
-        private Integer pageSize = 10;
-        private String keyword;
+    public RoleController(RoleService svc) {
+        super(svc);
+        this.roleService = svc;
     }
+
+    @Override protected String getPermPrefix() { return "system:role"; }
+
+    @Override @GetMapping("/list") @PreAuthorize("hasAuthority('PERM_system:role:list')")
+    public ApiResponse<List<Map<String, Object>>> list(@RequestParam(defaultValue = "1") Integer pageNum, @RequestParam(defaultValue = "10") Integer pageSize, @RequestParam(required = false) String keyword) { return super.list(pageNum, pageSize, keyword); }
+    @Override @DeleteMapping("/remove") @PreAuthorize("hasAuthority('PERM_system:role:remove')")
+    public ApiResponse<Void> remove(@RequestBody List<String> ids) { return super.remove(ids); }
 
     @Data
     public static class RoleCreateRequest {
@@ -52,21 +57,11 @@ public class RoleController {
     }
 
     @Data
-    public static class RoleRemoveRequest {
-        @NotEmpty private List<String> ids;
-    }
-
-    @Data
     public static class AssignMenuRequest {
         @NotEmpty private List<String> menuIds;
     }
 
-    @Operation(summary = "角色列表")
-    @GetMapping("/list")
-    @PreAuthorize("hasAuthority('PERM_system:role:list')")
-    public ApiResponse<List<Map<String, Object>>> list(RoleQueryRequest request) {
-        return roleService.listRoles(request);
-    }
+    // ========== 自定义端点 ==========
 
     @Operation(summary = "角色菜单权限")
     @GetMapping("/{roleId}/menus")
@@ -75,36 +70,35 @@ public class RoleController {
         return ApiResponse.success(roleService.getRoleMenuIds(roleId));
     }
 
-    @Operation(summary = "新增角色")
+    @Override
     @PostMapping("/add")
     @PreAuthorize("hasAuthority('PERM_system:role:add')")
     public ApiResponse<Void> add(@Valid @RequestBody RoleCreateRequest request) {
-        roleService.addRole(request);
+        if (request.getMenuIds() != null) {
+            roleService.addWithMenus(request, request.getMenuIds());
+        } else {
+            super.add(request);
+        }
         return ApiResponse.success(null, "新增成功");
     }
 
-    @Operation(summary = "编辑角色")
+    @Override
     @PutMapping("/edit")
     @PreAuthorize("hasAuthority('PERM_system:role:edit')")
     public ApiResponse<Void> edit(@Valid @RequestBody RoleEditRequest request) {
-        roleService.editRole(request);
+        if (request.getMenuIds() != null) {
+            roleService.editWithMenus(request, request.getMenuIds());
+        } else {
+            super.edit(request);
+        }
         return ApiResponse.success(null, "编辑成功");
     }
 
     @Operation(summary = "分配菜单权限")
     @PutMapping("/{roleId}/menus")
     @PreAuthorize("hasAuthority('PERM_system:role:assignMenu')")
-    public ApiResponse<Void> assignMenu(@PathVariable String roleId,
-                                         @Valid @RequestBody AssignMenuRequest request) {
+    public ApiResponse<Void> assignMenu(@PathVariable String roleId, @Valid @RequestBody AssignMenuRequest request) {
         roleService.assignMenus(roleId, request.getMenuIds());
         return ApiResponse.success(null, "分配成功");
-    }
-
-    @Operation(summary = "删除角色")
-    @DeleteMapping("/remove")
-    @PreAuthorize("hasAuthority('PERM_system:role:remove')")
-    public ApiResponse<Void> remove(@Valid @RequestBody RoleRemoveRequest request) {
-        roleService.removeRoles(request.getIds());
-        return ApiResponse.success(null, "删除成功");
     }
 }

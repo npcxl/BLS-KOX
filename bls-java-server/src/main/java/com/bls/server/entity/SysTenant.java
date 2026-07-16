@@ -20,9 +20,6 @@ public class SysTenant {
     private LocalDateTime expireTime;
     private String status;
 
-    @TableLogic
-    private Integer deleted;
-
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

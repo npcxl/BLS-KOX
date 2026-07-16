@@ -108,4 +108,28 @@ public class GlobalSearchController {
         }
         return ApiResponse.success(null, "删除成功");
     }
+
+    @Operation(summary = "已启用模块列表")
+    @GetMapping("/index/modules")
+    public ApiResponse<List<Map<String, Object>>> indexModules() {
+        List<SysGlobalSearchConfig> configs = configMapper.selectList(
+                new LambdaQueryWrapper<SysGlobalSearchConfig>()
+                        .eq(SysGlobalSearchConfig::getEnabled, 1)
+                        .eq(SysGlobalSearchConfig::getDeleted, 0));
+        List<Map<String, Object>> list = configs.stream().map(c -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("moduleKey", c.getModuleKey());
+            m.put("moduleName", c.getModuleName());
+            return m;
+        }).collect(Collectors.toList());
+        return ApiResponse.success(list);
+    }
+
+    @Operation(summary = "重建搜索索引")
+    @PostMapping("/index/rebuild")
+    @PreAuthorize("hasAuthority('PERM_system:search-index:rebuild')")
+    public ApiResponse<Void> rebuildIndex(@RequestBody(required = false) Map<String, Object> body) {
+        // Placeholder — Koa does a full index rebuild from enabled modules
+        return ApiResponse.success(null, "索引重建已提交");
+    }
 }

@@ -125,8 +125,7 @@ public class AuthService {
                                               String ip, String userAgent) {
         SysTenant tenant = tenantMapper.selectOne(new LambdaQueryWrapper<SysTenant>()
                 .eq(SysTenant::getDomainName, domainName)
-                .eq(SysTenant::getStatus, "0")
-                .eq(SysTenant::getDeleted, 0));
+                .eq(SysTenant::getStatus, "0"));
 
         if (tenant == null) {
             // Fallback to platform tenant
@@ -241,12 +240,20 @@ public class AuthService {
     }
 
     private boolean verifyPassword(String rawPassword, String storedHash, String algorithm) {
+        log.debug("verifyPassword: raw={}, algorithm={}, hashPrefix={}",
+                rawPassword, algorithm,
+                storedHash != null && storedHash.length() > 20 ? storedHash.substring(0, 20) : storedHash);
         if (algorithm == null || "md5".equals(algorithm)) {
-            // Legacy MD5 password
-            String md5Hash = DigestUtil.md5Hex(rawPassword);
-            return md5Hash.equalsIgnoreCase(storedHash);
+            // Aligned with Koa verifyPasswordMd5:
+            // If the input is already a 32-char hex MD5, compare directly.
+            // Otherwise MD5 the raw input first.
+            String inputHash = rawPassword.length() == 32 && rawPassword.matches("[a-fA-F0-9]+")
+                    ? rawPassword
+                    : DigestUtil.md5Hex(rawPassword);
+            return inputHash.equalsIgnoreCase(storedHash);
         }
-        // Argon2
+        // Argon2 / argon2id — Koa sends MD5(password) to argon2.verify()
+        // So the raw input IS the MD5 of the original password, pass it directly.
         try {
             return passwordEncoder.matches(rawPassword, storedHash);
         } catch (Exception e) {
@@ -266,6 +273,7 @@ public class AuthService {
         List<SysUserRole> userRoles = userRoleMapper.selectList(
                 new LambdaQueryWrapper<SysUserRole>().eq(SysUserRole::getUserId, userId));
         List<String> roleIds = userRoles.stream().map(SysUserRole::getRoleId).collect(Collectors.toList());
+        log.info("buildMenuTree: userId={}, roleIds={}", userId, roleIds);
 
         if (roleIds.isEmpty()) return Collections.emptyList();
 
@@ -274,18 +282,21 @@ public class AuthService {
                 new LambdaQueryWrapper<SysRoleMenu>().in(SysRoleMenu::getRoleId, roleIds));
         List<String> menuIds = roleMenus.stream()
                 .map(SysRoleMenu::getMenuId).distinct().collect(Collectors.toList());
+        log.info("buildMenuTree: roleMenus count={}, menuIds={}", roleMenus.size(), menuIds.size());
 
         if (menuIds.isEmpty()) return Collections.emptyList();
 
         // Load menus
-        List<SysMenu> menus = menuMapper.selectBatchIds(menuIds);
+        List<SysMenu> menus = menuMapper.selectList(
+                new LambdaQueryWrapper<SysMenu>().in(SysMenu::getMenuId, menuIds));
+        log.info("buildMenuTree: menus count={}", menus.size());
         List<SysMenu> filteredMenus = menus.stream()
                 .filter(m -> ("0".equals(m.getMenuType()) || "1".equals(m.getMenuType()))
                         && "0".equals(m.getStatus()))
                 .sorted(Comparator.comparing(SysMenu::getSortNum, Comparator.nullsLast(Comparator.naturalOrder())))
                 .collect(Collectors.toList());
 
-        return buildTree(filteredMenus, "0");
+        return buildTree(filteredMenus, "000000");
     }
 
     private List<Map<String, Object>> buildTree(List<SysMenu> menus, String parentId) {

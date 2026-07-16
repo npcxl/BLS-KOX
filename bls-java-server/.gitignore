@@ -14,3 +14,4 @@ target/
 *.swo
 .env
 uploads/
+src/main/resources/application.yml

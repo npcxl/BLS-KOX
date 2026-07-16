@@ -18,7 +18,6 @@ public class SysDept {
     private Integer sortNum;
     private String status;
 
-    @TableLogic
     private Integer deleted;
 
     @TableField(fill = FieldFill.INSERT)

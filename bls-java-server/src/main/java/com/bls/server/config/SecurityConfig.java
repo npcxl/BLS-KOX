@@ -61,13 +61,22 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/login", "/api/auth/logout", "/api/auth/refresh").permitAll()
                 .requestMatchers("/api/health", "/health", "/api/ready", "/ready", "/api/metrics").permitAll()
                 .requestMatchers("/api/docs", "/api/openapi.json", "/api/swagger-ui/**", "/api/v3/api-docs/**").permitAll()
+                .requestMatchers("/doc.html", "/webjars/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/internal/**").permitAll()
                 .requestMatchers("/openapi/**").permitAll()
                 .requestMatchers("/ws/**").permitAll()
                 // Tenant public list
                 .requestMatchers(HttpMethod.GET, "/api/system/tenant/public-list").permitAll()
+                // Config public endpoints
+                .requestMatchers(HttpMethod.GET, "/api/system/config/public-theme", "/api/system/config/public-system").permitAll()
                 // Page config (tenant-filtered, no auth required per Koa)
                 .requestMatchers("/api/system/page-config/**").permitAll()
+                // Dict data by type (used by frontend form selects, ?dictType=xxx)
+                .requestMatchers(HttpMethod.GET, "/api/system/dict/data/type").permitAll()
+                // Theme (Koa auto-registers current)
+                .requestMatchers(HttpMethod.GET, "/api/system/theme/list", "/api/system/theme/current").permitAll()
+                // Config current
+                .requestMatchers(HttpMethod.GET, "/api/system/config/current").permitAll()
                 // All other requests need authentication
                 .anyRequest().authenticated()
             )

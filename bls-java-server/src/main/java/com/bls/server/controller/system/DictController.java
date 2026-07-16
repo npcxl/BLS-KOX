@@ -135,8 +135,8 @@ public class DictController {
     }
 
     @Operation(summary = "根据类型获取字典数据")
-    @GetMapping("/data/type/{dictType}")
-    public ApiResponse<List<Map<String, Object>>> dataByType(@PathVariable String dictType) {
+    @GetMapping("/data/type")
+    public ApiResponse<List<Map<String, Object>>> dataByType(@RequestParam String dictType) {
         return ApiResponse.success(dictService.getDictDataByType(dictType));
     }
 
