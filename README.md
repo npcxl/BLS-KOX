@@ -119,16 +119,35 @@
 | 层 | 技术 |
 |----|------|
 | 前端 | React 19 + Ant Design Pro 6 + Umi 4 + TypeScript |
-| 后端 | Koa 3 + TypeScript + Kysely ORM + Zod |
+| 后端 | Koa 3 + TypeScript + Kysely ORM + Zod（默认）|
+| 后端 (Java) | Spring Boot 3 + Java 21 + MyBatis-Plus（可选，API 兼容）|
 | 数据库 | MySQL 8.0 |
 | 缓存 | Redis 7 |
 | 部署 | Docker Compose + Nginx |
+
+### 📡 API 文档
+
+接口文档自动生成，支持在线调试：
+
+```bash
+# 生成 openapi.json + 启动 Swagger UI 预览
+cd bls-server && npm run openapi:serve
+
+# 仅生成 openapi.json（供 /api/docs 使用）
+npm run openapi
+```
+
+启动服务后访问：
+- **Swagger UI**：http://localhost:6001/api/docs
+- **OpenAPI JSON**：http://localhost:6001/api/openapi.json
 
 ## 🔧 环境要求
 
 | 依赖 | 最低版本 | 说明 |
 |------|----------|------|
-| Node.js | ≥ 22.0.0 | 运行时 |
+| Node.js | ≥ 22.0.0 | Koa 运行时 |
+| Java | ≥ 21 | Java 后端运行时（可选） |
+| Maven | ≥ 3.8 | Java 后端构建（可选） |
 | MySQL | 8.0 | 数据库 |
 | Redis | 7.0 | 缓存 / 限流 / Session |
 | Docker | 20.10+ | 可选，一键部署使用 |
@@ -169,6 +188,44 @@ npm install
 npm start                                      # http://localhost:9000
 ```
 
+### 方式三：Java 后端（与 Koa 并存）
+
+```bash
+# 1. 启动基础设施
+docker compose up -d mysql redis
+
+# 2. 构建并启动 Java 后端
+cd bls-java-server
+mvn clean package -DskipTests
+java -jar target/bls-java-server-1.0.0.jar     # http://localhost:8080
+
+# 或者用 Docker 启动 Java 后端
+docker compose --profile java up -d --build bls-java-server
+```
+
+### 切换后端（Koa ↔ Java）
+
+**方式一：Nginx upstream 切换**
+
+修改 `nginx.conf` 中的 upstream 配置：
+```nginx
+# 使用 Koa（默认）
+upstream bls_server {
+    server bls-server:7001;
+}
+
+# 切换到 Java
+# upstream bls_server {
+#     server bls-java-server:8080;
+# }
+```
+
+**方式二：前端直接代理**
+
+修改前端开发代理或环境变量，将 API 地址指向 Java 后端端口（默认 8080）。
+
+> **注意**：Java 后端与 Koa 后端 API 完全兼容，前端代码无需任何修改。
+
 ## 🔑 默认账号
 
 | 项目 | 值 |
@@ -197,7 +254,7 @@ bls-kox-redis-1     Up (healthy)
 
 ```
 BLS-KOX/
-├── bls-server/              # Koa + TypeScript 后端
+├── bls-server/              # Koa + TypeScript 后端（默认）
 │   ├── src/
 │   │   ├── api/             # 业务接口（自动扫描注册）
 │   │   ├── core/            # CRUD 工厂、数据库、审计、日志
@@ -207,6 +264,19 @@ BLS-KOX/
 │   │   ├── shared/          # JWT、Redis、Snowflake、工具
 │   │   └── observability/   # Prometheus 指标
 │   └── sql/                 # 数据库初始化
+├── bls-java-server/         # Spring Boot 3 + Java 21 后端（可选，API 兼容）
+│   └── src/main/java/com/bls/server/
+│       ├── common/          # 统一响应、异常处理
+│       ├── config/          # Security、Redis、MyBatis-Plus 配置
+│       ├── controller/      # 控制器层
+│       │   ├── system/      # 用户/角色/菜单/部门/租户/字典/配置/套餐/文件
+│       │   └── common/      # Excel 导入导出
+│       ├── entity/          # 实体类
+│       ├── mapper/          # MyBatis-Plus Mapper
+│       ├── security/        # JWT、认证过滤器、租户上下文
+│       ├── service/         # 业务服务层
+│       │   └── system/      # 各模块 Service
+│       └── websocket/       # WebSocket 实时推送
 ├── bls-admin/               # React + Ant Design Pro 前端
 │   └── src/
 │       ├── components/      # CrudTablePage、全局搜索等

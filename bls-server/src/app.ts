@@ -91,9 +91,64 @@ export function createApp(): Koa {
   app.use(router.routes());
   app.use(router.allowedMethods());
 
-  // ====== /openapi/v1 — 独立鉴权 ======
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // ====== API 文档 (Swagger UI) ======
+  const { readFileSync, existsSync } = require('node:fs');
+  const { join: pathJoin } = require('node:path');
   const KoaRouter = require('koa-router');
+  const docsRouter = new KoaRouter();
+  docsRouter.get('/api/docs', (ctx: any) => {
+    ctx.type = 'html';
+    ctx.body = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BLS-KOX API 文档</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  <style>
+    html { box-sizing: border-box; overflow-y: scroll; }
+    *, *:before, *:after { box-sizing: inherit; }
+    body { margin: 0; background: #fafafa; }
+    .swagger-ui .topbar { background-color: #1677ff; }
+    .swagger-ui .topbar .download-url-wrapper .select-label { color: #fff; }
+    .swagger-ui .info .title { font-size: 24px; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" crossorigin></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js" crossorigin></script>
+  <script>
+    window.onload = () => {
+      SwaggerUIBundle({
+        url: '/api/openapi.json',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: "StandaloneLayout",
+        defaultModelsExpandDepth: -1,
+        docExpansion: 'list',
+        filter: true,
+        tryItOutEnabled: true,
+      });
+    };
+  </script>
+</body>
+</html>`;
+  });
+  docsRouter.get('/api/openapi.json', (ctx: any) => {
+    const filePath = pathJoin(__dirname, '..', 'openapi.json');
+    if (existsSync(filePath)) {
+      ctx.type = 'json';
+      ctx.body = readFileSync(filePath, 'utf-8');
+    } else {
+      ctx.status = 404;
+      ctx.body = { error: 'openapi.json not found. Run: npm run openapi' };
+    }
+  });
+  app.use(docsRouter.routes());
+
+  // ====== /openapi/v1 — 独立鉴权 ======
   const openapiR = new KoaRouter({ prefix: '/openapi/v1' });
   openapiR.use(openApiAuth());
   openapiR.use(async (ctx: any, next: any) => {

@@ -54,6 +54,41 @@ services:
       timeout: 5s
       retries: 3
 
+  # ========== 后端 Java (可选，与 Koa 并存) ==========
+  bls-java-server:
+    build:
+      context: ./bls-java-server
+    container_name: bls-java-server
+    restart: unless-stopped
+    profiles:
+      - java
+    expose:
+      - "8080"
+    environment:
+      - MYSQL_HOST=${DB_HOST:-mysql}
+      - MYSQL_PORT=${DB_PORT:-3306}
+      - MYSQL_USER=${DB_USER:-root}
+      - MYSQL_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
+      - MYSQL_DATABASE=${DB_NAME:-bls}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - API_SIGN_SECRET=${API_SIGN_SECRET:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bls-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
   # ========== 前端 ==========
   bls-admin:
     build:

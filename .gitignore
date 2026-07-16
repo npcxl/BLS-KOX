@@ -7,6 +7,9 @@ build/
 out/
 coverage/
 
+# OpenAPI (auto-generated)
+openapi.json
+
 # BLS-KOX
 BLS-KOX
 BLS-KOX_
@@ -34,3 +37,6 @@ Thumbs.db
 .cache/
 .tmp/
 bls-server/backups/
+
+Bls-Java.md
+Bls-Java/

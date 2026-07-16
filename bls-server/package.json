@@ -22,7 +22,9 @@
     "db:init": "tsx src/scripts/init-db.ts",
     "db:migrate": "tsx src/scripts/migrate.ts",
     "db:backup": "tsx src/scripts/backup.ts",
-    "db:restore": "tsx src/scripts/restore.ts"
+    "db:restore": "tsx src/scripts/restore.ts",
+    "openapi": "tsx src/scripts/generate-openapi.ts",
+    "openapi:serve": "tsx src/scripts/generate-openapi.ts --serve"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.5.0",
