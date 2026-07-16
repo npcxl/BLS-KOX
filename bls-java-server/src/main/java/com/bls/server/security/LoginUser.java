@@ -26,7 +26,7 @@ public class LoginUser {
     private String email;
     private String phone;
     private String deptId;
-    private Integer isAdmin;
+    private String isAdmin;
     private String status;
 
     /** Permission identifiers like "system:user:list" */

@@ -1,9 +1,13 @@
 package com.bls.server.controller.system;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.bls.server.common.ApiResponse;
 import com.bls.server.common.AppException;
+import com.bls.server.entity.SysFile;
 import com.bls.server.entity.SysStorageConfig;
+import com.bls.server.mapper.SysFileMapper;
 import com.bls.server.mapper.SysStorageConfigMapper;
 import com.bls.server.security.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,19 +17,30 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
 
-@Tag(name = "存储配置")
+@Slf4j
+@Tag(name = "存储配置与文件管理")
 @RestController
 @RequestMapping("/api/system/storage")
 @RequiredArgsConstructor
 public class StorageController {
 
     private final SysStorageConfigMapper storageConfigMapper;
+    private final SysFileMapper fileMapper;
+
+    // ========== 存储配置 ==========
 
     @Data
     public static class StorageCreateRequest {
@@ -41,6 +56,7 @@ public class StorageController {
         private String privateBucket;
         private String publicBaseUrl;
         private Integer isDefault = 0;
+        private String status = "0";
     }
 
     @Data
@@ -59,7 +75,7 @@ public class StorageController {
         private String publicBaseUrl;
         private Integer isDefault;
         private String status;
-    }
+    }                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
 
     @Data
     public static class StorageRemoveRequest {
@@ -105,7 +121,7 @@ public class StorageController {
         config.setPrivateBucket(request.getPrivateBucket());
         config.setPublicBaseUrl(request.getPublicBaseUrl());
         config.setIsDefault(request.getIsDefault());
-        config.setStatus("0");
+        config.setStatus(request.getStatus() != null ? request.getStatus() : "0");
         storageConfigMapper.insert(config);
         return ApiResponse.success(null, "新增成功");
     }
@@ -145,5 +161,178 @@ public class StorageController {
             }
         }
         return ApiResponse.success(null, "删除成功");
+    }
+
+    // ========== 文件上传 ==========
+
+    @Operation(summary = "文件上传")
+    @PostMapping("/upload")
+    @PreAuthorize("hasAuthority('PERM_system:file:upload')")
+    public ApiResponse<Map<String, Object>> upload(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(required = false, defaultValue = "private") String accessType,
+            @RequestParam(required = false, defaultValue = "common") String moduleName) {
+        String tenantId = TenantContext.getTenantId();
+        String userId = TenantContext.getUserId();
+
+        if (file.isEmpty()) throw AppException.badRequest("请选择文件");
+
+        String originalName = file.getOriginalFilename();
+        String ext = "";
+        if (originalName != null && originalName.contains(".")) {
+            ext = originalName.substring(originalName.lastIndexOf(".") + 1).toLowerCase();
+        }
+
+        try {
+            String dir = "uploads/" + tenantId + "/" + moduleName;
+            Path dirPath = Paths.get(dir);
+            Files.createDirectories(dirPath);
+
+            String fileName = UUID.randomUUID().toString() + "." + ext;
+            String objectName = moduleName + "/" + fileName;
+            String filePath = dir + "/" + fileName;
+
+            file.transferTo(new File(filePath));
+
+            // Use default storage config
+            SysStorageConfig storageCfg = storageConfigMapper.selectOne(
+                    new LambdaQueryWrapper<SysStorageConfig>()
+                            .eq(SysStorageConfig::getTenantId, tenantId)
+                            .eq(SysStorageConfig::getDeleted, 0)
+                            .last("limit 1"));
+            String storageId = storageCfg != null ? storageCfg.getStorageId() : "local";
+            String bucketName = "private".equals(accessType)
+                    ? (storageCfg != null && storageCfg.getPrivateBucket() != null ? storageCfg.getPrivateBucket() : "private-assets")
+                    : (storageCfg != null && storageCfg.getPublicBucket() != null ? storageCfg.getPublicBucket() : "public-assets");
+
+            SysFile sysFile = new SysFile();
+            sysFile.setTenantId(tenantId);
+            sysFile.setStorageId(storageId);
+            sysFile.setBucketName(bucketName);
+            sysFile.setObjectName(objectName);
+            sysFile.setOriginalName(originalName);
+            sysFile.setFileName(fileName);
+            sysFile.setFileExt(ext);
+            sysFile.setMimeType(file.getContentType());
+            sysFile.setFileSize(file.getSize());
+            sysFile.setAccessType(accessType);
+            sysFile.setModuleName(moduleName);
+            sysFile.setCreateBy(userId);
+            fileMapper.insert(sysFile);
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("fileId", sysFile.getFileId());
+            result.put("url", sysFile.getUrl());
+            result.put("bucketName", bucketName);
+            result.put("objectName", objectName);
+            result.put("originalName", originalName);
+            result.put("fileName", fileName);
+            result.put("fileSize", file.getSize());
+            return ApiResponse.success(result, "上传成功");
+        } catch (IOException e) {
+            log.error("File upload failed", e);
+            throw AppException.internal("文件上传失败");
+        }
+    }
+
+    // ========== 文件列表 ==========
+
+    @Operation(summary = "文件列表")
+    @GetMapping("/files")
+    @PreAuthorize("hasAuthority('PERM_system:file:list')")
+    public ApiResponse<List<Map<String, Object>>> files(
+            @RequestParam(required = false) String originalName,
+            @RequestParam(required = false) String moduleName,
+            @RequestParam(required = false) String accessType,
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "10") Integer pageSize) {
+        String tenantId = TenantContext.getTenantId();
+        Page<SysFile> page = new Page<>(pageNum, pageSize);
+        LambdaQueryWrapper<SysFile> wrapper = new LambdaQueryWrapper<SysFile>()
+                .eq(SysFile::getTenantId, tenantId)
+                .eq(SysFile::getDeleted, 0);
+
+        if (originalName != null) wrapper.like(SysFile::getOriginalName, originalName);
+        if (moduleName != null) wrapper.like(SysFile::getModuleName, moduleName);
+        if (accessType != null) wrapper.eq(SysFile::getAccessType, accessType);
+
+        wrapper.orderByDesc(SysFile::getCreateTime);
+        IPage<SysFile> result = fileMapper.selectPage(page, wrapper);
+        List<Map<String, Object>> list = result.getRecords().stream().map(f -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("fileId", f.getFileId());
+            m.put("originalName", f.getOriginalName());
+            m.put("fileName", f.getFileName());
+            m.put("fileExt", f.getFileExt());
+            m.put("mimeType", f.getMimeType());
+            m.put("fileSize", f.getFileSize());
+            m.put("accessType", f.getAccessType());
+            m.put("moduleName", f.getModuleName());
+            m.put("url", f.getUrl());
+            m.put("bucketName", f.getBucketName());
+            m.put("objectName", f.getObjectName());
+            m.put("storageId", f.getStorageId());
+            m.put("createTime", f.getCreateTime());
+            return m;
+        }).collect(Collectors.toList());
+        return ApiResponse.pageSuccess(list, result.getTotal());
+    }
+
+    // ========== 文件操作 ==========
+
+    @Operation(summary = "删除文件")
+    @DeleteMapping("/file/{fileId}")
+    @PreAuthorize("hasAuthority('PERM_system:file:remove')")
+    public ApiResponse<Void> deleteFile(@PathVariable String fileId) {
+        String tenantId = TenantContext.getTenantId();
+        SysFile sysFile = fileMapper.selectOne(
+                new LambdaQueryWrapper<SysFile>()
+                        .eq(SysFile::getFileId, fileId)
+                        .eq(SysFile::getTenantId, tenantId));
+        if (sysFile != null) {
+            sysFile.setDeleted(1);
+            fileMapper.updateById(sysFile);
+        }
+        return ApiResponse.success(null, "删除成功");
+    }
+
+    @Operation(summary = "获取文件信息（含 URL）")
+    @GetMapping("/file/{fileId}/url")
+    @PreAuthorize("hasAuthority('PERM_system:file:download')")
+    public ApiResponse<Map<String, Object>> fileUrl(@PathVariable String fileId) {
+        String tenantId = TenantContext.getTenantId();
+        SysFile sysFile = fileMapper.selectOne(
+                new LambdaQueryWrapper<SysFile>()
+                        .eq(SysFile::getFileId, fileId)
+                        .eq(SysFile::getTenantId, tenantId)
+                        .eq(SysFile::getDeleted, 0));
+        if (sysFile == null) return ApiResponse.success(null);
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("fileId", sysFile.getFileId());
+        m.put("originalName", sysFile.getOriginalName());
+        m.put("url", sysFile.getUrl());
+        m.put("fileName", sysFile.getFileName());
+        m.put("fileSize", sysFile.getFileSize());
+        return ApiResponse.success(m);
+    }
+
+    @Operation(summary = "文件下载信息")
+    @GetMapping("/file/{fileId}/download")
+    @PreAuthorize("hasAuthority('PERM_system:file:download')")
+    public ApiResponse<Map<String, Object>> fileDownload(@PathVariable String fileId) {
+        String tenantId = TenantContext.getTenantId();
+        SysFile sysFile = fileMapper.selectOne(
+                new LambdaQueryWrapper<SysFile>()
+                        .eq(SysFile::getFileId, fileId)
+                        .eq(SysFile::getTenantId, tenantId)
+                        .eq(SysFile::getDeleted, 0));
+        if (sysFile == null) return ApiResponse.success(null);
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("fileId", sysFile.getFileId());
+        m.put("originalName", sysFile.getOriginalName());
+        m.put("url", sysFile.getUrl());
+        m.put("fileName", sysFile.getFileName());
+        m.put("fileSize", sysFile.getFileSize());
+        return ApiResponse.success(m);
     }
 }

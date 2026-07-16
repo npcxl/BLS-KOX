@@ -1,5 +1,9 @@
 server:
   port: 8080
+  forward-headers-strategy: native
+  tomcat:
+    remote-ip-header: X-Forwarded-For
+    protocol-header: X-Forwarded-Proto
 
 spring:
   application:
@@ -92,9 +96,3 @@ springdoc:
 
 knife4j:
   enable: true
-
-server:
-  forward-headers-strategy: native
-  tomcat:
-    remote-ip-header: X-Forwarded-For
-    protocol-header: X-Forwarded-Proto

@@ -76,7 +76,7 @@ public class TestSessionConfig {
         }
 
         @Override
-        public SessionData getAuthSession(String accessJti) {
+        public AuthSessionData getAuthSession(String accessJti) {
             return null;
         }
 

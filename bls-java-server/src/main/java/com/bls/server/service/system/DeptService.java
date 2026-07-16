@@ -31,26 +31,22 @@ public class DeptService {
                 .eq(SysDept::getDeleted, 0)
                 .orderByAsc(SysDept::getSortNum));
 
-        // Load all users in this tenant for populating dept user lists
         List<SysUser> users = userMapper.selectList(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getTenantId, tenantId)
                 .eq(SysUser::getDeleted, 0));
 
-        Map<String, List<Map<String, Object>>> usersByDept = users.stream().map(u -> {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("userId", u.getUserId());
-            m.put("username", u.getUsername());
-            m.put("nickname", u.getNickname());
-            return m;
-        }).collect(Collectors.groupingBy(u -> {
-            SysUser orig = users.stream()
-                    .filter(x -> x.getUserId().equals(u.get("userId")))
-                    .findFirst().orElse(null);
-            return orig != null && orig.getDeptId() != null ? orig.getDeptId() : "";
-        }));
+        Map<String, List<Map<String, Object>>> usersByDept = users.stream()
+                .collect(Collectors.groupingBy(
+                        u -> u.getDeptId() != null ? u.getDeptId() : "",
+                        Collectors.mapping(u -> {
+                            Map<String, Object> m = new LinkedHashMap<>();
+                            m.put("userId", u.getUserId());
+                            m.put("username", u.getUsername());
+                            m.put("nickname", u.getNickname());
+                            return m;
+                        }, Collectors.toList())));
 
-        // Build tree
-        return buildTree(depts, "0", usersByDept);
+        return buildTree(depts, "0");
     }
 
     public List<Map<String, Object>> getDeptUsers(String deptId) {
@@ -78,21 +74,7 @@ public class DeptService {
         dept.setParentId(request.getParentId());
         dept.setDeptName(request.getDeptName());
         dept.setSortNum(request.getSortNum());
-        dept.setLeader(request.getLeader());
-        dept.setPhone(request.getPhone());
-        dept.setEmail(request.getEmail());
         dept.setStatus(request.getStatus());
-
-        // Build ancestors
-        if (!"0".equals(request.getParentId())) {
-            SysDept parent = deptMapper.selectById(request.getParentId());
-            if (parent != null) {
-                dept.setAncestors((parent.getAncestors() != null ? parent.getAncestors() + "," : "") + request.getParentId());
-            }
-        } else {
-            dept.setAncestors("0");
-        }
-
         deptMapper.insert(dept);
     }
 
@@ -108,9 +90,6 @@ public class DeptService {
         if (request.getParentId() != null) dept.setParentId(request.getParentId());
         if (request.getDeptName() != null) dept.setDeptName(request.getDeptName());
         if (request.getSortNum() != null) dept.setSortNum(request.getSortNum());
-        if (request.getLeader() != null) dept.setLeader(request.getLeader());
-        if (request.getPhone() != null) dept.setPhone(request.getPhone());
-        if (request.getEmail() != null) dept.setEmail(request.getEmail());
         if (request.getStatus() != null) dept.setStatus(request.getStatus());
 
         deptMapper.updateById(dept);
@@ -130,8 +109,7 @@ public class DeptService {
         }
     }
 
-    private List<Map<String, Object>> buildTree(List<SysDept> depts, String parentId,
-                                                  Map<String, List<Map<String, Object>>> usersByDept) {
+    private List<Map<String, Object>> buildTree(List<SysDept> depts, String parentId) {
         List<Map<String, Object>> tree = new ArrayList<>();
         for (SysDept dept : depts) {
             if (Objects.equals(parentId, dept.getParentId())) {
@@ -140,13 +118,10 @@ public class DeptService {
                 node.put("parentId", dept.getParentId());
                 node.put("deptName", dept.getDeptName());
                 node.put("sortNum", dept.getSortNum());
-                node.put("leader", dept.getLeader());
-                node.put("phone", dept.getPhone());
-                node.put("email", dept.getEmail());
                 node.put("status", dept.getStatus());
                 node.put("createTime", dept.getCreateTime());
 
-                List<Map<String, Object>> children = buildTree(depts, dept.getDeptId(), usersByDept);
+                List<Map<String, Object>> children = buildTree(depts, dept.getDeptId());
                 if (!children.isEmpty()) {
                     node.put("children", children);
                 }

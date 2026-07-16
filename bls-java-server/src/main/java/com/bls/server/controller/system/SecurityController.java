@@ -38,6 +38,39 @@ public class SecurityController {
         private String source = "manual";
     }
 
+    @Operation(summary = "风险规则列表")
+    @GetMapping("/rules")
+    @PreAuthorize("hasAuthority('PERM_system:security:stats')")
+    public ApiResponse<List<Map<String, Object>>> rules() {
+        List<Map<String, Object>> rules = List.of(
+            Map.of("id", "rule_login_brute_force", "name", "登录爆破检测",
+                "eventTypes", List.of("LOGIN_FAILED"),
+                "windowSeconds", 300, "threshold", 20, "riskLevel", "high",
+                "actions", List.of("BLOCK_IP", "LOCK_ACCOUNT"), "weight", 8),
+            Map.of("id", "rule_refresh_reuse", "name", "Refresh Token 复用",
+                "eventTypes", List.of("REFRESH_TOKEN_REUSE"),
+                "windowSeconds", 3600, "threshold", 1, "riskLevel", "critical",
+                "actions", List.of("REVOKE_ALL_SESSIONS"), "weight", 10),
+            Map.of("id", "rule_cross_tenant", "name", "跨租户访问检测",
+                "eventTypes", List.of("CROSS_TENANT_ACCESS"),
+                "windowSeconds", 3600, "threshold", 1, "riskLevel", "high",
+                "actions", List.of("ALERT_ONLY"), "weight", 9),
+            Map.of("id", "rule_signature_invalid", "name", "连续签名无效",
+                "eventTypes", List.of("SIGNATURE_INVALID"),
+                "windowSeconds", 60, "threshold", 5, "riskLevel", "medium",
+                "actions", List.of("BLOCK_IP"), "weight", 7),
+            Map.of("id", "rule_replay_attack", "name", "重放攻击检测",
+                "eventTypes", List.of("NONCE_REPLAY", "REPLAY_DETECTED"),
+                "windowSeconds", 60, "threshold", 10, "riskLevel", "high",
+                "actions", List.of("BLOCK_IP"), "weight", 8),
+            Map.of("id", "rule_rate_limit", "name", "高频限流触发",
+                "eventTypes", List.of("RATE_LIMIT_EXCEEDED"),
+                "windowSeconds", 60, "threshold", 50, "riskLevel", "low",
+                "actions", List.of("ALERT_ONLY"), "weight", 4)
+        );
+        return ApiResponse.success(rules);
+    }
+
     @Operation(summary = "安全态势统计")
     @GetMapping("/stats")
     @PreAuthorize("hasAuthority('PERM_system:security:stats')")

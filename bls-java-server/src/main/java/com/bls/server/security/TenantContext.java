@@ -17,17 +17,17 @@ public class TenantContext {
 
     public static String getTenantId() {
         TenantContextData data = CONTEXT.get();
-        return data != null ? data.getTenantId() : null;
+        return data != null ? data.tenantId() : null;
     }
 
     public static String getUserId() {
         TenantContextData data = CONTEXT.get();
-        return data != null ? data.getUserId() : null;
+        return data != null ? data.userId() : null;
     }
 
     public static String getRequestId() {
         TenantContextData data = CONTEXT.get();
-        return data != null ? data.getRequestId() : null;
+        return data != null ? data.requestId() : null;
     }
 
     public static void clear() {

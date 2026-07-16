@@ -2,8 +2,10 @@ package com.bls.server.service;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -17,11 +19,12 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @Service
+@ConditionalOnBean(RedisConnectionFactory.class)
 public class SessionService {
 
     private final RedisTemplate<String, String> redisTemplate;
 
-    public SessionService(RedisTemplate<String, String> redisTemplate) {
+    public SessionService(@Autowired(required = false) RedisTemplate<String, String> redisTemplate) {
         this.redisTemplate = redisTemplate;
     }
 
@@ -134,6 +137,7 @@ public class SessionService {
     }
 
     public void deleteAuthSession(String accessJti) {
+        if (redisTemplate == null) return;
         String key = "auth:session:" + accessJti;
         redisTemplate.delete(key);
     }

@@ -32,7 +32,7 @@ public class TenantService {
             wrapper.and(w -> w
                 .like(SysTenant::getTenantName, request.getKeyword())
                 .or().like(SysTenant::getDomainName, request.getKeyword())
-                .or().like(SysTenant::getContactName, request.getKeyword()));
+                .or().like(SysTenant::getContactUser, request.getKeyword()));
         }
 
         wrapper.orderByDesc(SysTenant::getCreateTime);
@@ -44,9 +44,8 @@ public class TenantService {
             map.put("tenantName", t.getTenantName());
             map.put("domainName", t.getDomainName());
             map.put("packageId", t.getPackageId());
-            map.put("contactName", t.getContactName());
+            map.put("contactUser", t.getContactUser());
             map.put("contactPhone", t.getContactPhone());
-            map.put("contactEmail", t.getContactEmail());
             map.put("status", t.getStatus());
             map.put("expireTime", t.getExpireTime());
             map.put("createTime", t.getCreateTime());
@@ -77,9 +76,8 @@ public class TenantService {
         tenant.setTenantName(request.getTenantName());
         tenant.setDomainName(request.getDomainName());
         tenant.setPackageId(request.getPackageId());
-        tenant.setContactName(request.getContactName());
+        tenant.setContactUser(request.getContactName());
         tenant.setContactPhone(request.getContactPhone());
-        tenant.setContactEmail(request.getContactEmail());
         tenant.setStatus(request.getStatus());
         tenant.setRemark(request.getRemark());
         tenantMapper.insert(tenant);
@@ -93,9 +91,8 @@ public class TenantService {
         if (request.getTenantName() != null) tenant.setTenantName(request.getTenantName());
         if (request.getDomainName() != null) tenant.setDomainName(request.getDomainName());
         if (request.getPackageId() != null) tenant.setPackageId(request.getPackageId());
-        if (request.getContactName() != null) tenant.setContactName(request.getContactName());
+        if (request.getContactName() != null) tenant.setContactUser(request.getContactName());
         if (request.getContactPhone() != null) tenant.setContactPhone(request.getContactPhone());
-        if (request.getContactEmail() != null) tenant.setContactEmail(request.getContactEmail());
         if (request.getStatus() != null) tenant.setStatus(request.getStatus());
         if (request.getRemark() != null) tenant.setRemark(request.getRemark());
 

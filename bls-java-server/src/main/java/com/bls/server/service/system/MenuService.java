@@ -24,8 +24,7 @@ public class MenuService {
     private final SysRoleMenuMapper roleMenuMapper;
 
     public List<Map<String, Object>> getMenuTree(String keyword) {
-        LambdaQueryWrapper<SysMenu> wrapper = new LambdaQueryWrapper<SysMenu>()
-                .eq(SysMenu::getDeleted, 0);
+        LambdaQueryWrapper<SysMenu> wrapper = new LambdaQueryWrapper<SysMenu>();
 
         if (keyword != null && !keyword.isBlank()) {
             wrapper.like(SysMenu::getMenuName, keyword);
@@ -49,9 +48,6 @@ public class MenuService {
         menu.setPerms(request.getPerms());
         menu.setSortNum(request.getSortNum());
         menu.setStatus(request.getStatus());
-        menu.setIsCache(request.getIsCache());
-        menu.setIsFrame(request.getIsFrame());
-        menu.setVisible(request.getVisible());
         menuMapper.insert(menu);
     }
 
@@ -69,9 +65,6 @@ public class MenuService {
         if (request.getPerms() != null) menu.setPerms(request.getPerms());
         if (request.getSortNum() != null) menu.setSortNum(request.getSortNum());
         if (request.getStatus() != null) menu.setStatus(request.getStatus());
-        if (request.getIsCache() != null) menu.setIsCache(request.getIsCache());
-        if (request.getIsFrame() != null) menu.setIsFrame(request.getIsFrame());
-        if (request.getVisible() != null) menu.setVisible(request.getVisible());
 
         menuMapper.updateById(menu);
     }
@@ -79,7 +72,6 @@ public class MenuService {
     @Transactional
     public void removeMenus(List<String> ids) {
         for (String menuId : ids) {
-            // Physical delete for menus (aligned with Koa)
             menuMapper.deleteById(menuId);
             roleMenuMapper.delete(new LambdaQueryWrapper<SysRoleMenu>().eq(SysRoleMenu::getMenuId, menuId));
         }
@@ -100,9 +92,6 @@ public class MenuService {
                 node.put("perms", menu.getPerms());
                 node.put("sortNum", menu.getSortNum());
                 node.put("status", menu.getStatus());
-                node.put("isCache", menu.getIsCache());
-                node.put("isFrame", menu.getIsFrame());
-                node.put("visible", menu.getVisible());
                 node.put("createTime", menu.getCreateTime());
 
                 List<Map<String, Object>> children = buildTree(menus, menu.getMenuId());

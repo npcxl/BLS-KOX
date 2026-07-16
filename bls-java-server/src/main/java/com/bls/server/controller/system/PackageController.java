@@ -66,8 +66,7 @@ public class PackageController {
     @PreAuthorize("hasAuthority('PERM_system:package:list')")
     public ApiResponse<List<Map<String, Object>>> list(PkgQueryRequest request) {
         Page<SysPackage> page = new Page<>(request.getPageNum(), request.getPageSize());
-        LambdaQueryWrapper<SysPackage> wrapper = new LambdaQueryWrapper<SysPackage>()
-                .eq(SysPackage::getDeleted, 0);
+        LambdaQueryWrapper<SysPackage> wrapper = new LambdaQueryWrapper<>();
 
         if (request.getKeyword() != null && !request.getKeyword().isBlank()) {
             wrapper.like(SysPackage::getPackageName, request.getKeyword());
@@ -91,8 +90,7 @@ public class PackageController {
     @GetMapping("/options")
     public ApiResponse<List<Map<String, Object>>> options() {
         List<SysPackage> pkgs = packageMapper.selectList(new LambdaQueryWrapper<SysPackage>()
-                .eq(SysPackage::getStatus, "0")
-                .eq(SysPackage::getDeleted, 0));
+                .eq(SysPackage::getStatus, "0"));
         List<Map<String, Object>> list = pkgs.stream().map(p -> {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("packageId", p.getPackageId());
@@ -164,13 +162,9 @@ public class PackageController {
     @Transactional
     public ApiResponse<Void> remove(@Valid @RequestBody PkgRemoveRequest request) {
         for (String id : request.getIds()) {
-            SysPackage pkg = packageMapper.selectById(id);
-            if (pkg != null) {
-                pkg.setDeleted(1);
-                packageMapper.updateById(pkg);
-                packageMenuMapper.delete(new LambdaQueryWrapper<SysPackageMenu>()
-                        .eq(SysPackageMenu::getPackageId, id));
-            }
+            packageMapper.deleteById(id);
+            packageMenuMapper.delete(new LambdaQueryWrapper<SysPackageMenu>()
+                    .eq(SysPackageMenu::getPackageId, id));
         }
         return ApiResponse.success(null, "删除成功");
     }

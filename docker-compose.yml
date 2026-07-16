@@ -112,7 +112,7 @@ services:
       - TZ=Asia/Shanghai
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./bls-server/sql/Init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./sql/Init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     expose:
       - "3306"
     networks:

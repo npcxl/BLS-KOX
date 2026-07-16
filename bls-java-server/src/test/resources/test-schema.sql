@@ -95,6 +95,20 @@ CREATE TABLE IF NOT EXISTS sys_role_menu (
     PRIMARY KEY (role_id, menu_id)
 );
 
+CREATE TABLE IF NOT EXISTS sys_login_log (
+    log_id VARCHAR(32) PRIMARY KEY,
+    tenant_id VARCHAR(32) DEFAULT '000000',
+    user_id VARCHAR(32),
+    username VARCHAR(50),
+    login_type VARCHAR(20) DEFAULT 'password',
+    login_status VARCHAR(1) DEFAULT '1',
+    fail_reason VARCHAR(500),
+    login_ip VARCHAR(45),
+    user_agent VARCHAR(500),
+    request_id VARCHAR(64),
+    login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Seed data
 INSERT INTO sys_tenant (tenant_id, tenant_name, domain_name, status) VALUES ('000000', '平台租户', 'localhost', '0');
 INSERT INTO sys_tenant (tenant_id, tenant_name, domain_name, status) VALUES ('100000', '默认租户', 'demo.example.com', '0');

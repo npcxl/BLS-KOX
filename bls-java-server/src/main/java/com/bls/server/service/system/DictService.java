@@ -85,9 +85,8 @@ public class DictService {
             if (dictType != null) {
                 dictType.setDeleted(1);
                 dictTypeMapper.updateById(dictType);
-                // Also remove associated data
                 dictDataMapper.delete(new LambdaQueryWrapper<SysDictData>()
-                        .eq(SysDictData::getDictType, dictType.getDictType()));
+                        .eq(SysDictData::getDictTypeId, dictType.getDictTypeId()));
             }
         }
     }
@@ -97,22 +96,19 @@ public class DictService {
         Page<SysDictData> page = new Page<>(request.getPageNum(), request.getPageSize());
         LambdaQueryWrapper<SysDictData> wrapper = new LambdaQueryWrapper<SysDictData>()
                 .eq(SysDictData::getTenantId, tenantId)
-                .eq(SysDictData::getDictType, request.getDictType())
+                .eq(SysDictData::getDictTypeId, request.getDictType())
                 .eq(SysDictData::getDeleted, 0)
-                .orderByAsc(SysDictData::getSortNum);
+                .orderByAsc(SysDictData::getDictSort);
 
         IPage<SysDictData> result = dictDataMapper.selectPage(page, wrapper);
         List<Map<String, Object>> list = result.getRecords().stream().map(d -> {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("dictDataId", d.getDictDataId());
-            map.put("dictType", d.getDictType());
             map.put("dictLabel", d.getDictLabel());
             map.put("dictValue", d.getDictValue());
-            map.put("cssClass", d.getCssClass());
-            map.put("listClass", d.getListClass());
-            map.put("sortNum", d.getSortNum());
+            map.put("dictSort", d.getDictSort());
+            map.put("tag", d.getTag());
             map.put("status", d.getStatus());
-            map.put("isDefault", d.getIsDefault());
             return map;
         }).collect(Collectors.toList());
 
@@ -123,19 +119,16 @@ public class DictService {
         String tenantId = TenantContext.getTenantId();
         List<SysDictData> data = dictDataMapper.selectList(new LambdaQueryWrapper<SysDictData>()
                 .eq(SysDictData::getTenantId, tenantId)
-                .eq(SysDictData::getDictType, dictType)
                 .eq(SysDictData::getStatus, "0")
                 .eq(SysDictData::getDeleted, 0)
-                .orderByAsc(SysDictData::getSortNum));
+                .orderByAsc(SysDictData::getDictSort));
 
         return data.stream().map(d -> {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("dictDataId", d.getDictDataId());
             map.put("dictLabel", d.getDictLabel());
             map.put("dictValue", d.getDictValue());
-            map.put("cssClass", d.getCssClass());
-            map.put("listClass", d.getListClass());
-            map.put("isDefault", d.getIsDefault());
+            map.put("tag", d.getTag());
             return map;
         }).collect(Collectors.toList());
     }
@@ -145,14 +138,11 @@ public class DictService {
         String tenantId = TenantContext.getTenantId();
         SysDictData data = new SysDictData();
         data.setTenantId(tenantId);
-        data.setDictType(request.getDictType());
+        data.setDictTypeId(request.getDictType());
         data.setDictLabel(request.getDictLabel());
         data.setDictValue(request.getDictValue());
-        data.setCssClass(request.getCssClass());
-        data.setListClass(request.getListClass());
-        data.setSortNum(request.getSortNum());
+        data.setDictSort(request.getSortNum());
         data.setStatus(request.getStatus());
-        data.setIsDefault(request.getIsDefault());
         dictDataMapper.insert(data);
     }
 
@@ -162,11 +152,8 @@ public class DictService {
         if (data == null) throw AppException.notFound("字典数据不存在");
         if (request.getDictLabel() != null) data.setDictLabel(request.getDictLabel());
         if (request.getDictValue() != null) data.setDictValue(request.getDictValue());
-        if (request.getCssClass() != null) data.setCssClass(request.getCssClass());
-        if (request.getListClass() != null) data.setListClass(request.getListClass());
-        if (request.getSortNum() != null) data.setSortNum(request.getSortNum());
+        if (request.getSortNum() != null) data.setDictSort(request.getSortNum());
         if (request.getStatus() != null) data.setStatus(request.getStatus());
-        if (request.getIsDefault() != null) data.setIsDefault(request.getIsDefault());
         dictDataMapper.updateById(data);
     }
 

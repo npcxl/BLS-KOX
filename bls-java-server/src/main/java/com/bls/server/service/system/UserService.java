@@ -163,7 +163,7 @@ public class UserService {
         user.setEmail(request.getEmail());
         user.setPhone(request.getPhone());
         user.setDeptId(request.getDeptId());
-        user.setIsAdmin(0);
+        user.setIsAdmin("0");
         user.setStatus(request.getStatus() != null ? request.getStatus() : "0");
 
         userMapper.insert(user);
