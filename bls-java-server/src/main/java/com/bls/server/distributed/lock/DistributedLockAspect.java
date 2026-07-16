@@ -11,6 +11,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.core.DefaultParameterNameDiscoverer;
 import org.springframework.core.ParameterNameDiscoverer;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.expression.EvaluationContext;
 import org.springframework.expression.ExpressionParser;
@@ -46,20 +47,24 @@ public class DistributedLockAspect {
 
         // 尝试获取锁
         boolean acquired = false;
-        if (distributedLock.waitTime() > 0) {
-            // 自旋等待
-            long deadline = System.currentTimeMillis() + distributedLock.waitTime() * 1000;
-            while (System.currentTimeMillis() < deadline) {
-                if (Boolean.TRUE.equals(redisTemplate.opsForValue()
-                        .setIfAbsent(fullKey, lockValue, distributedLock.leaseTime(), TimeUnit.SECONDS))) {
-                    acquired = true;
-                    break;
+        try {
+            if (distributedLock.waitTime() > 0) {
+                long deadline = System.currentTimeMillis() + distributedLock.waitTime() * 1000;
+                while (System.currentTimeMillis() < deadline) {
+                    if (Boolean.TRUE.equals(redisTemplate.opsForValue()
+                            .setIfAbsent(fullKey, lockValue, distributedLock.leaseTime(), TimeUnit.SECONDS))) {
+                        acquired = true;
+                        break;
+                    }
+                    Thread.sleep(100);
                 }
-                Thread.sleep(100);
+            } else {
+                acquired = Boolean.TRUE.equals(redisTemplate.opsForValue()
+                        .setIfAbsent(fullKey, lockValue, distributedLock.leaseTime(), TimeUnit.SECONDS));
             }
-        } else {
-            acquired = Boolean.TRUE.equals(redisTemplate.opsForValue()
-                    .setIfAbsent(fullKey, lockValue, distributedLock.leaseTime(), TimeUnit.SECONDS));
+        } catch (DataAccessException e) {
+            log.warn("[DistributedLock] Redis 异常，跳过加锁 key={}", fullKey, e);
+            return pjp.proceed();
         }
 
         if (!acquired) {
@@ -73,13 +78,16 @@ public class DistributedLockAspect {
         try {
             return pjp.proceed();
         } finally {
-            // Lua 脚本：仅当 value 匹配时才删除（防止误删他人锁）
-            String script = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
-            redisTemplate.execute(
-                    new org.springframework.data.redis.core.script.DefaultRedisScript<>(script, Long.class),
-                    java.util.List.of(fullKey),
-                    lockValue);
-            log.debug("[DistributedLock] 释放锁 key={}", fullKey);
+            try {
+                String script = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+                redisTemplate.execute(
+                        new org.springframework.data.redis.core.script.DefaultRedisScript<>(script, Long.class),
+                        java.util.List.of(fullKey),
+                        lockValue);
+                log.debug("[DistributedLock] 释放锁 key={}", fullKey);
+            } catch (DataAccessException e) {
+                log.warn("[DistributedLock] 释放锁失败 key={}", fullKey, e);
+            }
         }
     }
 

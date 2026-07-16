@@ -42,12 +42,12 @@ function normalizeIp(value?: string): string | undefined {
 
 /** 中间件：初始化请求上下文 */
 export async function requestContextMiddleware(ctx: any, next: () => Promise<void>) {
+  // 优先使用 traceMiddleware 已设置的 requestId/traceId，保证日志、响应头、上下文一致
   const store: RequestContext = {
-    requestId: normalizeRequestId(ctx.headers['x-request-id'] as string),
-    traceId: normalizeRequestId(ctx.headers['x-trace-id'] as string),
+    requestId: normalizeRequestId(ctx.state.requestId ?? ctx.headers['x-request-id'] as string),
+    traceId: normalizeRequestId(ctx.state.traceId ?? ctx.headers['x-trace-id'] as string),
     tenantId: null,
     userId: null,
-    // 统一使用 ctx.ip，由 app.proxy 和 Nginx X-Forwarded-For 保证准确性
     clientIp: normalizeIp(ctx.ip) ?? 'unknown',
     userAgent: ctx.get('user-agent') || undefined,
     startTime: Date.now(),

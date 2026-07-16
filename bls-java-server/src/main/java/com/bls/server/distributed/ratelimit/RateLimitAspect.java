@@ -10,6 +10,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.core.DefaultParameterNameDiscoverer;
 import org.springframework.core.ParameterNameDiscoverer;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.expression.EvaluationContext;
@@ -19,7 +20,6 @@ import org.springframework.expression.spel.support.StandardEvaluationContext;
 import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Method;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -57,10 +57,16 @@ public class RateLimitAspect {
         String key = resolveKey(rateLimit, pjp);
         String fullKey = rateLimit.prefix() + key;
 
-        Long current = redisTemplate.execute(
-                RATE_LIMIT_SCRIPT,
-                List.of(fullKey),
-                String.valueOf(rateLimit.windowSeconds()));
+        Long current;
+        try {
+            current = redisTemplate.execute(
+                    RATE_LIMIT_SCRIPT,
+                    List.of(fullKey),
+                    String.valueOf(rateLimit.windowSeconds()));
+        } catch (DataAccessException e) {
+            log.warn("[RateLimit] Redis 异常，降级放行 key={}", fullKey, e);
+            return pjp.proceed();
+        }
 
         if (current != null && current > rateLimit.limit()) {
             metrics.recordRateLimitRejected();

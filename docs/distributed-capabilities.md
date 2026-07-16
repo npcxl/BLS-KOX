@@ -5,17 +5,18 @@
 
 ## 实现状态
 
-### 基础组件（已完成）
+### Java 基础组件
 
-| 能力 | Java | 状态 |
+| 能力 | 实现 | 状态 |
 |------|------|------|
-| requestId / traceId | `TraceFilter` + MDC | ✅ 基础组件已实现 |
-| 分布式锁 | `@DistributedLock` + AOP | ✅ 基础组件已实现 |
-| 幂等控制 | `@Idempotent` + AOP | ✅ 基础组件已实现 |
-| 限流 | `@RateLimit` + AOP | ✅ 基础组件已实现 |
-| 指标采集 | `DistributedMetrics` (Micrometer) | ✅ 基础组件已实现 |
+| requestId / traceId | `TraceFilter` + MDC | ✅ |
+| 分布式锁 | `@DistributedLock` + AOP | ✅ |
+| 幂等控制 | `@Idempotent` + AOP | ✅ |
+| 限流 | `@RateLimit` + AOP | ✅ |
+| 指标采集 | `DistributedMetrics` (Micrometer) | ✅ |
+| Redis 故障降级 | 切面捕获 `DataAccessException` 放行 | ✅ |
 
-### 业务接入（已完成）
+### Java 业务接入
 
 | 模块 | 接口 | 注解 |
 |------|------|------|
@@ -38,7 +39,27 @@
 | Excel | `POST /api/common/excel/export` | `@RateLimit` |
 | Excel | `POST /api/common/excel/import` | `@RateLimit` + `@DistributedLock` |
 
-### 待接入模块
+### Koa 基础组件
+
+| 能力 | 实现 | 状态 |
+|------|------|------|
+| requestId / traceId | `traceMiddleware` + `requestContextMiddleware` | ✅ |
+| 分布式锁 | `createDistributedLock()` (SET NX) | ✅ |
+| 幂等控制 | `createIdempotencyService()` (Idempotency-Key) | ✅ |
+| 限流 | `createRateLimiter()` (Lua INCR) | ✅ |
+| Redis 故障降级 | Redis 不可用时 skip 锁/幂等/限流 | ✅ |
+
+### Koa 业务接入
+
+| 模块 | 接口 | 能力 |
+|------|------|------|
+| 文件上传 | `POST /system/storage/upload` | `createDistributedLock` |
+| Excel 导出 | `POST /common/excel/export` | `createDistributedLock` |
+| Excel 导入 | `POST /common/excel/import` | `createDistributedLock` |
+| 全局限流 | 所有接口 | `rateLimitMiddleware`（已有） |
+| 防重放 | 写操作 | `replayProtectionMiddleware`（已有） |
+
+### Java 待接入模块
 
 | 模块 | 说明 |
 |------|------|
@@ -48,12 +69,18 @@
 | Webhook | 创建/编辑/删除待接入 `@DistributedLock` |
 | 存储配置 | 增删改待接入 `@DistributedLock` |
 
+### Koa 待接入模块
+
+| 模块 | 说明 |
+|------|------|
+| 批量删除 | `defineCrudModule` 的 remove 路由待接入 `createDistributedLock` |
+| 幂等控制 | 业务路由待接入 `createIdempotencyService` |
+
 ## 设计原则
 
 1. **统一的 Redis 协议**：锁、限流、幂等使用相同的 Redis Key 前缀、Lua 脚本、Header 名称
 2. **非侵入**：不修改前端代码，不修改现有业务接口签名
 3. **渐进式**：每个能力独立可选，不强制使用
-4. **Redis 故障降级**：Redis 不可用时，限流放行、锁失败降级
 
 ## 代码位置
 
@@ -77,9 +104,20 @@ com.bls.server.distributed/
     └── DistributedMetrics.java     # Micrometer 指标
 ```
 
+### Koa
+
+```
+bls-server/src/distributed/
+├── lock.ts           # createDistributedLock()
+├── idempotency.ts    # createIdempotencyService()
+├── rate-limit.ts     # createRateLimiter()
+├── trace.ts          # traceMiddleware() / getRequestId() / getTraceId()
+└── index.ts          # 统一导出
+```
+
 ## 使用示例
 
-### 分布式锁
+### Java 分布式锁
 
 ```java
 @DistributedLock(key = "order:create:#{#userId}", waitTime = 3, leaseTime = 10)
@@ -88,7 +126,7 @@ public void createOrder(String userId) {
 }
 ```
 
-### 幂等
+### Java 幂等
 
 ```java
 @Idempotent(prefix = "payment:")
@@ -98,20 +136,36 @@ public ApiResponse pay(@RequestBody PayRequest req) {
 // 请求需带 Header: Idempotency-Key: xxx
 ```
 
-### 限流
+### Java 限流
 
 ```java
-@RateLimit(key = "login:ip:#{#request.remoteAddr}", limit = 20, windowSeconds = 60)
+@RateLimit(key = "login:ip:#{T(com.bls.server.controller.AuthController).resolveRateLimitIp(#request)}", limit = 20, windowSeconds = 60)
 public ApiResponse login(HttpServletRequest request) {
     // 业务逻辑
 }
+```
+
+### Koa 分布式锁
+
+```typescript
+import { createDistributedLock } from '@/distributed';
+import { getRedisClient } from '@/shared/utils/redis';
+
+const lock = createDistributedLock(getRedisClient());
+const unlock = await lock.acquire('storage:upload', { leaseTime: 30, waitTime: 5 });
+if (!unlock) {
+  ctx.status = 409;
+  ctx.body = { code: 409, message: '操作太频繁，请稍后再试' };
+  return;
+}
+try { /* 业务逻辑 */ } finally { await unlock(); }
 ```
 
 ## Redis Key 约定
 
 | 能力 | Key 前缀 | 示例 |
 |------|----------|------|
-| 分布式锁 | `lock:` | `lock:order:create:123` |
+| 分布式锁 | `lock:` | `lock:storage:upload` |
 | 幂等锁 | `idempotent:` | `idempotent:payment:abc123:lock` |
 | 幂等结果 | `idempotent:` | `idempotent:payment:abc123:result` |
 | 限流计数 | `rate:` | `rate:login:ip:192.168.1.1` |
@@ -119,7 +173,7 @@ public ApiResponse login(HttpServletRequest request) {
 ## 日志格式
 
 ```
-2026-01-01 12:00:00.000 [http-nio-8080-exec-1] INFO [req-xxx] [trace-yyy] [tenant-zzz] ...
+2026-01-01 12:00:00.000 [http-nio-8080-exec-1] INFO [req-xxx] [trace-yyy] [tenant-zzz] [user-uuu] ...
 ```
 
-包含 `requestId`、`traceId`、`tenantId`，方便日志关联。
+包含 `requestId`、`traceId`、`tenantId`、`userId`，方便日志关联。

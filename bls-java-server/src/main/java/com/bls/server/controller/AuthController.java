@@ -49,7 +49,7 @@ public class AuthController {
 
     @Operation(summary = "用户登录")
     @PostMapping("/login")
-    @RateLimit(key = "login:ip:#{#httpRequest.getHeader('X-Forwarded-For')}", limit = 20, windowSeconds = 60)
+    @RateLimit(key = "login:ip:#{T(com.bls.server.controller.AuthController).resolveRateLimitIp(#httpRequest)}", limit = 20, windowSeconds = 60)
     public ApiResponse<Map<String, Object>> login(@Valid @RequestBody LoginRequest request,
                                                    HttpServletRequest httpRequest) {
         String ip = getClientIp(httpRequest);
@@ -86,7 +86,7 @@ public class AuthController {
 
     @Operation(summary = "刷新令牌")
     @PostMapping("/refresh")
-    @RateLimit(key = "refresh:ip:#{#httpRequest.getHeader('X-Forwarded-For')}", limit = 30, windowSeconds = 60)
+    @RateLimit(key = "refresh:ip:#{T(com.bls.server.controller.AuthController).resolveRateLimitIp(#httpRequest)}", limit = 30, windowSeconds = 60)
     public ApiResponse<Map<String, Object>> refresh(@Valid @RequestBody RefreshRequest request,
                                                      HttpServletRequest httpRequest) {
         String ip = getClientIp(httpRequest);
@@ -106,7 +106,9 @@ public class AuthController {
         return ApiResponse.success(result);
     }
 
-    private String getClientIp(HttpServletRequest request) {
+    /** SpEL 可调用的静态方法：提取客户端 IP，fallback X-Forwarded-For → X-Real-IP → remoteAddr */
+    public static String resolveRateLimitIp(HttpServletRequest request) {
+        if (request == null) return "unknown";
         String ip = request.getHeader("X-Forwarded-For");
         if (StrUtil.isBlank(ip) || "unknown".equalsIgnoreCase(ip)) {
             ip = request.getHeader("X-Real-IP");
@@ -114,11 +116,14 @@ public class AuthController {
         if (StrUtil.isBlank(ip) || "unknown".equalsIgnoreCase(ip)) {
             ip = request.getRemoteAddr();
         }
-        // Take first IP if multiple
         if (ip != null && ip.contains(",")) {
             ip = ip.split(",")[0].trim();
         }
-        return ip;
+        return ip != null ? ip : "unknown";
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        return resolveRateLimitIp(request);
     }
 
     private String extractDomain(String origin) {

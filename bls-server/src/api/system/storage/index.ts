@@ -8,6 +8,8 @@ import { hasPerm } from '../../../middleware/permission';
 import { assertTenantResource } from '../../../security/ownership';
 import { pickAllowed, toSnake } from '../../../shared/utils/mass-assignment';
 import { createStorageProvider } from './storage.factory';
+import { createDistributedLock } from '../../../distributed/lock';
+import { getRedisClient } from '../../../shared/utils/redis';
 import type { StorageConfig } from './storage.model';
 import { validateFile, generateObjectKey, validateUploadMeta, sanitizeFilename, validateFileSize } from '../../../security/file-security';
 import { getDynamicConfig } from '../../../config/dynamic-config';
@@ -188,12 +190,30 @@ export async function handleUpload(
   ctx.body = { code: 200, message: '上传成功', data: { fileId, url, bucketName, objectName, originalName, fileName: safeName, fileSize } };
 }
 
-// 文件上传路由
+// 文件上传路由（含分布式锁）
 router.post('/upload', jwtAuth(), hasPerm('system:file:upload'), async (ctx: Context) => {
-  try {
-    await handleUpload(ctx, getDb, getCurrentTenantId, writeSecurityLog as any, writeUploadAudit as any, getRequestContext);
-  } catch (err: any) {
-    ctx.body = { code: 500, message: err?.message || '上传失败' };
+  const redis = getRedisClient();
+  if (redis) {
+    const lock = createDistributedLock(redis);
+    const unlock = await lock.acquire('storage:upload', { leaseTime: 30, waitTime: 5 });
+    if (!unlock) {
+      ctx.status = 409;
+      ctx.body = { code: 409, message: '操作太频繁，请稍后再试' };
+      return;
+    }
+    try {
+      await handleUpload(ctx, getDb, getCurrentTenantId, writeSecurityLog as any, writeUploadAudit as any, getRequestContext);
+    } catch (err: any) {
+      ctx.body = { code: 500, message: err?.message || '上传失败' };
+    } finally {
+      await unlock();
+    }
+  } else {
+    try {
+      await handleUpload(ctx, getDb, getCurrentTenantId, writeSecurityLog as any, writeUploadAudit as any, getRequestContext);
+    } catch (err: any) {
+      ctx.body = { code: 500, message: err?.message || '上传失败' };
+    }
   }
 });
 router.get('/files', jwtAuth(), hasPerm('system:file:list'), async (ctx: Context) => {

@@ -7,6 +7,8 @@ import { getCurrentTenantId } from '../../../middleware/tenant';
 import { jwtAuth } from '../../../middleware/auth';
 import { normalizeExportLimit, buildHeaderRow } from './excel.utils';
 import type { ExcelImportRowError } from './excel.types';
+import { createDistributedLock } from '../../../distributed/lock';
+import { getRedisClient } from '../../../shared/utils/redis';
 
 const router = new Router({ prefix: '/common/excel' });
 const CT = 'sys_page_column_config';
@@ -63,8 +65,22 @@ async function loadDictMaps(cols: any[]) {
   return { v2l, l2v };
 }
 
-/** 导出数据到 Excel */
+/** 导出数据到 Excel（含分布式锁） */
 router.post('/export', jwtAuth(), async (ctx: Context) => {
+  const body = ctx.request.body as any;
+  const metaKey = String(body.metaKey ?? '');
+  const redis = getRedisClient();
+  if (redis) {
+    const lock = createDistributedLock(redis);
+    const unlock = await lock.acquire(`excel:export:${metaKey}`, { leaseTime: 60, waitTime: 10 });
+    if (!unlock) { ctx.status = 409; ctx.body = { code: 409, message: '导出任务进行中，请稍后再试' }; return; }
+    try { await handleExport(ctx); } finally { await unlock(); }
+  } else {
+    await handleExport(ctx);
+  }
+});
+
+async function handleExport(ctx: Context) {
   try {
     const body = ctx.request.body as any;
     const meta = getMeta(body.metaKey);
@@ -131,7 +147,7 @@ router.post('/export', jwtAuth(), async (ctx: Context) => {
   } catch (err: any) {
     ctx.body = { code: 500, message: err?.message || '导出失败' };
   }
-});
+}
 
 /** 下载导入模板（带字典下拉验证） */
 router.get('/template', jwtAuth(), async (ctx: Context) => {
@@ -179,8 +195,22 @@ router.get('/template', jwtAuth(), async (ctx: Context) => {
   }
 });
 
-/** 导入数据 */
+/** 导入数据（含分布式锁） */
 router.post('/import', jwtAuth(), async (ctx: Context) => {
+  const body = ctx.request.body as any;
+  const metaKey = String(body.metaKey ?? '');
+  const redis = getRedisClient();
+  if (redis) {
+    const lock = createDistributedLock(redis);
+    const unlock = await lock.acquire(`excel:import:${metaKey}`, { leaseTime: 120, waitTime: 10 });
+    if (!unlock) { ctx.status = 409; ctx.body = { code: 409, message: '导入任务进行中，请稍后再试' }; return; }
+    try { await handleImport(ctx); } finally { await unlock(); }
+  } else {
+    await handleImport(ctx);
+  }
+});
+
+async function handleImport(ctx: Context) {
   try {
     const files = (ctx.request as any).files;
     const body = ctx.request.body as any;
@@ -323,6 +353,6 @@ router.post('/import', jwtAuth(), async (ctx: Context) => {
   } catch (err: any) {
     ctx.body = { code: 500, message: err?.message || '导入失败' };
   }
-});
+}
 
 export default router;

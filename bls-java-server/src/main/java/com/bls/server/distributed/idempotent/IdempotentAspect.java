@@ -2,6 +2,7 @@ package com.bls.server.distributed.idempotent;
 
 import cn.hutool.json.JSONUtil;
 import com.bls.server.common.ApiResponse;
+import com.bls.server.common.AppException;
 import com.bls.server.distributed.metrics.DistributedMetrics;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -48,41 +50,51 @@ public class IdempotentAspect {
         HttpServletRequest request = attrs.getRequest();
         String idempotencyKey = request.getHeader(IDEMPOTENCY_HEADER);
         if (!StringUtils.hasText(idempotencyKey)) {
-            // 没有幂等键，直接放行
             return pjp.proceed();
         }
 
         String lockKey = idempotent.prefix() + idempotencyKey + LOCK_SUFFIX;
         String resultKey = idempotent.prefix() + idempotencyKey + RESULT_SUFFIX;
 
-        // 1. 检查是否已有缓存结果
-        String cachedResult = redisTemplate.opsForValue().get(resultKey);
-        if (cachedResult != null) {
-            metrics.recordIdempotentHit();
-            log.debug("[Idempotent] 命中缓存 key={}", idempotencyKey);
-            return JSONUtil.toBean(cachedResult, ApiResponse.class);
-        }
+        try {
+            // 1. 检查是否已有缓存结果
+            String cachedResult = redisTemplate.opsForValue().get(resultKey);
+            if (cachedResult != null) {
+                metrics.recordIdempotentHit();
+                log.debug("[Idempotent] 命中缓存 key={}", idempotencyKey);
+                return JSONUtil.toBean(cachedResult, ApiResponse.class);
+            }
 
-        // 2. 尝试获取处理锁
-        Boolean acquired = redisTemplate.opsForValue()
-                .setIfAbsent(lockKey, "processing", 60, TimeUnit.SECONDS);
-        if (!Boolean.TRUE.equals(acquired)) {
-            metrics.recordIdempotentConflict();
-            log.warn("[Idempotent] 重复请求 key={}", idempotencyKey);
-            throw new RuntimeException("请求正在处理中，请勿重复提交");
+            // 2. 尝试获取处理锁
+            Boolean acquired = redisTemplate.opsForValue()
+                    .setIfAbsent(lockKey, "processing", 60, TimeUnit.SECONDS);
+            if (!Boolean.TRUE.equals(acquired)) {
+                metrics.recordIdempotentConflict();
+                log.warn("[Idempotent] 重复请求 key={}", idempotencyKey);
+                throw AppException.conflict("请求正在处理中，请勿重复提交");
+            }
+        } catch (AppException e) {
+            throw e;
+        } catch (DataAccessException e) {
+            log.warn("[Idempotent] Redis 异常，跳过幂等检查 key={}", idempotencyKey, e);
+            return pjp.proceed();
         }
 
         try {
             // 3. 执行目标方法
             Object result = pjp.proceed();
             // 4. 缓存结果
-            redisTemplate.opsForValue().set(resultKey,
-                    JSONUtil.toJsonStr(result),
-                    idempotent.ttlSeconds(), TimeUnit.SECONDS);
+            try {
+                redisTemplate.opsForValue().set(resultKey,
+                        JSONUtil.toJsonStr(result),
+                        idempotent.ttlSeconds(), TimeUnit.SECONDS);
+            } catch (DataAccessException e) {
+                log.warn("[Idempotent] 缓存结果失败 key={}", idempotencyKey, e);
+            }
             return result;
         } catch (Throwable e) {
             // 5. 失败时释放锁
-            redisTemplate.delete(lockKey);
+            try { redisTemplate.delete(lockKey); } catch (DataAccessException ignored) {}
             throw e;
         }
     }
