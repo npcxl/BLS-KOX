@@ -47,6 +47,7 @@ if (isProduction && corsOrigins.includes('*')) throw new Error('Wildcard CORS or
 const replayEnabled = (process.env.REPLAY_ENABLED ?? 'true') === 'true';
 const apiSignSecret = process.env.API_SIGN_SECRET?.trim() ?? '';
 if (isProduction && replayEnabled && !apiSignSecret) throw new Error('API_SIGN_SECRET is required when replay protection is enabled in production');
+if (isProduction && replayEnabled && apiSignSecret.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) throw new Error('API_SIGN_SECRET must not be a CHANGE_TO_* placeholder');
 
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',

@@ -145,6 +145,12 @@ if (require.main === module) {
       issues.push('REDIS_PASSWORD is missing or too weak (no CHANGE_TO_* placeholder allowed)');
     }
 
+    const replayEnabled = (process.env.REPLAY_ENABLED ?? 'true') === 'true';
+    const apiSignSecret = process.env.API_SIGN_SECRET?.trim() ?? '';
+    if (replayEnabled && apiSignSecret.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) {
+      issues.push('API_SIGN_SECRET must not be a CHANGE_TO_* placeholder (replay protection is enabled)');
+    }
+
     if (issues.length > 0) {
       console.error('[security] Production startup blocked due to weak configuration:');
       for (const issue of issues) console.error('  - ' + issue);
