@@ -14,12 +14,8 @@ public class SysDept {
 
     private String tenantId;
     private String parentId;
-    private String ancestors;
     private String deptName;
     private Integer sortNum;
-    private String leader;
-    private String phone;
-    private String email;
     private String status;
 
     @TableLogic
@@ -30,8 +26,4 @@ public class SysDept {
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
-
-    private String createBy;
-    private String updateBy;
-    private String remark;
 }

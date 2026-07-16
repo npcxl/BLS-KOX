@@ -15,11 +15,10 @@ public class SysTenant {
     private String tenantName;
     private String domainName;
     private String packageId;
-    private String contactName;
+    private String contactUser;
     private String contactPhone;
-    private String contactEmail;
-    private String status;
     private LocalDateTime expireTime;
+    private String status;
 
     @TableLogic
     private Integer deleted;
@@ -30,7 +29,5 @@ public class SysTenant {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
-    private String createBy;
-    private String updateBy;
     private String remark;
 }

@@ -1,12 +1,14 @@
 package com.bls.server;
 
 import com.bls.server.common.ApiResponse;
+import com.bls.server.config.TestSessionConfig;
 import com.bls.server.controller.AuthController.LoginRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -20,6 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@Import(TestSessionConfig.class)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class BlsJavaServerApplicationTests {
 
@@ -74,8 +77,10 @@ class BlsJavaServerApplicationTests {
                 .andExpect(jsonPath("$.data.user.menus").isArray())
                 .andReturn();
 
-        String responseBody = result.getResponse().getContentAsString();
-        Map<String, Object> responseMap = objectMapper.readValue(responseBody, Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> responseMap = objectMapper.readValue(
+                result.getResponse().getContentAsString(), Map.class);
+        @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) responseMap.get("data");
 
         accessToken = ((String) data.get("token")).replace("Bearer ", "");
@@ -117,8 +122,10 @@ class BlsJavaServerApplicationTests {
                 .andExpect(jsonPath("$.data.refreshToken").exists())
                 .andReturn();
 
-        String responseBody = result.getResponse().getContentAsString();
-        Map<String, Object> responseMap = objectMapper.readValue(responseBody, Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> responseMap = objectMapper.readValue(
+                result.getResponse().getContentAsString(), Map.class);
+        @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) responseMap.get("data");
 
         accessToken = ((String) data.get("token")).replace("Bearer ", "");
@@ -175,7 +182,8 @@ class BlsJavaServerApplicationTests {
     @DisplayName("未认证访问应被拦截")
     void testUnauthorizedAccess() throws Exception {
         mockMvc.perform(get("/api/system/user/list"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(401));
     }
 
     @Test

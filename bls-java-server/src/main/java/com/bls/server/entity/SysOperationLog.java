@@ -15,19 +15,20 @@ public class SysOperationLog {
     private String tenantId;
     private String userId;
     private String username;
-    private String module;
+    private String moduleName;
     private String businessType;
-    private String method;
+    private String title;
     private String requestMethod;
     private String requestUrl;
-    private String requestIp;
-    private String requestLocation;
     private String requestParams;
-    private String responseResult;
-    private String status;
-    private String errorMsg;
-    private Long costTime;
-
-    @TableField(fill = FieldFill.INSERT)
-    private LocalDateTime createTime;
+    private Integer responseStatus;
+    private Integer success;
+    private String errorMessage;
+    private String errorStack;
+    private String clientIp;
+    private String userAgent;
+    private String requestId;
+    private Integer costTimeMs;
+    private LocalDateTime operatorTime;
+    private String remark;
 }

@@ -16,6 +16,7 @@ public class SysRole {
     private String roleName;
     private String roleKey;
     private String dataScope;
+    private Integer sortNum;
     private String status;
 
     @TableLogic
@@ -27,7 +28,5 @@ public class SysRole {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
-    private String createBy;
-    private String updateBy;
     private String remark;
 }

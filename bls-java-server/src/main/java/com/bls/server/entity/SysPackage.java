@@ -15,16 +15,11 @@ public class SysPackage {
     private String packageName;
     private String status;
 
-    @TableLogic
-    private Integer deleted;
-
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
-    private String createBy;
-    private String updateBy;
     private String remark;
 }

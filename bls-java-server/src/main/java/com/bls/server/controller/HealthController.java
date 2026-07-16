@@ -1,7 +1,9 @@
 package com.bls.server.controller;
 
 import com.bls.server.common.ApiResponse;
+import io.micrometer.prometheus.PrometheusMeterRegistry;
 import io.swagger.v3.oas.annotations.Operation;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -9,7 +11,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
+@RequiredArgsConstructor
 public class HealthController {
+
+    private final PrometheusMeterRegistry prometheusMeterRegistry;
 
     @Operation(summary = "健康检查")
     @GetMapping({"/api/health", "/health"})
@@ -29,11 +34,9 @@ public class HealthController {
         return ApiResponse.success(data);
     }
 
-    @Operation(summary = "Prometheus指标")
+    @Operation(summary = "Prometheus 指标")
     @GetMapping("/api/metrics")
     public String metrics() {
-        // Prometheus metrics are auto-exposed via Actuator at /internal/prometheus
-        // This endpoint provides an alternative at /api/metrics
-        return "Metrics available at /internal/prometheus";
+        return prometheusMeterRegistry.scrape();
     }
 }

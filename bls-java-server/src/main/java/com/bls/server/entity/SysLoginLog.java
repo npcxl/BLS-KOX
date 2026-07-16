@@ -15,14 +15,11 @@ public class SysLoginLog {
     private String tenantId;
     private String userId;
     private String username;
+    private String loginType;
+    private String loginStatus;
+    private String failReason;
     private String loginIp;
-    private String loginLocation;
-    private String browser;
-    private String os;
-    private String status;
-    private String msg;
+    private String userAgent;
+    private String requestId;
     private LocalDateTime loginTime;
-
-    @TableField(fill = FieldFill.INSERT)
-    private LocalDateTime createTime;
 }

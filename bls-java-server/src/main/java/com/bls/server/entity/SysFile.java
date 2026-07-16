@@ -13,20 +13,27 @@ public class SysFile {
     private String fileId;
 
     private String tenantId;
-    private String userId;
+    private String storageId;
+    private String bucketName;
+    private String objectName;
     private String originalName;
     private String fileName;
-    private String filePath;
-    private String fileType;
+    private String fileExt;
     private String mimeType;
     private Long fileSize;
-    private String storageType;
-    private String module;
-    private String status;
+    private String accessType;
+    private String moduleName;
+    private String url;
+
+    @TableLogic
+    private Integer deleted;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
+
+    private String createBy;
+    private String updateBy;
 }

@@ -17,10 +17,13 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class SessionService {
 
     private final RedisTemplate<String, String> redisTemplate;
+
+    public SessionService(RedisTemplate<String, String> redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
 
     private static final String SESSION_PREFIX = "session:";
     private static final String SESSION_INDEX_PREFIX = "session:index:";

@@ -23,8 +23,12 @@ public class SysUser {
     private String email;
     private String phone;
     private String deptId;
-    private Integer isAdmin;
+    private String isAdmin;
     private String status;
+    private String lastLoginIp;
+    private LocalDateTime lastLoginTime;
+    private LocalDateTime passwordUpdateTime;
+    private String remark;
 
     @TableLogic
     private Integer deleted;
@@ -37,5 +41,4 @@ public class SysUser {
 
     private String createBy;
     private String updateBy;
-    private String remark;
 }

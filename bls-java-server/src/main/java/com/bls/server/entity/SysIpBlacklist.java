@@ -6,20 +6,19 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("sys_dict_type")
-public class SysDictType {
+@TableName("sys_ip_blacklist")
+public class SysIpBlacklist {
 
-    @TableId(value = "dict_type_id", type = IdType.ASSIGN_ID)
-    private String dictTypeId;
+    @TableId(value = "id", type = IdType.ASSIGN_ID)
+    private String id;
 
-    private String dictName;
-    private String dictType;
+    private String ipAddress;
+    private String reason;
+    private String source;
     private String status;
-    private String remark;
+    private LocalDateTime expireAt;
     private String tenantId;
-
-    @TableLogic
-    private Integer deleted;
+    private String createBy;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;

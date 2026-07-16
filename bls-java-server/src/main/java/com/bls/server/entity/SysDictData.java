@@ -12,15 +12,14 @@ public class SysDictData {
     @TableId(value = "dict_data_id", type = IdType.ASSIGN_ID)
     private String dictDataId;
 
-    private String tenantId;
-    private String dictType;
+    private String dictTypeId;
     private String dictLabel;
     private String dictValue;
-    private String cssClass;
-    private String listClass;
-    private Integer sortNum;
+    private Integer dictSort;
+    private String tag;
     private String status;
-    private String isDefault;
+    private String remark;
+    private String tenantId;
 
     @TableLogic
     private Integer deleted;
@@ -30,8 +29,4 @@ public class SysDictData {
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
-
-    private String createBy;
-    private String updateBy;
-    private String remark;
 }

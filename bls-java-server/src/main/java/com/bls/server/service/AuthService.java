@@ -319,10 +319,11 @@ public class AuthService {
             logEntry.setUserId(userId);
             logEntry.setUsername(username);
             logEntry.setLoginIp(ip);
-            logEntry.setStatus(status);
-            logEntry.setMsg(msg);
-            logEntry.setLoginTime(new java.util.Date().toInstant()
-                    .atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDateTime());
+            logEntry.setUserAgent(userAgent);
+            logEntry.setLoginType("password");
+            logEntry.setLoginStatus(status);
+            logEntry.setFailReason("0".equals(status) ? msg : null);
+            logEntry.setLoginTime(java.time.LocalDateTime.now());
             loginLogMapper.insert(logEntry);
         } catch (Exception e) {
             log.error("Failed to write login log", e);

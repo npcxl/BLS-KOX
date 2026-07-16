@@ -9,13 +9,18 @@ import java.time.LocalDateTime;
 @TableName("sys_page_config")
 public class SysPageConfig {
 
-    @TableId(value = "config_id", type = IdType.ASSIGN_ID)
-    private String configId;
+    @TableId(value = "page_config_id", type = IdType.ASSIGN_ID)
+    private String pageConfigId;
 
-    private String tenantId;
-    private String userId;
     private String pageCode;
-    private String configValue;
+    private String pageName;
+    private Integer enabled;
+    private Integer sort;
+    private String tenantId;
+    private String remark;
+
+    @TableLogic
+    private Integer deleted;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;

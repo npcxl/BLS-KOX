@@ -13,11 +13,12 @@ public class SysConfig {
     private String configId;
 
     private String tenantId;
-    private String configName;
     private String configKey;
     private String configValue;
+    private String configName;
     private String configType;
     private String status;
+    private String remark;
 
     @TableLogic
     private Integer deleted;
@@ -27,8 +28,4 @@ public class SysConfig {
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
-
-    private String createBy;
-    private String updateBy;
-    private String remark;
 }
