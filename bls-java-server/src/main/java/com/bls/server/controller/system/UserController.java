@@ -1,6 +1,9 @@
 package com.bls.server.controller.system;
 
 import com.bls.server.common.ApiResponse;
+import com.bls.server.distributed.idempotent.Idempotent;
+import com.bls.server.distributed.lock.DistributedLock;
+import com.bls.server.distributed.ratelimit.RateLimit;
 import com.bls.server.service.system.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -103,6 +106,7 @@ public class UserController {
     }
 
     @Operation(summary = "新增用户")
+    @Idempotent(prefix = "user:add:")
     @PostMapping("/add")
     @PreAuthorize("hasAuthority('PERM_system:user:add')")
     public ApiResponse<Void> add(@Valid @RequestBody UserCreateRequest request) {
@@ -111,6 +115,7 @@ public class UserController {
     }
 
     @Operation(summary = "编辑用户")
+    @DistributedLock(key = "user:edit:#{#request.userId}", waitTime = 3, leaseTime = 10)
     @PutMapping("/edit")
     @PreAuthorize("hasAuthority('PERM_system:user:edit')")
     public ApiResponse<Void> edit(@Valid @RequestBody UserEditRequest request) {
@@ -119,6 +124,7 @@ public class UserController {
     }
 
     @Operation(summary = "删除用户")
+    @DistributedLock(key = "user:remove", waitTime = 5, leaseTime = 15)
     @DeleteMapping("/remove")
     @PreAuthorize("hasAuthority('PERM_system:user:remove')")
     public ApiResponse<Void> remove(@Valid @RequestBody UserRemoveRequest request) {
@@ -127,6 +133,7 @@ public class UserController {
     }
 
     @Operation(summary = "修改密码")
+    @RateLimit(key = "user:changePwd", limit = 5, windowSeconds = 60)
     @PutMapping("/changePassword")
     public ApiResponse<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
         userService.changePassword(request.getOldPassword(), request.getNewPassword());
@@ -141,6 +148,7 @@ public class UserController {
     }
 
     @Operation(summary = "踢下线")
+    @DistributedLock(key = "user:kick", waitTime = 3, leaseTime = 10)
     @PostMapping("/kick")
     @PreAuthorize("hasAuthority('PERM_system:user:kick')")
     public ApiResponse<Void> kick(@Valid @RequestBody KickRequest request) {

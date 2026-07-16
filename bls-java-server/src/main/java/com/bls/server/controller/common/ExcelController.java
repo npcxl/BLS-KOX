@@ -7,6 +7,8 @@ import com.alibaba.excel.event.AnalysisEventListener;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.bls.server.common.ApiResponse;
 import com.bls.server.common.AppException;
+import com.bls.server.distributed.lock.DistributedLock;
+import com.bls.server.distributed.ratelimit.RateLimit;
 import com.bls.server.entity.*;
 import com.bls.server.mapper.*;
 import com.bls.server.security.TenantContext;
@@ -47,6 +49,7 @@ public class ExcelController {
     }
 
     @Operation(summary = "导出Excel")
+    @RateLimit(key = "excel:export:#{#request.metaKey}", limit = 5, windowSeconds = 60)
     @PostMapping("/export")
     public void exportData(@RequestBody ExportRequest request, HttpServletResponse response) throws IOException {
         String tenantId = TenantContext.getTenantId();
@@ -110,6 +113,8 @@ public class ExcelController {
     }
 
     @Operation(summary = "导入Excel")
+    @RateLimit(key = "excel:import:#{#metaKey}", limit = 3, windowSeconds = 60)
+    @DistributedLock(key = "excel:import:#{#metaKey}", waitTime = 10, leaseTime = 60)
     @PostMapping("/import")
     public ApiResponse<Map<String, Object>> importData(@RequestParam("file") MultipartFile file,
                                                         @RequestParam String metaKey) {

@@ -1,6 +1,8 @@
 package com.bls.server.controller.system;
 
 import com.bls.server.common.ApiResponse;
+import com.bls.server.distributed.idempotent.Idempotent;
+import com.bls.server.distributed.lock.DistributedLock;
 import com.bls.server.service.system.MenuService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -75,6 +77,8 @@ public class MenuController {
     }
 
     @Operation(summary = "新增菜单")
+    @Idempotent(prefix = "menu:add:")
+    @DistributedLock(key = "menu:write", waitTime = 5, leaseTime = 15)
     @PostMapping("/add")
     @PreAuthorize("hasAuthority('PERM_system:menu:add')")
     public ApiResponse<Void> add(@Valid @RequestBody MenuCreateRequest request) {
@@ -83,6 +87,7 @@ public class MenuController {
     }
 
     @Operation(summary = "编辑菜单")
+    @DistributedLock(key = "menu:write", waitTime = 5, leaseTime = 15)
     @PutMapping("/edit")
     @PreAuthorize("hasAuthority('PERM_system:menu:edit')")
     public ApiResponse<Void> edit(@Valid @RequestBody MenuEditRequest request) {
@@ -91,6 +96,7 @@ public class MenuController {
     }
 
     @Operation(summary = "删除菜单")
+    @DistributedLock(key = "menu:write", waitTime = 5, leaseTime = 15)
     @DeleteMapping("/remove")
     @PreAuthorize("hasAuthority('PERM_system:menu:remove')")
     public ApiResponse<Void> remove(@Valid @RequestBody MenuRemoveRequest request) {

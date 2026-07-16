@@ -3,6 +3,7 @@ package com.bls.server.controller;
 import cn.hutool.core.util.StrUtil;
 import com.bls.server.common.ApiResponse;
 import com.bls.server.common.AppException;
+import com.bls.server.distributed.ratelimit.RateLimit;
 import com.bls.server.security.JwtAuthenticationToken;
 import com.bls.server.security.JwtTokenProvider;
 import com.bls.server.security.LoginUser;
@@ -48,6 +49,7 @@ public class AuthController {
 
     @Operation(summary = "用户登录")
     @PostMapping("/login")
+    @RateLimit(key = "login:ip:#{#httpRequest.getHeader('X-Forwarded-For')}", limit = 20, windowSeconds = 60)
     public ApiResponse<Map<String, Object>> login(@Valid @RequestBody LoginRequest request,
                                                    HttpServletRequest httpRequest) {
         String ip = getClientIp(httpRequest);
@@ -70,6 +72,7 @@ public class AuthController {
 
     @Operation(summary = "退出登录")
     @PostMapping("/logout")
+    @RateLimit(key = "logout:user:#{#authentication.name}", limit = 20, windowSeconds = 60)
     public ApiResponse<Void> logout(Authentication authentication,
                                      HttpServletRequest request) {
         if (authentication instanceof JwtAuthenticationToken jwtAuth) {
@@ -83,6 +86,7 @@ public class AuthController {
 
     @Operation(summary = "刷新令牌")
     @PostMapping("/refresh")
+    @RateLimit(key = "refresh:ip:#{#httpRequest.getHeader('X-Forwarded-For')}", limit = 30, windowSeconds = 60)
     public ApiResponse<Map<String, Object>> refresh(@Valid @RequestBody RefreshRequest request,
                                                      HttpServletRequest httpRequest) {
         String ip = getClientIp(httpRequest);

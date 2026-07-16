@@ -3,16 +3,50 @@
 > **当前阶段**：模块化单体 + 分布式能力预留。
 > **不是微服务**。不引入注册中心（Nacos/Eureka）、网关、分布式事务（Seata）。
 
-## 已实现能力
+## 实现状态
 
-| 能力 | Koa (TypeScript) | Java (Spring Boot) | 存储 |
-|------|-------------------|---------------------|------|
-| **requestId / traceId** | `distributed/trace.ts` 中间件 | `distributed.trace.TraceFilter` + MDC | Header 传递 |
-| **分布式锁** | `distributed/lock.ts` (SET NX) | `@DistributedLock` 注解 + AOP | Redis |
-| **幂等控制** | `distributed/idempotency.ts` (Idempotency-Key) | `@Idempotent` 注解 + AOP | Redis |
-| **限流** | `distributed/rate-limit.ts` (Lua INCR) | `@RateLimit` 注解 + AOP | Redis |
-| **指标** | prom-client 安全指标 | `DistributedMetrics` (Micrometer Counter) | Prometheus |
-| **健康检查** | `/api/health` | `/api/health` + Actuator `/internal/health` | - |
+### 基础组件（已完成）
+
+| 能力 | Java | 状态 |
+|------|------|------|
+| requestId / traceId | `TraceFilter` + MDC | ✅ 基础组件已实现 |
+| 分布式锁 | `@DistributedLock` + AOP | ✅ 基础组件已实现 |
+| 幂等控制 | `@Idempotent` + AOP | ✅ 基础组件已实现 |
+| 限流 | `@RateLimit` + AOP | ✅ 基础组件已实现 |
+| 指标采集 | `DistributedMetrics` (Micrometer) | ✅ 基础组件已实现 |
+
+### 业务接入（已完成）
+
+| 模块 | 接口 | 注解 |
+|------|------|------|
+| 认证 | `POST /api/auth/login` | `@RateLimit` |
+| 认证 | `POST /api/auth/logout` | `@RateLimit` |
+| 认证 | `POST /api/auth/refresh` | `@RateLimit` |
+| 用户 | `POST /api/system/user/add` | `@Idempotent` |
+| 用户 | `PUT /api/system/user/edit` | `@DistributedLock` |
+| 用户 | `DELETE /api/system/user/remove` | `@DistributedLock` |
+| 用户 | `PUT /api/system/user/changePassword` | `@RateLimit` |
+| 用户 | `POST /api/system/user/kick` | `@DistributedLock` |
+| 角色 | `POST /api/system/role/add` | `@Idempotent` |
+| 角色 | `PUT /api/system/role/edit` | `@DistributedLock` |
+| 角色 | `DELETE /api/system/role/remove` | `@DistributedLock` |
+| 角色 | `PUT /api/system/role/{roleId}/menus` | `@DistributedLock` |
+| 菜单 | `POST /api/system/menu/add` | `@Idempotent` + `@DistributedLock` |
+| 菜单 | `PUT /api/system/menu/edit` | `@DistributedLock` |
+| 菜单 | `DELETE /api/system/menu/remove` | `@DistributedLock` |
+| 文件 | `POST /api/system/storage/upload` | `@RateLimit` + `@DistributedLock` |
+| Excel | `POST /api/common/excel/export` | `@RateLimit` |
+| Excel | `POST /api/common/excel/import` | `@RateLimit` + `@DistributedLock` |
+
+### 待接入模块
+
+| 模块 | 说明 |
+|------|------|
+| 部门管理 | add / edit / remove 待接入 `@DistributedLock` |
+| 字典管理 | add / edit / remove 待接入 `@DistributedLock` |
+| 租户管理 | add / edit / remove 待接入 `@DistributedLock` |
+| Webhook | 创建/编辑/删除待接入 `@DistributedLock` |
+| 存储配置 | 增删改待接入 `@DistributedLock` |
 
 ## 设计原则
 
@@ -43,20 +77,9 @@ com.bls.server.distributed/
     └── DistributedMetrics.java     # Micrometer 指标
 ```
 
-### Koa
-
-```
-bls-server/src/distributed/
-├── lock.ts           # createDistributedLock()
-├── idempotency.ts    # createIdempotencyService()
-├── rate-limit.ts     # createRateLimiter()
-├── trace.ts          # traceMiddleware() / getRequestId() / getTraceId()
-└── index.ts          # 统一导出
-```
-
 ## 使用示例
 
-### Java：分布式锁
+### 分布式锁
 
 ```java
 @DistributedLock(key = "order:create:#{#userId}", waitTime = 3, leaseTime = 10)
@@ -65,7 +88,7 @@ public void createOrder(String userId) {
 }
 ```
 
-### Java：幂等
+### 幂等
 
 ```java
 @Idempotent(prefix = "payment:")
@@ -75,24 +98,13 @@ public ApiResponse pay(@RequestBody PayRequest req) {
 // 请求需带 Header: Idempotency-Key: xxx
 ```
 
-### Java：限流
+### 限流
 
 ```java
 @RateLimit(key = "login:ip:#{#request.remoteAddr}", limit = 20, windowSeconds = 60)
 public ApiResponse login(HttpServletRequest request) {
     // 业务逻辑
 }
-```
-
-### Koa：分布式锁
-
-```typescript
-import { createDistributedLock } from '@/distributed';
-
-const lock = createDistributedLock(getRedisClient());
-const unlock = await lock.acquire('order:create:123', { leaseTime: 30 });
-if (!unlock) throw new Error('获取锁失败');
-try { /* 业务逻辑 */ } finally { await unlock(); }
 ```
 
 ## Redis Key 约定

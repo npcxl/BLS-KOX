@@ -1,6 +1,7 @@
 package com.bls.server.distributed.ratelimit;
 
 import com.bls.server.common.AppException;
+import com.bls.server.distributed.metrics.DistributedMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -34,6 +35,7 @@ import java.util.List;
 public class RateLimitAspect {
 
     private final StringRedisTemplate redisTemplate;
+    private final DistributedMetrics metrics;
     private static final ExpressionParser SPEL_PARSER = new SpelExpressionParser();
     private static final ParameterNameDiscoverer PARAM_NAME_DISCOVERER = new DefaultParameterNameDiscoverer();
 
@@ -61,6 +63,7 @@ public class RateLimitAspect {
                 String.valueOf(rateLimit.windowSeconds()));
 
         if (current != null && current > rateLimit.limit()) {
+            metrics.recordRateLimitRejected();
             log.warn("[RateLimit] 触发限流 key={} current={} limit={}", fullKey, current, rateLimit.limit());
             throw AppException.tooManyRequests(rateLimit.message());
         }

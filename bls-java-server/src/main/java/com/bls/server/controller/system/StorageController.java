@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.bls.server.common.ApiResponse;
 import com.bls.server.common.AppException;
+import com.bls.server.distributed.lock.DistributedLock;
+import com.bls.server.distributed.ratelimit.RateLimit;
 import com.bls.server.entity.SysFile;
 import com.bls.server.entity.SysStorageConfig;
 import com.bls.server.mapper.SysFileMapper;
@@ -165,6 +167,8 @@ public class StorageController {
     // ========== 文件上传 ==========
 
     @Operation(summary = "文件上传")
+    @RateLimit(key = "storage:upload", limit = 30, windowSeconds = 60)
+    @DistributedLock(key = "storage:upload:#{#moduleName}:#{#accessType}", waitTime = 5, leaseTime = 30)
     @PostMapping("/upload")
     @PreAuthorize("hasAuthority('PERM_system:file:upload')")
     public ApiResponse<Map<String, Object>> upload(

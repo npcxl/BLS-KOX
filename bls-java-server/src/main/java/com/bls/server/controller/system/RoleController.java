@@ -2,6 +2,8 @@ package com.bls.server.controller.system;
 
 import com.bls.server.common.ApiResponse;
 import com.bls.server.core.BaseCrudController;
+import com.bls.server.distributed.idempotent.Idempotent;
+import com.bls.server.distributed.lock.DistributedLock;
 import com.bls.server.entity.SysRole;
 import com.bls.server.service.system.RoleService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,7 +34,7 @@ public class RoleController extends BaseCrudController<SysRole, RoleController.R
 
     @Override @GetMapping("/list") @PreAuthorize("hasAuthority('PERM_system:role:list')")
     public ApiResponse<List<Map<String, Object>>> list(@RequestParam(defaultValue = "1") Integer pageNum, @RequestParam(defaultValue = "10") Integer pageSize, @RequestParam(required = false) String keyword) { return super.list(pageNum, pageSize, keyword); }
-    @Override @DeleteMapping("/remove") @PreAuthorize("hasAuthority('PERM_system:role:remove')")
+    @Override @DistributedLock(key = "role:remove", waitTime = 5, leaseTime = 15) @DeleteMapping("/remove") @PreAuthorize("hasAuthority('PERM_system:role:remove')")
     public ApiResponse<Void> remove(@RequestBody List<String> ids) { return super.remove(ids); }
 
     @Data
@@ -71,6 +73,7 @@ public class RoleController extends BaseCrudController<SysRole, RoleController.R
     }
 
     @Override
+    @Idempotent(prefix = "role:add:")
     @PostMapping("/add")
     @PreAuthorize("hasAuthority('PERM_system:role:add')")
     public ApiResponse<Void> add(@Valid @RequestBody RoleCreateRequest request) {
@@ -83,6 +86,7 @@ public class RoleController extends BaseCrudController<SysRole, RoleController.R
     }
 
     @Override
+    @DistributedLock(key = "role:edit:#{#request.roleId}", waitTime = 3, leaseTime = 10)
     @PutMapping("/edit")
     @PreAuthorize("hasAuthority('PERM_system:role:edit')")
     public ApiResponse<Void> edit(@Valid @RequestBody RoleEditRequest request) {
@@ -95,6 +99,7 @@ public class RoleController extends BaseCrudController<SysRole, RoleController.R
     }
 
     @Operation(summary = "分配菜单权限")
+    @DistributedLock(key = "role:assignMenu:#{#roleId}", waitTime = 3, leaseTime = 10)
     @PutMapping("/{roleId}/menus")
     @PreAuthorize("hasAuthority('PERM_system:role:assignMenu')")
     public ApiResponse<Void> assignMenu(@PathVariable String roleId, @Valid @RequestBody AssignMenuRequest request) {

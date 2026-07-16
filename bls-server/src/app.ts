@@ -17,6 +17,7 @@ import { tenantMiddleware } from './middleware/tenant';
 import { replayProtectionMiddleware } from './middleware/replay-protection';
 import { httpMetricsMiddleware } from './middleware/http-metrics';
 import { requestContextMiddleware } from './core/request-context';
+import { traceMiddleware } from './distributed/trace';
 import { rateLimitMiddleware } from './security/rate-limit/middleware';
 import { blockedIpMiddleware } from './security/event-center/ip-block-middleware';
 import { apiVersion } from './middleware/api-version';
@@ -54,6 +55,7 @@ export function createApp(): Koa {
   }));
   app.use(koaBody({ multipart: true, formidable: { multiples: false } }));
   app.use(bodyParser({ enableTypes: ['json', 'form'] }));
+  app.use(traceMiddleware());
   app.use(requestContextMiddleware);
   app.use(httpMetricsMiddleware);
   app.use(tenantMiddleware);

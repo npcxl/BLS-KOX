@@ -2,6 +2,7 @@ package com.bls.server.distributed.lock;
 
 import cn.hutool.core.util.StrUtil;
 import com.bls.server.common.AppException;
+import com.bls.server.distributed.metrics.DistributedMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -33,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 public class DistributedLockAspect {
 
     private final StringRedisTemplate redisTemplate;
+    private final DistributedMetrics metrics;
     private static final ExpressionParser SPEL_PARSER = new SpelExpressionParser();
     private static final ParameterNameDiscoverer PARAM_NAME_DISCOVERER = new DefaultParameterNameDiscoverer();
 
@@ -61,10 +63,12 @@ public class DistributedLockAspect {
         }
 
         if (!acquired) {
+            metrics.recordLockFailed();
             log.warn("[DistributedLock] 获取锁失败 key={}", fullKey);
             throw AppException.conflict("操作太频繁，请稍后再试");
         }
 
+        metrics.recordLockAcquired();
         log.debug("[DistributedLock] 获取锁成功 key={} value={}", fullKey, lockValue);
         try {
             return pjp.proceed();

@@ -2,6 +2,7 @@ package com.bls.server.distributed.idempotent;
 
 import cn.hutool.json.JSONUtil;
 import com.bls.server.common.ApiResponse;
+import com.bls.server.distributed.metrics.DistributedMetrics;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +36,7 @@ public class IdempotentAspect {
     private static final String RESULT_SUFFIX = ":result";
 
     private final StringRedisTemplate redisTemplate;
+    private final DistributedMetrics metrics;
 
     @Around("@annotation(idempotent)")
     public Object around(ProceedingJoinPoint pjp, Idempotent idempotent) throws Throwable {
@@ -56,6 +58,7 @@ public class IdempotentAspect {
         // 1. 检查是否已有缓存结果
         String cachedResult = redisTemplate.opsForValue().get(resultKey);
         if (cachedResult != null) {
+            metrics.recordIdempotentHit();
             log.debug("[Idempotent] 命中缓存 key={}", idempotencyKey);
             return JSONUtil.toBean(cachedResult, ApiResponse.class);
         }
@@ -64,6 +67,7 @@ public class IdempotentAspect {
         Boolean acquired = redisTemplate.opsForValue()
                 .setIfAbsent(lockKey, "processing", 60, TimeUnit.SECONDS);
         if (!Boolean.TRUE.equals(acquired)) {
+            metrics.recordIdempotentConflict();
             log.warn("[Idempotent] 重复请求 key={}", idempotencyKey);
             throw new RuntimeException("请求正在处理中，请勿重复提交");
         }
