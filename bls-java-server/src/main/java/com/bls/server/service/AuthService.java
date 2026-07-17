@@ -118,19 +118,22 @@ public class AuthService {
     }
 
     /**
-     * Login by domain (when tenantId not provided, match by Origin/domain).
+     * Login by domain (always used, domain resolved from X-Forwarded-Host/Host/Origin).
      */
     @Transactional
     public Map<String, Object> loginByDomain(String domainName, String username, String password,
                                               String ip, String userAgent) {
         SysTenant tenant = tenantMapper.selectOne(new LambdaQueryWrapper<SysTenant>()
                 .eq(SysTenant::getDomainName, domainName)
-                .eq(SysTenant::getStatus, "0"));
+                .eq(SysTenant::getStatus, "0")
+                .eq(SysTenant::getDeleted, 0));
 
         if (tenant == null) {
-            // Fallback to platform tenant
+            // Fallback to platform tenant (localhost / no-domain scenarios)
             tenant = tenantMapper.selectOne(new LambdaQueryWrapper<SysTenant>()
-                    .eq(SysTenant::getTenantId, "000000"));
+                    .eq(SysTenant::getTenantId, "000000")
+                    .eq(SysTenant::getStatus, "0")
+                    .eq(SysTenant::getDeleted, 0));
         }
 
         if (tenant == null) {

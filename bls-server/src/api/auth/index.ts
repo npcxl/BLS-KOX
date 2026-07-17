@@ -56,11 +56,11 @@ export class AuthService {
 
   async loginByDomain(domainName: string, username: string, password: string, meta?: any) {
     let tenant = await queryOne<any>(
-      `SELECT tenant_id AS tenantId FROM sys_tenant WHERE domain_name = :d AND status = '0'`, { d: domainName });
+      `SELECT tenant_id AS tenantId FROM sys_tenant WHERE domain_name = :d AND status = '0' AND deleted = 0`, { d: domainName });
     if (!tenant) {
       // fallback: 匹配平台租户（localhost 等无域名场景）
       tenant = await queryOne<any>(
-        `SELECT tenant_id AS tenantId FROM sys_tenant WHERE tenant_id = '000000'`);
+        `SELECT tenant_id AS tenantId FROM sys_tenant WHERE tenant_id = '000000' AND status = '0' AND deleted = 0`);
     }
     if (!tenant) throw new UnauthorizedError('当前域名未绑定租户');
     return this.loginByTenant(tenant.tenantId, username, password, meta);
@@ -170,13 +170,12 @@ export const login = async (ctx: Context) => {
   const meta: any = await buildRequestMeta(ctx);
   const b: any = ctx.request.body ?? {};
   const reqCtx = getRequestContext();
+  const domainName = meta.domainName ?? 'localhost';
 
   try {
-    const result = b.tenantId
-      ? await S.loginByTenant(b.tenantId, b.username ?? '', b.password ?? '',
-          { loginIp: meta.loginIp, userAgent: meta.userAgent, requestId: meta.requestId, loginType: 'password' })
-      : await S.loginByDomain(meta.domainName ?? 'default', b.username ?? '', b.password ?? '',
-          { loginIp: meta.loginIp, userAgent: meta.userAgent, requestId: meta.requestId, loginType: 'password' });
+    // 默认走域名解析租户，不信任前端提交的 tenantId
+    const result = await S.loginByDomain(domainName, b.username ?? '', b.password ?? '',
+      { loginIp: meta.loginIp, userAgent: meta.userAgent, requestId: meta.requestId, loginType: 'password' });
 
     // 登录成功 → 发送事件到 event-service
     publishEvent({
@@ -192,14 +191,14 @@ export const login = async (ctx: Context) => {
       traceId: reqCtx?.traceId ?? null,
       clientIp: reqCtx?.clientIp ?? null,
       userAgent: reqCtx?.userAgent ?? null,
-      detailJson: { loginType: 'password', domainName: meta.domainName },
+      detailJson: { loginType: 'password', domainName },
     }).catch(() => { /* fire-and-forget */ });
 
     ctx.body = { code: 200, data: result, message: '操作成功' };
   } catch (err: any) {
     // 登录失败 → 发送事件到 event-service
     publishEvent({
-      tenantId: b.tenantId ?? '000000',
+      tenantId: '000000',
       username: b.username,
       eventType: 'LOGIN_FAILED',
       riskLevel: 'low',
@@ -209,7 +208,7 @@ export const login = async (ctx: Context) => {
       traceId: reqCtx?.traceId ?? null,
       clientIp: reqCtx?.clientIp ?? null,
       userAgent: reqCtx?.userAgent ?? null,
-      detailJson: { reason: err?.message ?? String(err) },
+      detailJson: { reason: err?.message ?? String(err), domainName },
     }).catch(() => { /* fire-and-forget */ });
 
     throw err; // 重新抛出，让错误中间件处理

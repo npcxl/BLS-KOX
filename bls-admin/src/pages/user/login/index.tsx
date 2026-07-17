@@ -1,11 +1,11 @@
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
-import { LoginForm, ProFormCheckbox, ProFormSelect, ProFormText } from '@ant-design/pro-components';
+import { LoginForm, ProFormCheckbox, ProFormText } from '@ant-design/pro-components';
 import { FormattedMessage, Helmet, SelectLang, useIntl, useModel } from '@umijs/max';
 import { Alert, App } from 'antd';
 import { createStyles } from 'antd-style';
 import React, { startTransition, useEffect, useRef, useState } from 'react';
 import { Footer } from '@/components';
-import { login, tenantLoginOptions } from '@/services/ant-design-pro/api';
+import { login } from '@/services/ant-design-pro/api';
 import { tokenStore } from '@/auth/token-store';
 import Settings from '../../../../config/defaultSettings';
 
@@ -41,10 +41,6 @@ const LoginMessage: React.FC<{ content: string }> = ({ content }) => (
 
 const Login: React.FC = () => {
   const [userLoginState, setUserLoginState] = useState<API.LoginResult>({});
-  const [tenantOptions, setTenantOptions] = useState<API.TenantOption[]>([]);
-  const [defaultTenantId, setDefaultTenantId] = useState<string | undefined>(undefined);
-  const [tenantLoading, setTenantLoading] = useState(true);
-  const [tenantLoadError, setTenantLoadError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const formRef = useRef<any>(null);
@@ -56,42 +52,11 @@ const Login: React.FC = () => {
   const appLogo = initialState?.systemMap?.['sys.app.logo'] ?? Settings.logo;
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadTenantOptions = async () => {
-      setTenantLoading(true);
-      setTenantLoadError(false);
-      try {
-        const res = await tenantLoginOptions();
-        if (cancelled) return;
-        const list = res.data ?? [];
-        setTenantOptions(list);
-        const savedTenantId = tokenStore.getLastTenantId() ?? undefined;
-        const firstTenantId = list.find((item) => item.tenantId === savedTenantId)?.tenantId ?? list[0]?.tenantId;
-        setDefaultTenantId(firstTenantId);
-        const rememberedUsername = tokenStore.getRememberedUsername() ?? undefined;
-        if (firstTenantId !== undefined) {
-          formRef.current?.setFieldsValue({
-            tenantId: firstTenantId,
-            username: rememberedUsername,
-            rememberUsername: !!rememberedUsername,
-          });
-        }
-        setTenantLoading(false);
-      } catch {
-        if (cancelled) return;
-        setTenantOptions([]);
-        setDefaultTenantId(undefined);
-        setTenantLoading(false);
-        setTenantLoadError(true);
-      }
-    };
-
-    void loadTenantOptions();
-
-    return () => {
-      cancelled = true;
-    };
+    const rememberedUsername = tokenStore.getRememberedUsername() ?? undefined;
+    formRef.current?.setFieldsValue({
+      username: rememberedUsername,
+      rememberUsername: !!rememberedUsername,
+    });
   }, []);
 
   const getSafeRedirectUrl = (redirect: string | null): string => {
@@ -116,17 +81,12 @@ const Login: React.FC = () => {
   };
 
   const handleSubmit = async (values: API.LoginParams & { rememberUsername?: boolean }) => {
-    if (!values.tenantId) {
-      message.error('未获取到租户信息，请刷新页面后重试');
-      return;
-    }
-
     // Prevent duplicate submissions using a ref (synchronous guard)
     if (submittingRef.current) return;
     submittingRef.current = true;
     setSubmitting(true);
     try {
-      const res = await login({ ...values, type: 'account' });
+      const res = await login({ username: values.username, password: values.password, type: 'account' });
       const msg = (res as any).data;
       if (res.code === 200 && msg?.token) {
         tokenStore.setTokenPair({
@@ -136,14 +96,8 @@ const Login: React.FC = () => {
         if (msg.user) {
           tokenStore.setCurrentUser(msg.user);
         }
-        const tenantId = values.tenantId;
-        if (tenantId !== undefined) {
-          tokenStore.setLastTenantId(String(tenantId));
-        }
-        if (values.rememberUsername) {
-          if (values.username) {
-            tokenStore.setRememberedUsername(values.username);
-          }
+        if (values.rememberUsername && values.username) {
+          tokenStore.setRememberedUsername(values.username);
         } else {
           tokenStore.clearRememberedUsername();
         }
@@ -198,30 +152,19 @@ const Login: React.FC = () => {
           logo={appLogo || undefined}
           title={appName}
           subTitle={intl.formatMessage({ id: 'pages.layouts.userLayout.title' })}
-          initialValues={{ autoLogin: true, tenantId: defaultTenantId, rememberUsername: false }}
+          initialValues={{ autoLogin: true, rememberUsername: false }}
           onFinish={async (values) => {
             await handleSubmit(values as API.LoginParams & { rememberUsername?: boolean });
           }}
           submitter={{
             searchConfig: {
-              submitText: tenantLoading ? '正在加载...' : '登录',
+              submitText: '登录',
             },
             submitButtonProps: {
-              loading: tenantLoading || submitting,
-              disabled: tenantLoading || tenantLoadError || !defaultTenantId,
+              loading: submitting,
             },
           }}
         >
-          {tenantLoadError && (
-            <Alert
-              type="error"
-              showIcon
-              message="租户信息加载失败"
-              description="请检查网络后刷新页面重试"
-              style={{ marginBottom: 24 }}
-            />
-          )}
-
           {status === 'error' && loginType === 'account' && (
             <LoginMessage
               content={userLoginState?.message || intl.formatMessage({
@@ -229,21 +172,6 @@ const Login: React.FC = () => {
                 defaultMessage: '登录失败，请重试',
               })}
             />
-          )}
-
-          {process.env.NODE_ENV === 'development' ? (
-            <ProFormSelect
-              name="tenantId"
-              fieldProps={{ size: 'large' }}
-              placeholder="请选择租户"
-              options={tenantOptions.map((item) => ({
-                label: item.tenantName,
-                value: item.tenantId,
-              }))}
-              rules={[{ required: true, message: '请选择租户' }]}
-            />
-          ) : (
-            <ProFormText name="tenantId" hidden />
           )}
 
           <ProFormText

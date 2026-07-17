@@ -54,18 +54,11 @@ public class AuthController {
                                                    HttpServletRequest httpRequest) {
         String ip = getClientIp(httpRequest);
         String userAgent = httpRequest.getHeader("User-Agent");
-        String origin = httpRequest.getHeader("Origin");
 
-        Map<String, Object> result;
-        if (StrUtil.isNotBlank(request.getTenantId())) {
-            result = authService.loginByTenant(request.getTenantId(),
-                    request.getUsername(), request.getPassword(), ip, userAgent);
-        } else {
-            // Extract domain from Origin header
-            String domain = extractDomain(origin);
-            result = authService.loginByDomain(domain,
-                    request.getUsername(), request.getPassword(), ip, userAgent);
-        }
+        // 统一域名解析：X-Forwarded-Host > Host > Origin
+        String domain = resolveTenantDomain(httpRequest);
+        Map<String, Object> result = authService.loginByDomain(domain,
+                request.getUsername(), request.getPassword(), ip, userAgent);
 
         return ApiResponse.success(result);
     }
@@ -126,10 +119,32 @@ public class AuthController {
         return resolveRateLimitIp(request);
     }
 
-    private String extractDomain(String origin) {
-        if (StrUtil.isBlank(origin)) return "localhost";
-        return origin.replaceFirst("https?://", "")
-                .replaceFirst(":\\d+$", "")
-                .replaceFirst("/.*$", "");
+    /**
+     * 统一域名解析：X-Forwarded-Host > Host > Origin
+     * 与 Koa resolveTenantDomain 保持一致
+     */
+    private String resolveTenantDomain(HttpServletRequest request) {
+        // 1. X-Forwarded-Host（Nginx 反代优先）
+        String forwardedHost = request.getHeader("X-Forwarded-Host");
+        if (StrUtil.isNotBlank(forwardedHost)) {
+            return forwardedHost.split(",")[0].trim().replaceFirst(":\\d+$", "");
+        }
+
+        // 2. Host header
+        String host = request.getHeader("Host");
+        if (StrUtil.isNotBlank(host) && !"localhost".equals(host) && !"127.0.0.1".equals(host)) {
+            return host.replaceFirst(":\\d+$", "");
+        }
+
+        // 3. Origin header
+        String origin = request.getHeader("Origin");
+        if (StrUtil.isNotBlank(origin)) {
+            return origin.replaceFirst("https?://", "")
+                    .replaceFirst(":\\d+$", "")
+                    .replaceFirst("/.*$", "");
+        }
+
+        // 4. 本地开发回退
+        return "localhost";
     }
 }

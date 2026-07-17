@@ -937,6 +937,7 @@ CREATE TABLE `sys_tenant` (
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`tenant_id`),
+  UNIQUE KEY `uk_tenant_domain` (`domain_name`),
   KEY `idx_tenant_domain` (`domain_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='租户表';
 
