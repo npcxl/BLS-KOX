@@ -3,7 +3,7 @@ import type { Context } from 'koa';
 import { eventsArraySchema, queryEventsSchema } from '../schemas/event.schema';
 import { writeEvents, queryEvents } from '../services/event.service';
 
-const router = new Router({ prefix: '/internal' });
+const router = new Router();
 
 // ====== 批量接收事件 ======
 router.post('/events', async (ctx: Context) => {

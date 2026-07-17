@@ -162,15 +162,42 @@ docker compose --env-file .env.docker --profile event up -d --build
 docker compose --env-file .env.docker up -d --build
 ```
 
-## 验收
+## 验收标准
 
-1. ✅ `GET /health` 返回 `{ "status": "UP" }`
-2. ✅ `GET /metrics` 有 `bls_event_events_received_total` 等指标
-3. ✅ event-service 启动后，Koa 登录/安全事件能写入 `sys_event_log`
-4. ✅ event-service 停止后，登录不报 500
-5. ✅ Outbox 能记录失败事件并重试
-6. ✅ 前端代码无业务改动
-7. ✅ 不启动 profile 时 event-service 不启动
+1. `GET /health` 返回 `{ "status": "UP" }`
+2. `GET /metrics` 有 `bls_event_events_received_total` 等指标
+3. event-service 启动后，Koa 登录/安全事件能写入 `sys_event_log`
+4. event-service 停止后，登录不报 500
+5. Outbox 能记录失败事件并重试
+6. 前端代码无业务改动
+7. 不启动 profile 时 event-service 不启动
+
+### 验收命令
+
+```bash
+# 启动 event-service + bls-server
+docker compose --env-file .env.docker --profile event up -d --build bls-event-service bls-server
+
+# 登录一次 Koa
+curl -X POST http://localhost:7001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"tenantId":"000000","username":"superadmin","password":"admin123"}'
+
+# 确认 sys_event_log 出现 LOGIN_SUCCESS 或 LOGIN_FAILED
+docker compose exec mysql mysql -uroot -p"${DB_PASSWORD}" bls \
+  -e "SELECT event_id, event_type, username, created_at FROM sys_event_log ORDER BY created_at DESC LIMIT 5"
+
+# 停掉 event-service 后再次登录，主业务不能 500
+docker compose --profile event stop bls-event-service
+curl -X POST http://localhost:7001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"tenantId":"000000","username":"superadmin","password":"admin123"}'
+# 预期：返回 200，登录成功
+
+# outbox_event 应有 EVENT_SERVICE_PUBLISH 记录
+docker compose exec mysql mysql -uroot -p"${DB_PASSWORD}" bls \
+  -e "SELECT event_id, event_type, status, retry_count FROM outbox_event WHERE event_type='EVENT_SERVICE_PUBLISH' ORDER BY created_at DESC LIMIT 5"
+```
 
 ## 架构说明
 
@@ -179,4 +206,4 @@ docker compose --env-file .env.docker up -d --build
 - **模块化单体**（bls-server / bls-java-server）
 - **+ Koa 示例微服务**（bls-event-service）
 
-Java 后端继续保持模块化单体，不拆分微服务。event-service 仅作为 Koa 微服务的示范实现。
+**Java 后端（bls-java-server）不接入 event-service**，继续保持模块化单体。event-service 仅作为 Koa 微服务的示范实现，Java 端后续可按需接入。
