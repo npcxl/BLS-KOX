@@ -136,7 +136,7 @@ export default function ExcelToolbar({
           <Button key="cancel" onClick={() => setExportOpen(false)}>取消</Button>,
           <Button key="export" type="primary" loading={exporting} onClick={doExport}>开始导出</Button>,
         ]}
-        destroyOnClose
+        destroyOnHidden
       >
         <Space direction="vertical" style={{ width: "100%" }}>
           <Radio.Group value={mode} onChange={(e) => setMode(e.target.value)}>
@@ -162,7 +162,7 @@ export default function ExcelToolbar({
           <Button key="cancel" onClick={() => setImportOpen(false)}>取消</Button>,
           <Button key="import" type="primary" loading={importing} onClick={doImport} disabled={importing}>开始导入</Button>,
         ]}
-        destroyOnClose
+        destroyOnHidden
       >
         <Space direction="vertical" style={{ width: "100%" }}>
           <Button onClick={downloadTemplate}>下载模板</Button>

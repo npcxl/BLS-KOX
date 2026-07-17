@@ -101,7 +101,7 @@ export default function MenuAuthModal({ open, onCancel, record }: MenuAuthModalP
       onCancel={onCancel}
       onOk={handleSubmit}
       confirmLoading={loading}
-      destroyOnClose
+      destroyOnHidden
     >
       <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
         <Tree

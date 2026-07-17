@@ -5,19 +5,22 @@
 ## 工作原理
 
 1. 用户在浏览器访问 `https://admin.example.com`，输入账号密码登录
-2. 后端解析请求域名：`X-Forwarded-Host` > `Host` > `Origin`
+2. 后端解析请求域名：`X-Forwarded-Host`（需 TRUST_PROXY=true）> `Host` > `Origin`
 3. 在 `sys_tenant` 表按 `domain_name` 匹配租户
 4. 匹配成功 → 在该租户下验证用户名密码
-5. 未匹配 → 回退到平台租户（`tenant_id = '000000'`）
+5. 未匹配 → 生产环境直接报"当前域名未绑定租户"
+6. **仅** `localhost` / `127.0.0.1` 场景才 fallback 到平台租户（`000000`）
 
 ## 域名解析优先级
 
-| 优先级 | Header | 场景 |
+| 优先级 | Header | 条件 |
 |--------|--------|------|
-| 1 | `X-Forwarded-Host` | Nginx 反代传入 |
-| 2 | `Host` | 直接访问（非 localhost） |
-| 3 | `Origin` | 跨域请求 |
-| 4 | 回退 `localhost` | 本地开发 |
+| 1 | `X-Forwarded-Host` | TRUST_PROXY=true 时使用 |
+| 2 | `Host` | 非 localhost/127.0.0.1 时使用 |
+| 3 | `Origin` | localhost 场景的最终 fallback |
+| 4 | `localhost` | 本地开发回退 |
+
+> **关键设计**：`X-Forwarded-Host` 仅在 `TRUST_PROXY=true` 时信任，防止客户端伪造。
 
 ## 数据库
 
@@ -66,7 +69,9 @@ server {
 ## 安全说明
 
 - 前端**不再提交** `tenantId`，避免租户伪造
-- 后端统一根据域名解析租户
+- 后端统一根据域名解析租户，`X-Forwarded-Host` 仅在信任代理时使用
+- 生产环境未知域名直接拒绝，不回退平台租户
+- `localhost` / `127.0.0.1` 自动回退到平台租户（仅本地开发）
 - Koa 和 Java 后端域名解析逻辑完全一致
 - `loginByDomain` 校验 `status='0' AND deleted=0`
 

@@ -83,7 +83,7 @@ const RebuildIndexModal: React.FC<{ open: boolean; onClose: () => void }> = ({ o
           开始重建
         </Button>,
       ]}
-      destroyOnClose
+      destroyOnHidden
     >
       {loading ? (
         <Typography.Text type="secondary">加载模块列表...</Typography.Text>
