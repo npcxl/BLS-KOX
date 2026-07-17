@@ -2,8 +2,7 @@ export default {
   'pages.layouts.userLayout.title':
     'BLS-KOX',
   'pages.login.accountLogin.tab': '账户密码登录',
-  'pages.login.accountLogin.errorMessage':
-    '用户名或密码错误',
+  'pages.login.accountLogin.errorMessage': '',
   'pages.login.failure': '登录失败，请重试！',
   'pages.login.success': '登录成功！',
   'pages.login.username.placeholder': '请输入用户名',

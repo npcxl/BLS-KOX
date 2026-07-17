@@ -33,6 +33,10 @@ export type UploadFileInput = {
 };
 
 function defaultTransformResponse(res: UploadResponseShape): NormalizedUploadResult {
+  // 检查业务状态码，非 200 视为失败
+  if ((res as any)?.code !== undefined && (res as any)?.code !== 200) {
+    throw new Error((res as any)?.message || `上传失败 (code: ${(res as any)?.code})`);
+  }
   const data = res?.data ?? res;
   return {
     raw: res,

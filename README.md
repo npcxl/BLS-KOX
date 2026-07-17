@@ -166,54 +166,94 @@ npm run openapi
 
 ## 🏃 Quick Start
 
-### 方式一：Docker 一键部署（推荐）
+### 方式一：Docker 本地部署（推荐，零配置）
 
 ```bash
+# 克隆项目
 git clone https://github.com/npcxl/BLS-KOX.git && cd BLS-KOX
-cp .env.example .env
-# 编辑 .env 修改所有 CHANGE_TO_* 值为强密码
-docker compose up -d --build
+
+# 一键启动（使用 .env.docker 配置文件）
+docker compose --env-file .env.docker down -v --remove-orphans
+docker compose --env-file .env.docker up -d --build
+
+# 查看状态（全部 healthy 即为成功）
 docker compose ps
 ```
 
 启动成功后访问：
-- **管理端**：http://localhost
-- **API**：http://localhost/api
-- **健康检查**：http://localhost/api/health
 
-### 方式二：本地开发
+| 服务 | 地址 | 说明 |
+|------|------|------|
+| 管理端 | http://localhost | 前端 SPA |
+| API | http://localhost/api | 后端接口 |
+| 健康检查 | http://localhost/api/health | 服务状态 |
+| MinIO 控制台 | http://localhost:9001 | 对象存储管理 |
+| 接口文档 | http://localhost:6001/api/docs | **仅本地开发可用，见下方说明** |
+
+> **注意**：Docker 部署时 Swagger 接口文档（`/api/docs`）不对外暴露。需要查看接口文档请使用本地开发模式，或运行 `cd bls-server && npm run openapi:serve` 在本地启动文档服务。
+
+### 方式二：本地开发（可查看接口文档）
 
 ```bash
-# 1. 启动 MySQL + Redis（使用 Docker）
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d mysql redis
+# 1. 启动基础设施（MySQL + Redis + MinIO）
+docker compose --env-file .env.docker up -d mysql redis minio
 
-# 2. 后端
+# 2. 初始化数据库
+docker exec bls-mysql mysql -uroot -pxl010520 kox < sql/Init.sql
+
+# 3. 后端（Koa）
 cd bls-server
-cp .env.example .env
+cp .env .env.docker  # 或手动配置 .env，DB_HOST=localhost
 npm install
-npm run db:migrate up
 npm run dev                                    # http://localhost:6001
 
-# 3. 前端（新终端）
+# 4. 前端（新终端）
 cd ../bls-admin
 npm install
-npm start                                      # http://localhost:9000
+npm run dev                                    # http://localhost:9000
 ```
 
-### 方式三：Java 后端（与 Koa 并存）
+本地开发启动后访问接口文档：
+- **Swagger UI**：http://localhost:6001/api/docs
+- **OpenAPI JSON**：http://localhost:6001/api/openapi.json
+
+### 方式三：纯本地运行（不使用 Docker）
+
+确保本地已安装 MySQL 8.0 + Redis 7.0，然后：
 
 ```bash
-# 1. 启动基础设施
-docker compose up -d mysql redis
+# 1. 导入数据库
+mysql -uroot -p < sql/Init.sql
 
-# 2. 构建并启动 Java 后端
+# 2. 配置环境变量
+cd bls-server
+cp .env.example .env
+# 编辑 .env：DB_HOST=127.0.0.1 REDIS_HOST=127.0.0.1
+
+# 3. 启动后端
+npm install && npm run dev                     # http://localhost:6001
+
+# 4. 启动前端
+cd ../bls-admin
+npm install && npm run dev                     # http://localhost:9000
+```
+
+### 方式三：Java 后端（与 Koa 并存，Docker 部署待验证）
+
+```bash
+# 1. 编译 Java 项目
 cd bls-java-server
 mvn clean package -DskipTests
+
+# 2. 本地运行 Java 后端
 java -jar target/bls-java-server-1.0.0.jar     # http://localhost:8080
 
-# 或者用 Docker 启动 Java 后端
-docker compose --profile java up -d --build bls-java-server
+# 3. Docker 部署 Java 后端（待验证）
+cd ..
+docker compose --env-file .env.docker --profile java up -d --build bls-java-server
 ```
+
+> ⚠️ Java 后端 Docker 部署尚未完成验证，详见 [Docker 部署指南](./docs/docker-deploy.md)。
 
 ### 切换后端（Koa ↔ Java）
 
@@ -251,15 +291,16 @@ upstream bls_server {
 
 ### 一键运行成功标志
 
-Docker 部署成功后，执行 `docker compose ps` 应看到 4 个服务均为 `Up` (healthy)：
+Docker 部署成功后，执行 `docker compose ps` 应看到全部服务均为 `Up` (healthy)：
 
 ```
-NAME                STATUS
-bls-kox-admin-1     Up (healthy)
-bls-kox-nginx-1     Up
-bls-kox-server-1    Up (healthy)
-bls-kox-mysql-1     Up (healthy)
-bls-kox-redis-1     Up (healthy)
+NAME           STATUS
+bls-admin      Up
+bls-minio      Up (healthy)
+bls-mysql      Up (healthy)
+bls-nginx      Up
+bls-redis      Up (healthy)
+bls-server     Up (healthy)
 ```
 
 ## 📁 Project Structure
@@ -311,6 +352,7 @@ BLS-KOX/
 | 文档 | 说明 |
 |------|------|
 | [快速开始](./docs/getting-started.md) | 环境要求、安装、启动、演示账号 |
+| [Docker 部署](./docs/docker-deploy.md) | Docker Compose 部署、切换后端、故障排查 |
 | [双后端定位](./docs/backend-comparison.md) | Koa vs Java 定位差异、对比表、如何选择 |
 | [架构设计](./docs/architecture.md) | 请求链路、中间件、双后端总览 |
 | [Koa 后端](./docs/backend-koa.md) | Koa + TypeScript 架构、CRUD 工厂、中间件链 |

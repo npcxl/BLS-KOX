@@ -1,3 +1,5 @@
+import Router from 'koa-router';
+import { Context } from 'koa';
 import { getDb } from '../../../core/database';
 import { getCurrentTenantId } from '../../../middleware/tenant';
 import { invalidateConfigCache, getDynamicConfig, type DynamicConfig } from '../../../config/dynamic-config';
@@ -8,6 +10,21 @@ function getTenantOrFail(): string {
   if (!tid) throw new Error('TENANT_CONTEXT_MISSING');
   return tid;
 }
+
+// 公开路由（不需要认证，登录页/首页使用）
+const publicRouter = new Router({ prefix: '/system/config' });
+publicRouter.get('/public-system', async (ctx: Context) => {
+  ctx.body = { code: 200, data: await fetchSystemConfigs(), message: '操作成功' };
+});
+publicRouter.get('/public-theme', async (ctx: Context) => {
+  const db = (await getDb()) as any;
+  const tid = getCurrentTenantId() ?? '000000';
+  const data = await db.selectFrom('sys_config').selectAll().where('config_key','=','theme.default').where('deleted','=',0).where('tenant_id','=',tid).limit(1).executeTakeFirst();
+  ctx.body = { code: 200, data, message: '操作成功' };
+});
+publicRouter.get('/current', async (ctx: Context) => {
+  ctx.body = { code: 200, data: await fetchSystemConfigs() };
+});
 
 export const config = {
   table: 'sys_config', pkField: 'config_id',
@@ -62,3 +79,5 @@ export const publicTheme = async () => {
   return db.selectFrom('sys_config').selectAll().where('config_key','=','theme.default').where('deleted','=',0).where('tenant_id','=',tid).limit(1).executeTakeFirst();
 };
 export const publicSystem = () => fetchSystemConfigs();
+
+export default publicRouter;

@@ -224,9 +224,9 @@ const Login: React.FC = () => {
 
           {status === 'error' && loginType === 'account' && (
             <LoginMessage
-              content={intl.formatMessage({
+              content={userLoginState?.message || intl.formatMessage({
                 id: 'pages.login.accountLogin.errorMessage',
-                defaultMessage: '账户或密码错误(admin/123456)',
+                defaultMessage: '登录失败，请重试',
               })}
             />
           )}

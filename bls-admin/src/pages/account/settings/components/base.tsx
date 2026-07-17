@@ -129,8 +129,8 @@ const AvatarView = ({ avatar, fetchUserInfo }: { avatar: string; fetchUserInfo?:
         message.error('获取头像URL失败');
       }
     },
-    onError: () => {
-      message.error('头像上传失败');
+    onError: (error: any) => {
+      message.error(error?.message || '头像上传失败');
     },
   });
 

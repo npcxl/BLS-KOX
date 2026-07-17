@@ -1,0 +1,18 @@
+# BLS-KOX Java 后端覆盖配置
+# 使用: docker compose --env-file .env.docker -f docker-compose.yml -f docker-compose.java.yml up -d --build
+
+services:
+  # Nginx 使用 Java 版配置
+  bls-nginx:
+    volumes:
+      - ./nginx-java.conf:/etc/nginx/conf.d/default.conf:ro
+
+  # 停止 Koa 后端（不删除定义，只设 replicas 为 0）
+  bls-server:
+    deploy:
+      replicas: 0
+
+  # 启用 Java 后端
+  bls-java-server:
+    profiles:
+      - ""
