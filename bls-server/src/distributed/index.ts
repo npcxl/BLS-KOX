@@ -5,7 +5,7 @@
  * 不引入注册中心、网关、Nacos、Seata
  */
 export { createDistributedLock } from './lock';
-export type { LockOptions } from './lock';
+export type { LockOptions, LockResult, LockAcquired, LockBusy, LockUnavailable } from './lock';
 
 export { createIdempotencyService } from './idempotency';
 export type { IdempotencyOptions } from './idempotency';

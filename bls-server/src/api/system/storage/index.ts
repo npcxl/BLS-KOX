@@ -190,20 +190,22 @@ export async function handleUpload(
   ctx.body = { code: 200, message: '上传成功', data: { fileId, url, bucketName, objectName, originalName, fileName: safeName, fileSize } };
 }
 
-// 文件上传路由（含分布式锁，Redis 不可用时降级执行原逻辑）
+// 文件上传路由（含分布式锁）
 router.post('/upload', jwtAuth(), hasPerm('system:file:upload'), async (ctx: Context) => {
   const redis = getRedisClient();
   let unlock: (() => Promise<void>) | null = null;
   if (redis) {
-    try {
-      const lock = createDistributedLock(redis);
-      unlock = await lock.acquire('storage:upload', { leaseTime: 30, waitTime: 5 });
-    } catch {
-      // Redis 异常，降级执行原逻辑
+    const lock = createDistributedLock(redis);
+    const result = await lock.acquire('storage:upload', { leaseTime: 30, waitTime: 5 });
+    if (result.status === 'busy') {
+      ctx.status = 409;
+      ctx.body = { code: 409, message: '操作太频繁，请稍后再试' };
+      return;
     }
-    if (unlock === null) {
-      // 未获取到锁也降级执行（避免锁竞争导致接口不可用）
+    if (result.status === 'acquired') {
+      unlock = result.unlock;
     }
+    // status === 'unavailable'：降级执行
   }
   try {
     await handleUpload(ctx, getDb, getCurrentTenantId, writeSecurityLog as any, writeUploadAudit as any, getRequestContext);
