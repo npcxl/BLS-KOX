@@ -54,3 +54,4 @@ jobs:
           DB_PASSWORD: ci_test_password_placeholder
           REDIS_PASSWORD: ci_test_password_placeholder
           JWT_SECRET: ci_test_jwt_secret_at_least_32_chars_long
+          INTERNAL_SECRET: ci_test_internal_secret_placeholder
