@@ -119,6 +119,7 @@ public class AuthService {
 
     /**
      * Login by domain (always used, domain resolved from X-Forwarded-Host/Host/Origin).
+     * Only falls back to platform tenant for localhost/127.0.0.1 local dev scenarios.
      */
     @Transactional
     public Map<String, Object> loginByDomain(String domainName, String username, String password,
@@ -129,11 +130,14 @@ public class AuthService {
                 .eq(SysTenant::getDeleted, 0));
 
         if (tenant == null) {
-            // Fallback to platform tenant (localhost / no-domain scenarios)
-            tenant = tenantMapper.selectOne(new LambdaQueryWrapper<SysTenant>()
-                    .eq(SysTenant::getTenantId, "000000")
-                    .eq(SysTenant::getStatus, "0")
-                    .eq(SysTenant::getDeleted, 0));
+            // 仅 localhost / 127.0.0.1 / 无域名 场景 fallback 到平台租户
+            // 生产环境未知域名直接报错
+            if ("localhost".equals(domainName) || "127.0.0.1".equals(domainName) || "::1".equals(domainName)) {
+                tenant = tenantMapper.selectOne(new LambdaQueryWrapper<SysTenant>()
+                        .eq(SysTenant::getTenantId, "000000")
+                        .eq(SysTenant::getStatus, "0")
+                        .eq(SysTenant::getDeleted, 0));
+            }
         }
 
         if (tenant == null) {

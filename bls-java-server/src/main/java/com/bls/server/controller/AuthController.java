@@ -121,30 +121,43 @@ public class AuthController {
 
     /**
      * 统一域名解析：X-Forwarded-Host > Host > Origin
-     * 与 Koa resolveTenantDomain 保持一致
+     * 与 Koa resolveTenantDomain 保持一致。
+     * X-Forwarded-Host 仅在 trustProxy 时使用。
      */
     private String resolveTenantDomain(HttpServletRequest request) {
-        // 1. X-Forwarded-Host（Nginx 反代优先）
-        String forwardedHost = request.getHeader("X-Forwarded-Host");
-        if (StrUtil.isNotBlank(forwardedHost)) {
-            return forwardedHost.split(",")[0].trim().replaceFirst(":\\d+$", "");
+        boolean trustProxy = "true".equalsIgnoreCase(
+                request.getServletContext().getInitParameter("trustProxy"));
+
+        // 1. X-Forwarded-Host（仅在信任代理时使用）
+        if (trustProxy) {
+            String forwardedHost = request.getHeader("X-Forwarded-Host");
+            if (StrUtil.isNotBlank(forwardedHost)) {
+                String domain = forwardedHost.split(",")[0].trim().replaceFirst(":\\d+$", "");
+                if (!isLocalhost(domain)) return domain;
+            }
         }
 
-        // 2. Host header
+        // 2. Host header（先 strip port，再判断 localhost）
         String host = request.getHeader("Host");
-        if (StrUtil.isNotBlank(host) && !"localhost".equals(host) && !"127.0.0.1".equals(host)) {
-            return host.replaceFirst(":\\d+$", "");
+        if (StrUtil.isNotBlank(host)) {
+            String domain = host.replaceFirst(":\\d+$", "");
+            if (!isLocalhost(domain)) return domain;
         }
 
-        // 3. Origin header
+        // 3. Origin header（localhost 场景的最终 fallback）
         String origin = request.getHeader("Origin");
         if (StrUtil.isNotBlank(origin)) {
-            return origin.replaceFirst("https?://", "")
+            String domain = origin.replaceFirst("https?://", "")
                     .replaceFirst(":\\d+$", "")
                     .replaceFirst("/.*$", "");
+            if (!isLocalhost(domain)) return domain;
         }
 
         // 4. 本地开发回退
         return "localhost";
+    }
+
+    private boolean isLocalhost(String host) {
+        return "localhost".equals(host) || "127.0.0.1".equals(host) || "::1".equals(host);
     }
 }

@@ -58,9 +58,12 @@ export class AuthService {
     let tenant = await queryOne<any>(
       `SELECT tenant_id AS tenantId FROM sys_tenant WHERE domain_name = :d AND status = '0' AND deleted = 0`, { d: domainName });
     if (!tenant) {
-      // fallback: 匹配平台租户（localhost 等无域名场景）
-      tenant = await queryOne<any>(
-        `SELECT tenant_id AS tenantId FROM sys_tenant WHERE tenant_id = '000000' AND status = '0' AND deleted = 0`);
+      // 仅 localhost / 127.0.0.1 / 无域名 场景 fallback 到平台租户
+      // 生产环境未知域名直接报错，避免租户泄露
+      if (domainName === 'localhost' || domainName === '127.0.0.1' || domainName === '::1') {
+        tenant = await queryOne<any>(
+          `SELECT tenant_id AS tenantId FROM sys_tenant WHERE tenant_id = '000000' AND status = '0' AND deleted = 0`);
+      }
     }
     if (!tenant) throw new UnauthorizedError('当前域名未绑定租户');
     return this.loginByTenant(tenant.tenantId, username, password, meta);

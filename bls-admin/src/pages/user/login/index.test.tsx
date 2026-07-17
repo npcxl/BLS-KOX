@@ -2,15 +2,18 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 // ============ Mocks (hoisted by vitest) ============
 
-const { mockLogin, mockTenantLoginOptions, mockTokenStore, mockUseModel, mockMessage } = vi.hoisted(
+const { mockLogin, mockTokenStore, mockUseModel, mockMessage } = vi.hoisted(
   () => ({
     mockLogin: vi.fn(),
-    mockTenantLoginOptions: vi.fn(),
     mockTokenStore: {
       setTokenPair: vi.fn(),
       getAccessToken: vi.fn(),
       getRefreshToken: vi.fn(),
       clear: vi.fn(),
+      getRememberedUsername: vi.fn(),
+      setRememberedUsername: vi.fn(),
+      clearRememberedUsername: vi.fn(),
+      setCurrentUser: vi.fn(),
     },
     mockUseModel: vi.fn(),
     mockMessage: {
@@ -23,7 +26,6 @@ const { mockLogin, mockTenantLoginOptions, mockTokenStore, mockUseModel, mockMes
 
 vi.mock('@/services/ant-design-pro/api', () => ({
   login: mockLogin,
-  tenantLoginOptions: mockTenantLoginOptions,
 }));
 
 vi.mock('@/auth/token-store', () => ({
@@ -85,7 +87,6 @@ vi.mock('@ant-design/pro-components', () => ({
               onFinish?.({
                 username: 'testuser',
                 password: 'testpass',
-                tenantId: initialValues?.tenantId || 'T001',
                 rememberUsername: true,
               });
             }
@@ -154,7 +155,6 @@ describe('Login Page', () => {
     vi.clearAllMocks();
     localStorage.clear();
 
-    // Mock window.location to avoid jsdom navigation errors
     Object.defineProperty(window, 'location', {
       value: {
         href: 'http://localhost/user/login',
@@ -166,6 +166,8 @@ describe('Login Page', () => {
       writable: true,
       configurable: true,
     });
+
+    mockTokenStore.getRememberedUsername.mockReturnValue(null);
 
     mockUseModel.mockReturnValue({
       initialState: {
@@ -187,12 +189,8 @@ describe('Login Page', () => {
     });
   });
 
-  // ===== 1. tenantId 正常传递 =====
-  it('should pass tenantId in login request', async () => {
-    mockTenantLoginOptions.mockResolvedValue({
-      data: [{ tenantId: 'T001', tenantName: '测试租户' }],
-    });
-
+  // ===== 1. 登录请求只提交 username/password/type，不含 tenantId =====
+  it('should submit login with only username/password/type (no tenantId)', async () => {
     mockLogin.mockResolvedValue({
       code: 200,
       data: { token: 'access-token', refreshToken: 'refresh-token', user: null },
@@ -200,58 +198,30 @@ describe('Login Page', () => {
 
     render(<Login />);
 
-    await waitFor(() => {
-      expect(screen.getByTestId('login-submit-btn')).not.toBeDisabled();
-    });
-
     const submitBtn = screen.getByTestId('login-submit-btn');
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(mockLogin).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: 'T001' }),
-      );
+      expect(mockLogin).toHaveBeenCalledWith({
+        username: 'testuser',
+        password: 'testpass',
+        type: 'account',
+      });
     });
   });
 
-  // ===== 2. 租户列表为空 =====
-  it('should disable login button and show error when tenant list is empty', async () => {
-    mockTenantLoginOptions.mockResolvedValue({
-      data: [],
-    });
-
+  // ===== 2. 登录按钮默认可用 =====
+  it('should render login button as enabled by default', async () => {
     render(<Login />);
 
     await waitFor(() => {
       const btn = screen.getByTestId('login-submit-btn');
-      expect(btn).toBeDisabled();
+      expect(btn).not.toBeDisabled();
     });
-
-    expect(mockLogin).not.toHaveBeenCalled();
   });
 
-  // ===== 3. 租户接口失败 =====
-  it('should show error and disable login when tenant API fails', async () => {
-    mockTenantLoginOptions.mockRejectedValue(new Error('Network Error'));
-
-    render(<Login />);
-
-    await waitFor(() => {
-      expect(screen.getByText('租户信息加载失败')).toBeInTheDocument();
-    });
-
-    const btn = screen.getByTestId('login-submit-btn');
-    expect(btn).toBeDisabled();
-
-    expect(mockLogin).not.toHaveBeenCalled();
-  });
-
-  // ===== 4. 登录接口返回 HTTP 401 =====
+  // ===== 3. 登录接口返回 HTTP 401 =====
   it('should show error message on 401 without redirecting', async () => {
-    mockTenantLoginOptions.mockResolvedValue({
-      data: [{ tenantId: 'T001', tenantName: '测试租户' }],
-    });
-
     const error401 = new Error('Request failed');
     (error401 as any).response = {
       status: 401,
@@ -260,10 +230,6 @@ describe('Login Page', () => {
     mockLogin.mockRejectedValue(error401);
 
     render(<Login />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('login-submit-btn')).not.toBeDisabled();
-    });
 
     const submitBtn = screen.getByTestId('login-submit-btn');
     fireEvent.click(submitBtn);
@@ -275,12 +241,8 @@ describe('Login Page', () => {
     expect(screen.getByTestId('login-form')).toBeInTheDocument();
   });
 
-  // ===== 5. 登录成功 =====
+  // ===== 4. 登录成功 =====
   it('should save tokens and user info on successful login', async () => {
-    mockTenantLoginOptions.mockResolvedValue({
-      data: [{ tenantId: 'T001', tenantName: '测试租户' }],
-    });
-
     const mockUser = { userId: 'U001', username: 'testuser' };
     mockLogin.mockResolvedValue({
       code: 200,
@@ -293,10 +255,6 @@ describe('Login Page', () => {
 
     render(<Login />);
 
-    await waitFor(() => {
-      expect(screen.getByTestId('login-submit-btn')).not.toBeDisabled();
-    });
-
     const submitBtn = screen.getByTestId('login-submit-btn');
     fireEvent.click(submitBtn);
 
@@ -308,26 +266,14 @@ describe('Login Page', () => {
     });
 
     await waitFor(() => {
-      expect(localStorage.getItem('currentUser')).toBe(JSON.stringify(mockUser));
-    });
-
-    await waitFor(() => {
-      expect(localStorage.getItem('lastTenantId')).toBe('T001');
-    });
-
-    await waitFor(() => {
       expect(mockMessage.success).toHaveBeenCalledWith(
         expect.stringContaining('登录成功'),
       );
     });
   });
 
-  // ===== 6. 记住用户名 =====
-  it('should save only username when rememberUsername is checked', async () => {
-    mockTenantLoginOptions.mockResolvedValue({
-      data: [{ tenantId: 'T001', tenantName: '测试租户' }],
-    });
-
+  // ===== 5. 记住用户名 =====
+  it('should save username when rememberUsername is checked', async () => {
     mockLogin.mockResolvedValue({
       code: 200,
       data: { token: 'access-token', refreshToken: 'refresh-token', user: null },
@@ -335,26 +281,16 @@ describe('Login Page', () => {
 
     render(<Login />);
 
-    await waitFor(() => {
-      expect(screen.getByTestId('login-submit-btn')).not.toBeDisabled();
-    });
-
     const submitBtn = screen.getByTestId('login-submit-btn');
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(localStorage.getItem('rememberLoginUsername')).toBe('testuser');
+      expect(mockTokenStore.setRememberedUsername).toHaveBeenCalledWith('testuser');
     });
-
-    expect(localStorage.getItem('password')).toBeNull();
   });
 
-  // ===== 7. 防重复提交 =====
+  // ===== 6. 防重复提交 =====
   it('should prevent duplicate submissions', async () => {
-    mockTenantLoginOptions.mockResolvedValue({
-      data: [{ tenantId: 'T001', tenantName: '测试租户' }],
-    });
-
     let resolveLogin: any;
     const loginPromise = new Promise((resolve) => {
       resolveLogin = resolve;
@@ -363,26 +299,15 @@ describe('Login Page', () => {
 
     render(<Login />);
 
-    await waitFor(() => {
-      expect(screen.getByTestId('login-submit-btn')).not.toBeDisabled();
-    });
-
-    // Simulate rapid double-click before React can re-render
-    // In real app, submitting state prevents second call
     const submitBtn = screen.getByTestId('login-submit-btn');
     fireEvent.click(submitBtn);
-
-    // The second click should be blocked by the submitting flag in handleSubmit
-    // But since our mock doesn't re-render, we verify the login was only called once
     fireEvent.click(submitBtn);
 
-    // Resolve the login
     resolveLogin({
       code: 200,
       data: { token: 'access-token', refreshToken: 'refresh-token', user: null },
     });
 
-    // Verify login was only called once (submitting guard works)
     await waitFor(
       () => {
         expect(mockLogin).toHaveBeenCalledTimes(1);
@@ -391,39 +316,21 @@ describe('Login Page', () => {
     );
   });
 
-  // ===== 8. 表单字段存在性 =====
-  it('should render username and password fields', async () => {
-    mockTenantLoginOptions.mockResolvedValue({
-      data: [{ tenantId: 'T001', tenantName: '测试租户' }],
-    });
-
+  // ===== 7. 表单字段存在性（只有 username/password/rememberUsername） =====
+  it('should render username, password and rememberUsername fields (no tenantId)', async () => {
     render(<Login />);
 
     await waitFor(() => {
       expect(screen.getByTestId('form-field-username')).toBeInTheDocument();
       expect(screen.getByTestId('form-field-password')).toBeInTheDocument();
+      expect(screen.getByTestId('form-field-rememberUsername')).toBeInTheDocument();
+      // tenantId 字段不应存在
+      expect(screen.queryByTestId('form-field-tenantId')).toBeNull();
     });
   });
 
-  // ===== 9. tenantId 字段在生产环境存在（hidden） =====
-  it('should render tenantId as hidden in production', async () => {
-    mockTenantLoginOptions.mockResolvedValue({
-      data: [{ tenantId: 'T001', tenantName: '测试租户' }],
-    });
-
-    render(<Login />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('form-field-tenantId')).toBeInTheDocument();
-    });
-  });
-
-  // ===== 10. catch 错误不打印敏感信息 =====
+  // ===== 8. catch 错误不打印敏感信息 =====
   it('should show user-friendly error on catch', async () => {
-    mockTenantLoginOptions.mockResolvedValue({
-      data: [{ tenantId: 'T001', tenantName: '测试租户' }],
-    });
-
     const networkError = new Error('Network Error');
     (networkError as any).response = {
       status: 500,
@@ -433,10 +340,6 @@ describe('Login Page', () => {
 
     render(<Login />);
 
-    await waitFor(() => {
-      expect(screen.getByTestId('login-submit-btn')).not.toBeDisabled();
-    });
-
     const submitBtn = screen.getByTestId('login-submit-btn');
     fireEvent.click(submitBtn);
 
@@ -445,19 +348,11 @@ describe('Login Page', () => {
     });
   });
 
-  // ===== 11. 登录失败显示 fallback 消息 =====
+  // ===== 9. 登录失败显示 fallback 消息 =====
   it('should show default error message when no response data', async () => {
-    mockTenantLoginOptions.mockResolvedValue({
-      data: [{ tenantId: 'T001', tenantName: '测试租户' }],
-    });
-
     mockLogin.mockRejectedValue(new Error('Unknown Error'));
 
     render(<Login />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('login-submit-btn')).not.toBeDisabled();
-    });
 
     const submitBtn = screen.getByTestId('login-submit-btn');
     fireEvent.click(submitBtn);
@@ -467,12 +362,8 @@ describe('Login Page', () => {
     });
   });
 
-  // ===== 12. 记住用户名字段名确认 =====
+  // ===== 10. 记住用户名字段名确认 =====
   it('should use rememberUsername as checkbox name', async () => {
-    mockTenantLoginOptions.mockResolvedValue({
-      data: [{ tenantId: 'T001', tenantName: '测试租户' }],
-    });
-
     render(<Login />);
 
     await waitFor(() => {
