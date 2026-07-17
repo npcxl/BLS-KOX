@@ -199,7 +199,7 @@ docker compose ps
 docker compose --env-file .env.docker up -d mysql redis minio
 
 # 2. 初始化数据库
-docker exec bls-mysql mysql -uroot -pxl010520 kox < sql/Init.sql
+docker exec bls-mysql mysql -uroot -p"${DB_PASSWORD}" kox < sql/Init.sql
 
 # 3. 后端（Koa）
 cd bls-server

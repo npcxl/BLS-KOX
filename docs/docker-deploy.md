@@ -272,5 +272,5 @@ docker exec bls-minio mc anonymous set public local/public-assets
 检查 `public_base_url` 配置是否正确（应为 `/files`）：
 
 ```powershell
-docker exec bls-mysql mysql -uroot -pxl010520 kox -e "SELECT public_base_url FROM sys_storage_config WHERE storage_id='000001';"
+docker exec bls-mysql mysql -uroot -p"${DB_PASSWORD}" kox -e "SELECT public_base_url FROM sys_storage_config WHERE storage_id='000001';"
 ```

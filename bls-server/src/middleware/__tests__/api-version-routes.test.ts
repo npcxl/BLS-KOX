@@ -119,7 +119,8 @@ describe('API Versioning — Route Integration', () => {
 
   it('internalAuth: dev mode + local IP + correct token → passes', async () => {
     process.env.NODE_ENV = 'development';
-    const secret = process.env.INTERNAL_SECRET ?? 'change_me_internal';
+    process.env.INTERNAL_SECRET = 'test-internal-secret-for-unit-tests';
+    const secret = process.env.INTERNAL_SECRET;
     const ctx: any = {
       path: '/internal/health',
       method: 'GET',
@@ -135,6 +136,7 @@ describe('API Versioning — Route Integration', () => {
     expect(ctx.status).not.toBe(401);
     expect(ctx.status).not.toBe(403);
     expect(ctx.state.internal).toBe(true);
+    delete process.env.INTERNAL_SECRET;
   });
 
   it('internalAuth: middleware is exported', () => {

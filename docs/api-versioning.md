@@ -66,7 +66,7 @@ Authorization: Bearer <INTERNAL_SECRET>
 
 环境变量配置：
 ```env
-INTERNAL_SECRET=change_me_internal
+INTERNAL_SECRET=CHANGE_TO_A_RANDOM_INTERNAL_SECRET
 INTERNAL_IP_ALLOWLIST=127.,10.,172.16.  # 逗号分隔的 IP 前缀
 ```
 
