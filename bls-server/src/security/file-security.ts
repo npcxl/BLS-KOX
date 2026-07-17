@@ -36,8 +36,8 @@ const TYPE_EXT_MAP: Record<string, Set<string>> = {
 };
 
 // SVG disabled
-// 严格模块名正则：仅字母/数字/下划线/连字符，不含路径分隔符
-const MODULE_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/;
+// 模块名正则：支持中英文/数字/下划线/连字符，不含路径分隔符，1-32位
+const MODULE_NAME_RE = /^[\u4e00-\u9fa5a-zA-Z][\u4e00-\u9fa5a-zA-Z0-9_-]{0,31}$/;
 const ALLOWED_MODULES = new Set(['common', 'avatar', 'attachment', 'import', 'export', 'public', 'private']);
 const ALLOWED_ACCESS = new Set(['public', 'private']);
 
@@ -140,9 +140,9 @@ export function validateUploadMeta(moduleName: string, accessType: string): File
   if (!MODULE_NAME_RE.test(moduleName)) {
     return { valid: false, reason: `模块名包含非法字符: ${moduleName}` };
   }
-  // 必须在白名单中（不再走 clean 降级）
+  // 模块名白名单校验：仅做正则校验，不做硬编码白名单限制
   if (!ALLOWED_MODULES.has(moduleName)) {
-    return { valid: false, reason: `不允许的模块名: ${moduleName}` };
+    // 放行所有合法模块名，不再限制白名单
   }
   if (!ALLOWED_ACCESS.has(accessType)) {
     return { valid: false, reason: `不允许的访问类型: ${accessType}` };

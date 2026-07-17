@@ -1,6 +1,7 @@
 # 分布式能力
 
 > **当前阶段**：模块化单体 + 分布式能力预留。
+> **不是微服务**，不引入注册中心（Nacos/Eureka）、网关、分布式事务（Seata）。
 
 ## 实现状态
 
@@ -151,13 +152,17 @@ import { createDistributedLock } from '@/distributed';
 import { getRedisClient } from '@/shared/utils/redis';
 
 const lock = createDistributedLock(getRedisClient());
-const unlock = await lock.acquire('storage:upload', { leaseTime: 30, waitTime: 5 });
-if (!unlock) {
+const result = await lock.acquire('storage:upload', { leaseTime: 30, waitTime: 5 });
+
+if (result.status === 'busy') {
   ctx.status = 409;
   ctx.body = { code: 409, message: '操作太频繁，请稍后再试' };
   return;
 }
-try { /* 业务逻辑 */ } finally { await unlock(); }
+if (result.status === 'acquired') {
+  try { /* 业务逻辑 */ } finally { await result.unlock(); }
+}
+// status === 'unavailable'：Redis 不可用，降级执行
 ```
 
 ## Redis Key 约定

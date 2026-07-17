@@ -4,8 +4,11 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci
+# 配置 npm 淘宝镜像源
+RUN npm config set registry https://registry.npmmirror.com
+
+COPY package.json ./
+RUN npm install --legacy-peer-deps
 
 COPY . .
 RUN npm run build

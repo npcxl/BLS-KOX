@@ -54,7 +54,7 @@ function FilePageInner() {
 
 
   const handleRemove = async (fileId: string) => {
-    const res = await request(`/api/system/storage/files/${fileId}`, {
+    const res = await request(`/api/system/storage/file/${fileId}`, {
       method: "DELETE",
     });
     if (res?.code === 200) {
@@ -125,7 +125,7 @@ function FilePageInner() {
   ];
   const handleDownload = (record: FileRecord) => {
     const link = document.createElement("a");
-    link.href = `/api/system/storage/files/${record.fileId}/download`;
+    link.href = `/api/system/storage/file/${record.fileId}/download`;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     document.body.appendChild(link);

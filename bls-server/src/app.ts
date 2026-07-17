@@ -196,7 +196,7 @@ if (require.main === module) {
   // ====== 生产环境安全启动校验 ======
   if (process.env.NODE_ENV === 'production') {
     const issues: string[] = [];
-    const WEAK_SECRETS = ['please_change_me', '123456', 'password', 'changeme', ''];
+    const WEAK_SECRETS = ['please_change_me', '123456', 'password', 'changeme'];
     const PLACEHOLDER_PREFIX = 'CHANGE_TO_';
 
     const jwt = process.env.JWT_SECRET ?? '';

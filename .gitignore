@@ -16,7 +16,6 @@ BLS-KOX_
 
 # Environment variables
 .env
-.env.*
 !.env.example
 
 # Logs
