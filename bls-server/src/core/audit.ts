@@ -1,6 +1,7 @@
 import { execute } from './database';
 import { generateSnowflakeId } from '../shared/utils/snowflake';
 import type { Context } from 'koa';
+import { publishEvent } from '../services/event-client';
 
 export interface AuditActor {
   tenantId: string;
@@ -116,6 +117,21 @@ export async function writeOperationLog(input: any): Promise<void> {
       remark: normalizeText(input.remark),
     },
   );
+
+  // 发送操作审计事件到 event-service
+  publishEvent({
+    tenantId: input.actor.tenantId,
+    userId: input.userId ?? input.actor.userId,
+    username: input.username ?? input.actor.username,
+    eventType: 'OPERATION_AUDIT',
+    riskLevel: input.success === '0' ? 'medium' : 'low',
+    sourceModule: normalizeText(input.moduleName) ?? undefined,
+    resourceType: input.businessType,
+    requestId: input.actor.requestId,
+    clientIp: input.actor.clientIp,
+    userAgent: input.actor.userAgent,
+    detailJson: { title: input.title, requestMethod: input.requestMethod, requestUrl: input.requestUrl },
+  }).catch(() => { /* fire-and-forget */ });
 }
 
 export async function writeUploadAudit(input: any): Promise<void> {

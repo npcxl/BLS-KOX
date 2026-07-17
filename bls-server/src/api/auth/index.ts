@@ -11,6 +11,7 @@ import { sessionCenter } from '../../security/session/session-center';
 import { getRequestContext } from '../../core/request-context';
 import { writeSecurityLog, actorFromCtx, SecurityEventType, RiskLevel } from '../../core/security-audit';
 import { logger } from '../../core/logger';
+import { publishEvent } from '../../services/event-client';
 
 // ============ Session ============
 const SESSION_PREFIX = 'auth:session:';
@@ -168,12 +169,51 @@ const S = new AuthService();
 export const login = async (ctx: Context) => {
   const meta: any = await buildRequestMeta(ctx);
   const b: any = ctx.request.body ?? {};
-  const result = b.tenantId
-    ? await S.loginByTenant(b.tenantId, b.username ?? '', b.password ?? '',
-        { loginIp: meta.loginIp, userAgent: meta.userAgent, requestId: meta.requestId, loginType: 'password' })
-    : await S.loginByDomain(meta.domainName ?? 'default', b.username ?? '', b.password ?? '',
-        { loginIp: meta.loginIp, userAgent: meta.userAgent, requestId: meta.requestId, loginType: 'password' });
-  ctx.body = { code: 200, data: result, message: '操作成功' };
+  const reqCtx = getRequestContext();
+
+  try {
+    const result = b.tenantId
+      ? await S.loginByTenant(b.tenantId, b.username ?? '', b.password ?? '',
+          { loginIp: meta.loginIp, userAgent: meta.userAgent, requestId: meta.requestId, loginType: 'password' })
+      : await S.loginByDomain(meta.domainName ?? 'default', b.username ?? '', b.password ?? '',
+          { loginIp: meta.loginIp, userAgent: meta.userAgent, requestId: meta.requestId, loginType: 'password' });
+
+    // 登录成功 → 发送事件到 event-service
+    publishEvent({
+      tenantId: result.user?.tenantId ?? '000000',
+      userId: result.user?.userId ?? null,
+      username: b.username,
+      eventType: 'LOGIN_SUCCESS',
+      riskLevel: 'low',
+      sourceModule: 'auth',
+      resourceType: 'user',
+      resourceId: result.user?.userId ?? null,
+      requestId: reqCtx?.requestId ?? null,
+      traceId: reqCtx?.traceId ?? null,
+      clientIp: reqCtx?.clientIp ?? null,
+      userAgent: reqCtx?.userAgent ?? null,
+      detailJson: { loginType: 'password', domainName: meta.domainName },
+    }).catch(() => { /* fire-and-forget */ });
+
+    ctx.body = { code: 200, data: result, message: '操作成功' };
+  } catch (err: any) {
+    // 登录失败 → 发送事件到 event-service
+    publishEvent({
+      tenantId: b.tenantId ?? '000000',
+      username: b.username,
+      eventType: 'LOGIN_FAILED',
+      riskLevel: 'low',
+      sourceModule: 'auth',
+      resourceType: 'user',
+      requestId: reqCtx?.requestId ?? null,
+      traceId: reqCtx?.traceId ?? null,
+      clientIp: reqCtx?.clientIp ?? null,
+      userAgent: reqCtx?.userAgent ?? null,
+      detailJson: { reason: err?.message ?? String(err) },
+    }).catch(() => { /* fire-and-forget */ });
+
+    throw err; // 重新抛出，让错误中间件处理
+  }
 };
 
 export const profile = async (ctx: Context) => {

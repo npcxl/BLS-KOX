@@ -42,6 +42,7 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-}
       - REPLAY_ENABLED=true
       - API_SIGN_SECRET=${API_SIGN_SECRET:-}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_URL:-}
     depends_on:
       mysql:
         condition: service_healthy
@@ -54,6 +55,37 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  # ========== 事件服务 (Koa 微服务示范，可选启动) ==========
+  bls-event-service:
+    build:
+      context: ./bls-event-service
+    container_name: bls-event-service
+    restart: unless-stopped
+    profiles:
+      - event
+    expose:
+      - "7101"
+    environment:
+      - NODE_ENV=production
+      - APP_PORT=7101
+      - DB_HOST=${DB_HOST:-mysql}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_USER=${DB_USER:-root}
+      - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
+      - DB_NAME=${DB_NAME:-bls}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-change_me_internal}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - bls-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:7101/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # ========== 后端 Java (可选，与 Koa 并存) ==========
   bls-java-server:

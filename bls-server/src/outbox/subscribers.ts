@@ -21,8 +21,66 @@ import { EventTypes } from './outbox';
 import type { OutboxEvent } from './outbox';
 import { logger } from '../core/logger';
 
+/**
+ * EVENT_SERVICE_PUBLISH: 重试发送失败事件到 event-service
+ *
+ * 幂等保证：event-service 的 POST /internal/events 以 eventId 为主键，
+ * INSERT 重复时 MySQL 报 duplicate key 错误，event-service 静默跳过。
+ */
+const EVENT_SERVICE_URL = (process.env.EVENT_SERVICE_URL ?? '').replace(/\/+$/, '');
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET ?? 'change_me_internal';
+const EVENT_SERVICE_PUBLISH = 'EVENT_SERVICE_PUBLISH';
+
+async function retryPublishToEventService(event: OutboxEvent): Promise<void> {
+  if (!EVENT_SERVICE_URL) {
+    logger.debug('[subscriber:event-publish] EVENT_SERVICE_URL not configured, skipping');
+    return;
+  }
+
+  const payload = event.payload as Record<string, unknown>;
+  const events = payload?.events as any[] | undefined;
+
+  if (!events || events.length === 0) {
+    logger.warn('[subscriber:event-publish] no events in payload, marking as published');
+    return;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5_000);
+
+  try {
+    const response = await fetch(`${EVENT_SERVICE_URL}/internal/events`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Token': INTERNAL_SECRET,
+      },
+      body: JSON.stringify({ events }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+
+    if (!response.ok) {
+      throw new Error(`event-service returned ${response.status}: ${response.statusText}`);
+    }
+
+    logger.info('[subscriber:event-publish] event retry published successfully', {
+      eventId: event.eventId,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** 注册所有 Outbox 订阅者 (在 app.ts 启动前调用) */
 export function registerOutboxSubscribers(): void {
+  // ====== EVENT_SERVICE_PUBLISH: 事件服务重试 ======
+  outboxPublisher.on(EVENT_SERVICE_PUBLISH, async (event: OutboxEvent) => {
+    logger.info('[subscriber] EVENT_SERVICE_PUBLISH retry', { eventId: event.eventId });
+    await retryPublishToEventService(event);
+  });
+
   // USER_CREATED: 用户创建事件 (示例)
   outboxPublisher.on(EventTypes.USER_CREATED, async (event: OutboxEvent) => {
     logger.info('[subscriber] USER_CREATED', { eventId: event.eventId, username: event.payload?.username });

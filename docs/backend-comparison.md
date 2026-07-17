@@ -20,7 +20,18 @@ BLS-KOX 提供两套后端实现：**Koa（TypeScript）** 和 **Spring Boot（J
 - 中间件链清晰：JWT → 租户 → RBAC → 防重放 → 限流
 - Zod 运行时校验，TypeScript 类型安全
 - 部署轻量：Node.js 单进程，内存占用小
+- 已内置 EventClient，可选接入 bls-event-service 微服务
 - 适合：快速原型、SaaS MVP、Node.js 全栈开发者
+
+### Koa 微服务（bls-event-service）
+
+**事件中心示范微服务**
+
+- 独立 Koa 进程，可选启动
+- 负责事件中心、安全审计、操作日志统一接收
+- 内部 HTTP + Outbox 重试与服务间通信
+- Docker Compose `profile: event` 控制启动
+- 详见 [event-service.md](./event-service.md)
 
 ### Java 后端（bls-java-server）
 
@@ -31,7 +42,8 @@ BLS-KOX 提供两套后端实现：**Koa（TypeScript）** 和 **Spring Boot（J
 - 注解式 AOP：`@DistributedLock`、`@Idempotent`、`@RateLimit`
 - Spring Security 方法级权限控制（`@PreAuthorize`）
 - Actuator + Micrometer + Prometheus 生产级监控
-- 未来可平滑演进至 Spring Cloud 微服务
+- **当前不拆分微服务**，继续保持模块化单体
+- 后续可接入 bls-event-service 事件服务
 - 适合：企业级项目、Java 团队、有微服务演进需求的场景
 
 ## 共享基础设施
@@ -62,7 +74,7 @@ BLS-KOX 提供两套后端实现：**Koa（TypeScript）** 和 **Spring Boot（J
 | **分布式能力** | 函数式 API（`createDistributedLock` 等） | 注解式 AOP（`@DistributedLock` 等） |
 | **监控** | prom-client + OpenTelemetry | Actuator + Micrometer + Prometheus |
 | **API 文档** | 自动生成 `openapi.json` | Knife4j（`/doc.html`） |
-| **微服务演进** | 模块化单体，无框架级支持 | Spring Cloud 生态就绪 |
+| **微服务** | 模块化单体 + event-service 示范微服务 | 模块化单体，不拆微服务 |
 | **部署体积** | ~150MB（Node.js Alpine） | ~250MB（JRE Alpine） |
 | **启动时间** | ~2s | ~5s |
 | **适合人群** | Node.js 全栈、快速原型、中小项目 | Java 团队、企业项目、有微服务规划 |

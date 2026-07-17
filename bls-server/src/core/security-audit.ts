@@ -11,6 +11,7 @@ import type { AuditActor } from './audit';
 import { logger } from './logger';
 import { getRequestContext } from './request-context';
 import { securityEventsTotal, crossTenantAccessTotal, loginFailedTotal, refreshReuseDetectedTotal } from '../observability/metrics';
+import { publishEvent } from '../services/event-client';
 
 // ========== 事件类型 ==========
 
@@ -165,6 +166,21 @@ export async function writeSecurityLog(input: SecurityLogInput): Promise<void> {
     if (input.eventType === SecurityEventType.CROSS_TENANT_ACCESS) crossTenantAccessTotal.inc();
     if (input.eventType === SecurityEventType.LOGIN_FAILED) loginFailedTotal.inc();
     if (input.eventType === SecurityEventType.REFRESH_TOKEN_REUSE) refreshReuseDetectedTotal.inc();
+
+    // 发送事件到 event-service（fire-and-forget）
+    publishEvent({
+      tenantId: String(actor.tenantId ?? '000000'),
+      userId: actor.userId ?? undefined,
+      username: actor.username ?? undefined,
+      eventType: input.eventType,
+      riskLevel: riskLevel.toLowerCase() as any,
+      sourceModule: input.source ?? 'system',
+      resourceType: 'security',
+      requestId: actor.requestId ?? undefined,
+      clientIp: actor.clientIp ?? undefined,
+      userAgent: actor.userAgent ?? undefined,
+      detailJson: input.detail ?? { title: input.title },
+    }).catch(() => { /* fire-and-forget */ });
 
     // 接入 Event Center — 采集 → 聚合 → 评分 → 自动处置（运行时 require 打破循环依赖）
     // FIX-02: source === 'event-center' 不二次 collectEvent，防处置循环

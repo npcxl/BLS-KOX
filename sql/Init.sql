@@ -854,6 +854,35 @@ CREATE TABLE `sys_security_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='安全日志表';
 
 -- -------------------------------------------------------
+-- sys_event_log (bls-event-service 事件中心)
+-- -------------------------------------------------------
+DROP TABLE IF EXISTS `sys_event_log`;
+CREATE TABLE `sys_event_log` (
+  `event_id` varchar(64) NOT NULL COMMENT '事件ID',
+  `tenant_id` varchar(32) NOT NULL COMMENT '租户ID',
+  `user_id` varchar(32) DEFAULT NULL COMMENT '用户ID',
+  `username` varchar(50) DEFAULT NULL COMMENT '用户名',
+  `event_type` varchar(64) NOT NULL COMMENT '事件类型',
+  `risk_level` varchar(20) NOT NULL DEFAULT 'medium' COMMENT '风险等级: low/medium/high/critical',
+  `source_service` varchar(64) NOT NULL DEFAULT 'bls-server' COMMENT '来源服务',
+  `source_module` varchar(64) DEFAULT NULL COMMENT '来源模块',
+  `resource_type` varchar(64) DEFAULT NULL COMMENT '资源类型',
+  `resource_id` varchar(32) DEFAULT NULL COMMENT '资源ID',
+  `request_id` varchar(64) DEFAULT NULL COMMENT '请求追踪ID',
+  `trace_id` varchar(64) DEFAULT NULL COMMENT '链路追踪ID',
+  `client_ip` varchar(45) DEFAULT NULL COMMENT '客户端IP',
+  `user_agent` varchar(500) DEFAULT NULL COMMENT 'User-Agent',
+  `detail_json` json DEFAULT NULL COMMENT '事件详情JSON',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`event_id`),
+  KEY `idx_event_tenant_time` (`tenant_id`,`created_at`),
+  KEY `idx_event_type` (`event_type`),
+  KEY `idx_event_risk` (`risk_level`),
+  KEY `idx_event_source` (`source_service`),
+  KEY `idx_event_request_id` (`request_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='事件日志表（事件中心）';
+
+-- -------------------------------------------------------
 -- sys_storage_config
 -- -------------------------------------------------------
 DROP TABLE IF EXISTS `sys_storage_config`;

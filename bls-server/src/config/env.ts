@@ -58,6 +58,10 @@ export const env = {
   port: numberEnv('APP_PORT', numberEnv('PORT', 6001)),
   corsOrigin: process.env.CORS_ORIGIN ?? '*',
   corsOrigins,
+  eventService: {
+    url: (process.env.EVENT_SERVICE_URL ?? '').replace(/\/+$/, ''),
+    enabled: !!(process.env.EVENT_SERVICE_URL ?? ''),
+  },
   ws: {
     enabled: (process.env.WS_ENABLED ?? 'true') === 'true',
     path: process.env.WS_PATH ?? '/ws/realtime',
