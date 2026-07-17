@@ -17,6 +17,8 @@ BLS-KOX_
 # Environment variables
 .env
 !.env.example
+.env.docker
+!.env.docker.example
 
 # Logs
 logs/

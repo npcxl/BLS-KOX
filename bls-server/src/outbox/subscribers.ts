@@ -28,7 +28,7 @@ import { logger } from '../core/logger';
  * INSERT 重复时 MySQL 报 duplicate key 错误，event-service 静默跳过。
  */
 const EVENT_SERVICE_URL = (process.env.EVENT_SERVICE_URL ?? '').replace(/\/+$/, '');
-const INTERNAL_SECRET = process.env.INTERNAL_SECRET ?? 'change_me_internal';
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET ?? '';
 const EVENT_SERVICE_PUBLISH = 'EVENT_SERVICE_PUBLISH';
 
 async function retryPublishToEventService(event: OutboxEvent): Promise<void> {

@@ -62,6 +62,7 @@ export const env = {
     url: (process.env.EVENT_SERVICE_URL ?? '').replace(/\/+$/, ''),
     enabled: !!(process.env.EVENT_SERVICE_URL ?? ''),
   },
+  internalSecret: process.env.INTERNAL_SECRET ?? '',
   ws: {
     enabled: (process.env.WS_ENABLED ?? 'true') === 'true',
     path: process.env.WS_PATH ?? '/ws/realtime',

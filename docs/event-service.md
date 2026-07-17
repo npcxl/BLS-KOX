@@ -129,10 +129,11 @@ Prometheus 指标（公开端点）。
 
 **调用流程**：
 
-1. 优先直接 HTTP POST 到 `EVENT_SERVICE_URL/internal/events`
-2. 调用失败（超时/不可达）→ 写入 `outbox_event` 表
-3. Outbox Publisher 后台轮询重试
-4. 主业务不因 event-service 失败而失败
+1. 检查 `EVENT_SERVICE_URL` 是否已配置，未配置则静默跳过（不写 Outbox）
+2. 优先直接 HTTP POST 到 `EVENT_SERVICE_URL/internal/events`
+3. 调用失败（超时/不可达）→ 写入 `outbox_event` 表
+4. Outbox Publisher 后台轮询重试
+5. 主业务不因 event-service 失败而失败
 
 ### 接入点
 
@@ -140,14 +141,33 @@ Prometheus 指标（公开端点）。
 - **安全事件**：`writeSecurityLog()` 写入后 → 发送对应事件
 - **操作审计**：`writeOperationLog()` 写入后 → `OPERATION_AUDIT`
 
+## 配置要求
+
+### 必需环境变量
+
+| 变量 | 说明 |
+|------|------|
+| `INTERNAL_SECRET` | 内部服务认证 Token，bls-server 与 event-service 必须一致 |
+| `DB_PASSWORD` | 数据库密码 |
+
+### 启用 event-service 时额外配置
+
+| 变量 | 说明 |
+|------|------|
+| `EVENT_SERVICE_URL` | 设为 `http://bls-event-service:7101`（Docker 内部地址） |
+
+> **注意**：不配置 `EVENT_SERVICE_URL` 时，bls-server 静默跳过事件服务，不会产生 outbox 堆积。
+
 ## 启动方式
 
 ### 本地开发
 
 ```bash
-cd bls-event-service
+# 1. 配置环境变量
 cp .env.example .env
-# 编辑 .env 配置数据库连接
+# 编辑 .env，设置 DB_PASSWORD 和 INTERNAL_SECRET
+
+# 2. 安装依赖并启动
 npm install
 npm run dev
 ```
@@ -155,10 +175,16 @@ npm run dev
 ### Docker Compose（profile: event）
 
 ```bash
-# 启动 event-service（需要 --profile event）
-docker compose --env-file .env.docker --profile event up -d --build
+# 1. 准备 .env.docker（从模板复制）
+cp .env.docker.example .env.docker
+# 编辑 .env.docker，设置所有 CHANGE_TO_* 为真实值
+# 启用 event profile 时需要设置：
+#   EVENT_SERVICE_URL=http://bls-event-service:7101
 
-# 不启动 event-service（默认）
+# 2. 启动 event-service（需要 --profile event）
+docker compose --env-file .env.docker --profile event up -d --build bls-event-service bls-server
+
+# 3. 不启动 event-service（默认）
 docker compose --env-file .env.docker up -d --build
 ```
 
@@ -168,14 +194,15 @@ docker compose --env-file .env.docker up -d --build
 2. `GET /metrics` 有 `bls_event_events_received_total` 等指标
 3. event-service 启动后，Koa 登录/安全事件能写入 `sys_event_log`
 4. event-service 停止后，登录不报 500
-5. Outbox 能记录失败事件并重试
-6. 前端代码无业务改动
-7. 不启动 profile 时 event-service 不启动
+5. 配置了 `EVENT_SERVICE_URL` 时，event-service 不可达则写 Outbox 重试
+6. 不配置 `EVENT_SERVICE_URL` 时，主系统静默跳过，不产生 outbox 堆积
+7. 前端代码无业务改动
+8. 不启动 profile 时 event-service 不启动
 
 ### 验收命令
 
 ```bash
-# 启动 event-service + bls-server
+# 启动 event-service + bls-server（确保 .env.docker 中配置了 EVENT_SERVICE_URL）
 docker compose --env-file .env.docker --profile event up -d --build bls-event-service bls-server
 
 # 登录一次 Koa
@@ -194,7 +221,7 @@ curl -X POST http://localhost:7001/api/auth/login \
   -d '{"tenantId":"000000","username":"superadmin","password":"admin123"}'
 # 预期：返回 200，登录成功
 
-# outbox_event 应有 EVENT_SERVICE_PUBLISH 记录
+# outbox_event 应有 EVENT_SERVICE_PUBLISH 记录（因为配置了 EVENT_SERVICE_URL）
 docker compose exec mysql mysql -uroot -p"${DB_PASSWORD}" bls \
   -e "SELECT event_id, event_type, status, retry_count FROM outbox_event WHERE event_type='EVENT_SERVICE_PUBLISH' ORDER BY created_at DESC LIMIT 5"
 ```

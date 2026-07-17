@@ -12,7 +12,7 @@ import { getDb } from '../core/database';
 import { generateSnowflakeId } from '../shared/utils/snowflake';
 
 const EVENT_SERVICE_URL = (process.env.EVENT_SERVICE_URL ?? '').replace(/\/+$/, '');
-const INTERNAL_SECRET = process.env.INTERNAL_SECRET ?? 'change_me_internal';
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET ?? '';
 const REQUEST_TIMEOUT = 3_000;
 
 export interface EventPayload {

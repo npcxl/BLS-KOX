@@ -42,8 +42,8 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-}
       - REPLAY_ENABLED=true
       - API_SIGN_SECRET=${API_SIGN_SECRET:-}
-      - EVENT_SERVICE_URL=${EVENT_SERVICE_URL:-http://bls-event-service:7101}
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-change_me_internal}
+      - EVENT_SERVICE_URL=${EVENT_SERVICE_URL:-}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET is required}
     depends_on:
       mysql:
         condition: service_healthy
@@ -75,7 +75,7 @@ services:
       - DB_USER=${DB_USER:-root}
       - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
       - DB_NAME=${DB_NAME:-bls}
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-change_me_internal}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET is required}
     depends_on:
       mysql:
         condition: service_healthy
