@@ -1,4 +1,6 @@
-# CrudTablePage 及其 Hook 封装文档
+# CrudTable 和 Hook 封装
+
+> 状态：current | 适用范围：前端
 
 `CrudTablePage` 组件 + `useCrudTable` Hook 将 CRUD 页面的通用逻辑（分页列表、新增/编辑弹窗、删除、状态切换、搜索模式等）标准化。
 

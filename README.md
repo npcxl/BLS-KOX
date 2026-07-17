@@ -238,22 +238,24 @@ cd ../bls-admin
 npm install && npm run dev                     # http://localhost:9000
 ```
 
-### 方式三：Java 后端（与 Koa 并存，Docker 部署待验证）
+### 方式三：Java 后端（与 Koa 并存）
 
 ```bash
 # 1. 编译 Java 项目
 cd bls-java-server
 mvn clean package -DskipTests
 
-# 2. 本地运行 Java 后端
-java -jar target/bls-java-server-1.0.0.jar     # http://localhost:8080
-
-# 3. Docker 部署 Java 后端（待验证）
+# 2. Docker 部署 Java 后端
 cd ..
-docker compose --env-file .env.docker --profile java up -d --build bls-java-server
+docker compose --env-file .env.docker down
+docker compose --env-file .env.docker -f docker-compose.yml -f docker-compose.java.yml up -d --build
+
+# 3. 切回 Koa
+docker compose --env-file .env.docker down
+docker compose --env-file .env.docker up -d --build
 ```
 
-> ⚠️ Java 后端 Docker 部署尚未完成验证，详见 [Docker 部署指南](./docs/docker-deploy.md)。
+> 详见 [Docker 部署指南](./docs/docker-deploy.md)。
 
 ### 切换后端（Koa ↔ Java）
 
@@ -349,10 +351,12 @@ BLS-KOX/
 
 ## 📖 Documentation
 
+> 📚 **[文档中心](./docs/index.md)** — 全部文档导航入口
+
 | 文档 | 说明 |
 |------|------|
 | [快速开始](./docs/getting-started.md) | 环境要求、安装、启动、演示账号 |
-| [Docker 部署](./docs/docker-deploy.md) | Docker Compose 部署、切换后端、故障排查 |
+| [Docker 部署](./docs/docker-deploy.md) | Docker Compose 一键部署、Koa/Java 切换、故障排查 |
 | [双后端定位](./docs/backend-comparison.md) | Koa vs Java 定位差异、对比表、如何选择 |
 | [架构设计](./docs/architecture.md) | 请求链路、中间件、双后端总览 |
 | [Koa 后端](./docs/backend-koa.md) | Koa + TypeScript 架构、CRUD 工厂、中间件链 |

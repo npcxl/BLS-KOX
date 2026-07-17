@@ -1,5 +1,9 @@
 # BLS-Server Java 后端迁移设计规范
 
+> ⚠️ **已归档** — Java 后端已实现为独立项目 `bls-java-server`，与 Koa 并存而非迁移。
+> 当前采用双后端共存架构，详见 [双后端定位](../backend-comparison.md) 和 [Java 后端架构](../backend-java.md)。
+> 本文档保留作为历史设计参考。
+
 > 目标：将 bls-server 从 Koa/TypeScript/Kysely 迁移到 Spring Boot 3.x/Java 17/MyBatis-Plus，前端零改动。
 
 ## 1. 技术选型

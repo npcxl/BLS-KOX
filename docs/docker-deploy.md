@@ -7,7 +7,7 @@
 
 ---
 
-## 方式一：Koa 后端（默认，已验证）
+## 方式一：Koa 后端（默认）
 
 Koa 后端是默认后端，一条命令启动所有服务。
 
@@ -61,7 +61,7 @@ bls-server     Up (healthy)
 
 ---
 
-## 方式二：Java 后端（已验证）
+## 方式二：Java 后端
 
 Java 后端使用 Spring Boot 3 + Java 21，通过独立的 compose 覆盖文件启动。
 

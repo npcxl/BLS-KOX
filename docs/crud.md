@@ -282,8 +282,65 @@ public abstract class BaseCrudService<T> {
 | 校验 | Zod Schema（可选） | Jakarta Validation |
 | 自定义扩展 | 混合模式（Router + config） | override 方法 / 直接添加端点 |
 
+## 函数导出模式（Koa）
+
+除了 `defineCrudModule` 和混合模式，Koa 还支持导出命名函数自动注册为路由：
+
+| 函数名 | HTTP | 路径 | 认证 |
+|--------|------|------|------|
+| `getList` | GET | `/list` | JWT |
+| `addUser` | POST | `/add-user` | JWT |
+| `editRole` | PUT | `/edit-role` | JWT |
+| `removeItem` | DELETE | `/remove-item` | JWT |
+| `publicInfo` | GET | `/public-info` | 无需 |
+
+规则：
+- `add*` / `create*` / `save*` → POST
+- `edit*` / `update*` → PUT
+- `delete*` / `remove*` → DELETE
+- 其他 → GET
+- `public*` / `login` / `logout` / `refresh` 跳过认证
+- 大写字母开头的函数不注册为路由（工具函数）
+
+## 动态列配置（Page Config）
+
+允许运行时配置页面列的显示/搜索/编辑等属性，无需改代码。
+
+### 数据表
+
+- **`sys_page_config`**：页面配置
+- **`sys_page_column_config`**：列配置（`data_index`、`title`、`visible`、`searchable`、`editable`、`order_num`、`value_type`、`value_enum_code` 等）
+
+### 前端 Hook
+
+```tsx
+const { proColumns, formColumns, loading } = usePageConfig('system_user');
+```
+
+自动调用 `GET /system/page-config/page/system_user/columns`，根据 `visible`/`editable` 过滤生成表格列和表单列。
+
+### API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/system/page-config/list` | 页面配置列表 |
+| GET | `/system/page-config/page/:pageCode` | 单个页面配置 |
+| GET | `/system/page-config/page/:pageCode/columns` | 列配置 |
+| POST | `/system/page-config/save` | 保存（upsert） |
+| DELETE | `/system/page-config/page/:pageCode` | 删除 |
+
+### 文件组织规范（Koa）
+
+- 只扫描 `index.ts`，路由前缀 = 文件夹相对路径
+- 跳过文件：`model.ts`、`*.routes.ts`、`*.controller.ts`、`*.service.ts`、`*.repository.ts`
+
+## 从零新建模块（Koa）
+
+**建表（SQL）** → **后端 config（~7 行 TS）** → **前端 CrudTablePage（~25 行 TSX）** = 完整增删改查模块。
+
 ## 参考文档
 
 - [Koa 后端架构](./backend-koa.md) — Koa CRUD 工厂完整说明
 - [Java 后端架构](./backend-java.md) — Java 分层架构详细说明
 - [API 兼容性规范](./api-compatibility.md) — 双后端 API 一致性要求
+- [动态接口生成文档（已合并）](./archive/dynamic-api-generation.md) — 原始详细文档

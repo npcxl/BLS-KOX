@@ -1,4 +1,6 @@
-# Webhook Platform 文档
+# Webhook 集成
+
+> 状态：current | 适用范围：Koa 后端
 
 ## 概述
 

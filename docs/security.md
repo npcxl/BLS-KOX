@@ -6,7 +6,7 @@
 1. **Timestamp** — 5 分钟过期
 2. **Nonce** — 一次性随机数，Redis 缓存去重
 3. **HMAC 签名** — 可选，服务端验证
-4. **幂等 Key** — `X-Idempotent-Key` 非重复
+4. **幂等 Key** — `Idempotency-Key` 非重复（兼容旧 Header `X-Idempotent-Key`）
 
 配置：`REPLAY_ENABLED=true`
 
