@@ -180,6 +180,42 @@ export default [
     ],
   },
   {
+    path: "/ai",
+    name: "AI 工作台",
+    icon: "RobotOutlined",
+    routes: [
+      {
+        path: "/ai/workbench",
+        name: "AI 工作台",
+        component: "./ai/workbench",
+      },
+      {
+        path: "/ai/crud",
+        name: "CRUD 生成",
+        component: "./ai/crud",
+      },
+      {
+        path: "/ai/sql",
+        name: "SQL 助手",
+        component: "./ai/sql",
+      },
+      {
+        path: "/ai/audit",
+        name: "审计分析",
+        component: "./ai/audit",
+      },
+      {
+        path: "/ai/config-review",
+        name: "配置审查",
+        component: "./ai/config-review",
+      },
+      {
+        path: "/ai",
+        redirect: "/ai/workbench",
+      },
+    ],
+  },
+  {
     path: "/",
     redirect: "/dashboard",
   },
