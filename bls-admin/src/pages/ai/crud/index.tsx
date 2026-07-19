@@ -1,13 +1,11 @@
 import { PageContainer } from '@ant-design/pro-components';
 import { useState } from 'react';
 import { Card, Form, Input, Button, message, Typography, Descriptions, Tag, Space, Table } from 'antd';
-import { CodeOutlined, CopyOutlined, SendOutlined, ThunderboltOutlined } from '@ant-design/icons';
-import { request } from '@umijs/max';
+import { CodeOutlined, CopyOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useAiStream } from '@/hooks/useAiStream';
 import AiStreamOutput from '@/components/AiStreamOutput';
 
 const { TextArea } = Input;
-const { Title, Paragraph, Text } = Typography;
 
 export default function AiCrudPage() {
   const [form] = Form.useForm();
@@ -18,7 +16,6 @@ export default function AiCrudPage() {
     try {
       const values = await form.validateFields();
       setResult(null);
-      // 启动 WebSocket 流式生成
       start('crud', { tableName: values.tableName, description: values.description });
     } catch (err: any) {
       if (err?.errorFields) return;
@@ -26,71 +23,41 @@ export default function AiCrudPage() {
     }
   };
 
-  // 流式完成后尝试解析 JSON 结果
-  const tryParseResult = (content: string) => {
+  // 流式完成后自动解析 JSON
+  const handleStreamDone = (content: string) => {
     try {
       const trimmed = content.trim();
       const match = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, trimmed];
       const json = JSON.parse(match[1] || trimmed);
       setResult(json);
-    } catch {
-      // 非 JSON 输出（如 SQL），不解析
-    }
+    } catch { /* 非 JSON 不解析 */ }
   };
 
-  const copyText = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => message.success('已复制'));
-  };
+  const copyText = (text: string) => navigator.clipboard.writeText(text).then(() => message.success('已复制'));
 
   return (
-    <PageContainer
-      header={{
-        title: <Space><CodeOutlined /><span>CRUD 生成器</span></Space>,
-        subTitle: '根据自然语言描述，生成建表 SQL + CRUD 配置，实时流式输出过程',
-      }}
-    >
+    <PageContainer header={{ title: <Space><CodeOutlined /><span>CRUD 生成器</span></Space>, subTitle: '描述需求，AI 实时生成建表 SQL 和 CRUD 配置' }}>
       <div style={{ maxWidth: 1000, margin: '0 auto' }}>
         <Card>
           <Form form={form} layout="vertical" initialValues={{ tenantIsolation: true }}>
-            <Form.Item
-              name="tableName" label="表名"
-              rules={[
-                { required: true, message: '请输入表名' },
-                { pattern: /^[a-zA-Z_][a-zA-Z0-9_]*$/, message: '表名格式不合法' },
-              ]}
-            >
+            <Form.Item name="tableName" label="表名" rules={[{ required: true, message: '请输入表名' }, { pattern: /^[a-zA-Z_][a-zA-Z0-9_]*$/, message: '表名格式不合法' }]}>
               <Input placeholder="例如: sys_product" maxLength={64} />
             </Form.Item>
-            <Form.Item
-              name="description" label="模块描述"
-              rules={[{ required: true, message: '请输入模块描述' }, { max: 2000 }]}
-            >
+            <Form.Item name="description" label="模块描述" rules={[{ required: true }, { max: 2000 }]}>
               <TextArea rows={4} placeholder="例如：商品管理模块，包含商品名称、分类、价格、库存、状态、创建时间" maxLength={2000} showCount />
             </Form.Item>
             <Space>
-              <Button type="primary" icon={<ThunderboltOutlined />} loading={stream.loading} onClick={handleGenerate} size="large">
-                流式生成
-              </Button>
-              {stream.loading && <Button onClick={stop}>停止</Button>}
-              {!stream.loading && (
-                <Button onClick={() => { form.resetFields(); setResult(null); }}>重置</Button>
-              )}
-              {stream.done && stream.content && !result && (
-                <Button onClick={() => tryParseResult(stream.content)}>解析结果</Button>
-              )}
+              <Button type="primary" icon={<ThunderboltOutlined />} loading={stream.loading} onClick={handleGenerate} size="large">流式生成</Button>
+              {stream.loading && <Button onClick={stop} danger>停止</Button>}
+              {!stream.loading && <Button onClick={() => { form.resetFields(); setResult(null); }}>重置</Button>}
             </Space>
           </Form>
         </Card>
 
-        {/* 流式输出区域 */}
-        {(stream.loading || stream.content) && (
-          <Card
-            title={<Space><ThunderboltOutlined style={{ color: '#1677ff' }} /><span>AI 生成过程</span></Space>}
-            style={{ marginTop: 16 }}
-          >
-            <AiStreamOutput content={stream.content} loading={stream.loading} done={stream.done} language="json" />
-          </Card>
-        )}
+        {/* 流式输出 - 自动滚动、自动解析 */}
+        <div style={{ marginTop: 16 }}>
+          <AiStreamOutput content={stream.content} loading={stream.loading} done={stream.done} onDone={handleStreamDone} />
+        </div>
 
         {/* 结构化结果 */}
         {result && (
@@ -100,17 +67,16 @@ export default function AiCrudPage() {
             </Card>
             {result.crudConfig?.columns && (
               <Card title="字段配置" style={{ marginBottom: 16 }}>
-                <Table
-                  dataSource={result.crudConfig.columns.map((col: any, i: number) => ({ ...col, key: i }))}
-                  columns={[
-                    { title: '字段名', dataIndex: 'field', key: 'field', width: 150 },
-                    { title: '显示名', dataIndex: 'label', key: 'label', width: 120 },
-                    { title: '类型', dataIndex: 'type', key: 'type', width: 100, render: (v: string) => <Tag color="blue">{v}</Tag> },
-                    { title: '必填', dataIndex: 'required', key: 'required', width: 70, render: (v: boolean) => v ? <Tag color="red">必填</Tag> : <Tag>可选</Tag> },
-                    { title: '可搜索', dataIndex: 'searchable', key: 'searchable', width: 80, render: (v: boolean) => v ? <Tag color="green">是</Tag> : <Tag>否</Tag> },
-                    { title: '可排序', dataIndex: 'sortable', key: 'sortable', width: 80, render: (v: boolean) => v ? <Tag color="green">是</Tag> : <Tag>否</Tag> },
-                  ]}
+                <Table dataSource={result.crudConfig.columns.map((c: any, i: number) => ({ ...c, key: i }))}
                   pagination={false} size="small" bordered
+                  columns={[
+                    { title: '字段名', dataIndex: 'field', width: 150 },
+                    { title: '显示名', dataIndex: 'label', width: 120 },
+                    { title: '类型', dataIndex: 'type', width: 100, render: (v: string) => <Tag color="blue">{v}</Tag> },
+                    { title: '必填', dataIndex: 'required', width: 60, render: (v: boolean) => v ? <Tag color="red">是</Tag> : <Tag>否</Tag> },
+                    { title: '可搜索', dataIndex: 'searchable', width: 70, render: (v: boolean) => v ? <Tag color="green">是</Tag> : <Tag>否</Tag> },
+                    { title: '可排序', dataIndex: 'sortable', width: 70, render: (v: boolean) => v ? <Tag color="green">是</Tag> : <Tag>否</Tag> },
+                  ]}
                 />
               </Card>
             )}
