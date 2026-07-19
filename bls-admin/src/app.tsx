@@ -56,14 +56,6 @@ function resolveMenuIcon(icon?: string | null) {
   return AntIconComponent ? <AntIconComponent /> : undefined;
 }
 
-/** 递归查找菜单树中是否存在指定 path */
-function deepFindPath(menus: any[], targetPath: string): boolean {
-  for (const m of menus) {
-    if (m.path === targetPath) return true;
-    if (m.children && deepFindPath(m.children, targetPath)) return true;
-  }
-  return false;
-}
 
 /**
  * 以接口为准，不以路由配置
@@ -121,9 +113,6 @@ function mapBackendMenus(
       return item;
     });
 
-  // 后端菜单树中任意层级无 /ai 节点时，追加 AI 菜单作为兜底
-  const hasAiMenu = deepFindPath(backendMenus, '/ai');
-
   return [
     {
       key: "/dashboard",
@@ -133,22 +122,6 @@ function mapBackendMenus(
       locale: false,
     },
     ...backendMenus,
-    ...(hasAiMenu
-      ? []
-      : [{
-          key: '/ai',
-          path: '/ai',
-          name: 'AI 工作台',
-          icon: <AntIcons.RobotOutlined />,
-          locale: false,
-          children: [
-            { key: '/ai/workbench', path: '/ai/workbench', name: 'AI 工作台', locale: false },
-            { key: '/ai/crud', path: '/ai/crud', name: 'CRUD 生成', locale: false },
-            { key: '/ai/sql', path: '/ai/sql', name: 'SQL 助手', locale: false },
-            { key: '/ai/audit', path: '/ai/audit', name: '审计分析', locale: false },
-            { key: '/ai/config-review', path: '/ai/config-review', name: '配置审查', locale: false },
-          ],
-        }]),
   ];
 }
 

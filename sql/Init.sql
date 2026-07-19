@@ -536,7 +536,10 @@ INSERT INTO `sys_package_menu` VALUES
 ('P001','file_manage_upload_0001'),('P100','file_manage_upload_0001'),('P001','storage_config_0001'),
 ('P100','storage_config_0001'),('P001','storage_config_add_0001'),('P100','storage_config_add_0001'),
 ('P001','storage_config_edit_0001'),('P100','storage_config_edit_0001'),('P001','storage_config_remove_0001'),
-('P100','storage_config_remove_0001');
+('P100','storage_config_remove_0001'),('P001','ai_workbench_0001'),('P001','ai_workbench_0002'),
+('P001','ai_crud_0001'),('P001','ai_sql_0001'),('P001','ai_audit_0001'),('P001','ai_config_0001'),
+('P100','ai_workbench_0001'),('P100','ai_workbench_0002'),('P100','ai_crud_0001'),('P100','ai_sql_0001'),
+('P100','ai_audit_0001'),('P100','ai_config_0001');
 
 -- -------------------------------------------------------
 -- sys_page_column_config
@@ -799,7 +802,10 @@ INSERT INTO `sys_role_menu` VALUES
 ('100001','file_manage_0001'),('100001','file_manage_download_0001'),('100001','file_manage_remove_0001'),
 ('100001','file_manage_upload_0001'),
 ('100002','000100'),('100002','000120'),('100002','000121'),('100002','000130'),('100002','000131'),
-('100002','000160'),('100002','000161');
+('100002','000160'),('100002','000161'),('000001','ai_workbench_0001'),('000001','ai_workbench_0002'),
+('000001','ai_crud_0001'),('000001','ai_sql_0001'),('000001','ai_audit_0001'),('000001','ai_config_0001'),
+('100001','ai_workbench_0001'),('100001','ai_workbench_0002'),('100001','ai_crud_0001'),('100001','ai_sql_0001'),
+('100001','ai_audit_0001'),('100001','ai_config_0001');
 
 -- -------------------------------------------------------
 -- sys_search_index
