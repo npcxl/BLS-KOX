@@ -88,6 +88,40 @@ services:
       retries: 3
       start_period: 15s
 
+  # ========== AI 服务 (Koa 微服务，可选启动) ==========
+  bls-ai-service:
+    build:
+      context: ./bls-ai-service
+    container_name: bls-ai-service
+    restart: unless-stopped
+    profiles:
+      - ai
+    expose:
+      - "7201"
+    environment:
+      - NODE_ENV=production
+      - APP_PORT=7201
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - AI_PROVIDER=${AI_PROVIDER:-openai}
+      - AI_MODEL=${AI_MODEL:-gpt-4o-mini}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      - AI_BASE_URL=${AI_BASE_URL:-}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:?INTERNAL_SECRET is required}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - bls-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:7201/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   # ========== 后端 Java (可选，与 Koa 并存) ==========
   bls-java-server:
     build:
