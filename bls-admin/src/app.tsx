@@ -97,8 +97,23 @@ function mapBackendMenus(
           ],
         };
       }
+      if (item.path === '/ai') {
+        return {
+          ...item,
+          children: [
+            { key: '/ai/workbench', path: '/ai/workbench', name: 'AI 工作台', locale: false },
+            { key: '/ai/crud', path: '/ai/crud', name: 'CRUD 生成', locale: false },
+            { key: '/ai/sql', path: '/ai/sql', name: 'SQL 助手', locale: false },
+            { key: '/ai/audit', path: '/ai/audit', name: '审计分析', locale: false },
+            { key: '/ai/config-review', path: '/ai/config-review', name: '配置审查', locale: false },
+          ],
+        };
+      }
       return item;
     });
+
+  // 后端菜单中无 /ai 父节点时，追加 AI 菜单作为兜底
+  const hasAiMenu = backendMenus.some((m) => m.path === '/ai');
 
   return [
     {
@@ -109,12 +124,29 @@ function mapBackendMenus(
       locale: false,
     },
     ...backendMenus,
+    ...(hasAiMenu
+      ? []
+      : [{
+          key: '/ai',
+          path: '/ai',
+          name: 'AI 工作台',
+          icon: <AntIcons.RobotOutlined />,
+          locale: false,
+          children: [
+            { key: '/ai/workbench', path: '/ai/workbench', name: 'AI 工作台', locale: false },
+            { key: '/ai/crud', path: '/ai/crud', name: 'CRUD 生成', locale: false },
+            { key: '/ai/sql', path: '/ai/sql', name: 'SQL 助手', locale: false },
+            { key: '/ai/audit', path: '/ai/audit', name: '审计分析', locale: false },
+            { key: '/ai/config-review', path: '/ai/config-review', name: '配置审查', locale: false },
+          ],
+        }]),
   ];
 }
 
 function normalizeSelectedKeys(pathname: string) {
   if (pathname.startsWith('/system/')) return [pathname];
   if (pathname.startsWith('/tenant/')) return [pathname];
+  if (pathname.startsWith('/ai/')) return [pathname];
   if (pathname === '/dashboard') return ['/dashboard'];
   return [pathname];
 }
