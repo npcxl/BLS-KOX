@@ -1,6 +1,6 @@
 import { PageContainer } from '@ant-design/pro-components';
 import { useState } from 'react';
-import { Card, Form, Input, Button, message, Typography, Space, Tag, Table, Select, Row, Col } from 'antd';
+import { Card, Form, Input, Button, message, Space, Tag, Table, Select, Row, Col, Typography } from 'antd';
 import { SafetyOutlined, ThunderboltOutlined, CheckCircleFilled } from '@ant-design/icons';
 import { useAiStream } from '@/hooks/useAiStream';
 import AiStreamOutput from '@/components/AiStreamOutput';
@@ -15,12 +15,14 @@ export default function AiConfigReviewPage() {
   const [form] = Form.useForm();
   const [result, setResult] = useState<any>(null);
   const [configType, setConfigType] = useState<string>('all');
+  const [userPrompt, setUserPrompt] = useState('');
   const { stream, start, stop } = useAiStream();
 
   const handleReview = async () => {
     try {
       const values = await form.validateFields();
       setResult(null);
+      setUserPrompt(`审查 ${values.configType} 配置文件`);
       start('config', { configType: values.configType, configContent: values.configContent });
     } catch (err: any) {
       if (err?.errorFields) return;
@@ -39,25 +41,35 @@ export default function AiConfigReviewPage() {
   return (
     <PageContainer header={{ title: <Space><SafetyOutlined /><span>配置审查</span></Space>, subTitle: '粘贴配置，AI 实时检测安全问题' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <Card>
-          <Form form={form} layout="vertical" initialValues={{ configType: 'all' }}>
-            <Form.Item name="configType" label="配置类型">
-              <Select options={[{ label: '全部', value: 'all' }, { label: '.env', value: 'env' }, { label: 'Docker', value: 'docker' }, { label: 'YAML', value: 'yml' }]} onChange={(v) => setConfigType(v)} />
+        <Card style={{ marginBottom: 16 }}>
+          <Form form={form} layout="inline" initialValues={{ configType: 'all' }} style={{ flexWrap: 'wrap', gap: 8 }}>
+            <Form.Item name="configType" label="类型">
+              <Select style={{ width: 120 }} options={[{ label: '全部', value: 'all' }, { label: '.env', value: 'env' }, { label: 'Docker', value: 'docker' }, { label: 'YAML', value: 'yml' }]} onChange={(v) => setConfigType(v)} />
             </Form.Item>
-            <Form.Item name="configContent" label="配置内容" rules={[{ required: true }, { max: 20000 }]}>
-              <TextArea rows={12} placeholder="粘贴配置文件..." maxLength={20000} showCount />
+            <Form.Item name="configContent" label="配置" rules={[{ required: true }]}>
+              <TextArea rows={2} placeholder="粘贴配置..." style={{ width: 380 }} maxLength={20000} />
             </Form.Item>
-            <Space>
-              <Button type="primary" icon={<ThunderboltOutlined />} loading={stream.loading} onClick={handleReview} size="large">流式审查</Button>
-              {stream.loading && <Button onClick={stop} danger>停止</Button>}
-              <Button onClick={() => form.setFieldsValue({ configContent: examples[configType] || examples.env })}>填充示例</Button>
-              {!stream.loading && <Button onClick={() => { form.resetFields(); setResult(null); }}>重置</Button>}
-            </Space>
+            <Form.Item>
+              <Space>
+                <Button type="primary" icon={<ThunderboltOutlined />} loading={stream.loading} onClick={handleReview} size="large">流式审查</Button>
+                {stream.loading && <Button onClick={stop} danger>停止</Button>}
+                <Button onClick={() => form.setFieldsValue({ configContent: examples[configType] || examples.env })}>填充示例</Button>
+                {!stream.loading && <Button onClick={() => { form.resetFields(); setResult(null); }}>重置</Button>}
+              </Space>
+            </Form.Item>
           </Form>
         </Card>
-        <div style={{ marginTop: 16 }}>
-          <AiStreamOutput content={stream.content} loading={stream.loading} done={stream.done} onDone={handleStreamDone} />
-        </div>
+
+        <Card title="AI 对话" styles={{ body: { padding: '8px 16px' } }}>
+          <AiStreamOutput content={stream.content} loading={stream.loading} done={stream.done} userPrompt={userPrompt} onDone={handleStreamDone} />
+          {!stream.loading && !stream.content && (
+            <div style={{ textAlign: 'center', padding: 60, color: '#999' }}>
+              <SafetyOutlined style={{ fontSize: 48, color: '#d9d9d9', marginBottom: 12 }} />
+              <div>粘贴配置文件，点击"流式审查"</div>
+            </div>
+          )}
+        </Card>
+
         {result && (
           <div style={{ marginTop: 16 }}>
             <Card style={{ marginBottom: 16 }}>

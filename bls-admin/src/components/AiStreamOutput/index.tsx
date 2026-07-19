@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { Tag, Space, Typography } from 'antd';
-import { LoadingOutlined, CheckCircleOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { Avatar, Space, Typography } from 'antd';
+import { RobotOutlined, UserOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
 
@@ -8,120 +8,108 @@ interface Props {
   content: string;
   loading: boolean;
   done: boolean;
+  userPrompt?: string;
   onDone?: (content: string) => void;
 }
 
-export default function AiStreamOutput({ content, loading, done, onDone }: Props) {
+export default function AiStreamOutput({ content, loading, done, userPrompt, onDone }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 自动滚动到底部
   useEffect(() => {
     if (scrollRef.current && (loading || content)) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [content, loading]);
 
-  // 完成后自动触发解析
   useEffect(() => {
-    if (done && content && onDone) {
-      onDone(content);
-    }
+    if (done && content && onDone) onDone(content);
   }, [done]);
 
   if (!loading && !content) return null;
 
   return (
     <div
+      ref={scrollRef}
       style={{
-        background: '#fff',
-        border: loading ? '1px solid #1677ff' : '1px solid #e8e8e8',
-        borderRadius: 8,
-        overflow: 'hidden',
-        transition: 'border-color 0.3s',
-        boxShadow: loading ? '0 0 0 2px rgba(22,119,255,0.1)' : 'none',
+        maxHeight: 450,
+        overflow: 'auto',
+        padding: '12px 4px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
       }}
     >
-      {/* 头部状态 */}
-      <div
-        style={{
-          padding: '10px 16px',
-          background: loading
-            ? 'linear-gradient(135deg, #e6f4ff, #bae0ff)'
-            : done
-            ? 'linear-gradient(135deg, #f6ffed, #d9f7be)'
-            : '#fafafa',
-          borderBottom: '1px solid #f0f0f0',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <Space size={8}>
-          <ThunderboltOutlined style={{ color: loading ? '#1677ff' : '#52c41a', fontSize: 16 }} />
-          <Text strong style={{ color: loading ? '#1677ff' : '#389e0d' }}>
-            {loading ? 'AI 正在思考...' : '生成完毕'}
-          </Text>
-        </Space>
-        <Space size={8}>
-          {loading && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-              {[0, 0.15, 0.3].map((delay, i) => (
-                <span
-                  key={i}
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: 3,
-                    background: '#1677ff',
-                    animation: `dotPulse 0.6s ease-in-out ${delay}s infinite`,
-                  }}
-                />
-              ))}
-            </span>
-          )}
-          {done && <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} />}
-        </Space>
-      </div>
+      {/* 用户消息 */}
+      {userPrompt && (
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <div style={{ maxWidth: '80%' }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #1677ff, #4096ff)',
+              color: '#fff',
+              padding: '10px 16px',
+              borderRadius: '16px 16px 4px 16px',
+              fontSize: 14,
+              lineHeight: 1.6,
+              wordBreak: 'break-word',
+            }}>
+              {userPrompt}
+            </div>
+          </div>
+          <Avatar size={32} icon={<UserOutlined />} style={{ background: '#1677ff', flexShrink: 0 }} />
+        </div>
+      )}
 
-      {/* 内容区 */}
-      <div
-        ref={scrollRef}
-        style={{
-          padding: '16px 20px',
-          maxHeight: 400,
-          overflow: 'auto',
-          fontSize: 14,
-          lineHeight: 1.8,
-          fontFamily: "'SF Mono', 'Fira Code', 'Consolas', 'Monaco', monospace",
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-          color: '#262626',
-        }}
-      >
-        {content || (
-          <span style={{ color: '#bfbfbf', fontStyle: 'italic' }}>等待模型响应...</span>
-        )}
-        {loading && (
-          <span
+      {/* AI 回复 */}
+      {(content || loading) && (
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Avatar
+            size={32}
+            icon={<RobotOutlined />}
             style={{
-              display: 'inline-block',
-              width: 2,
-              height: 18,
-              background: '#1677ff',
-              marginLeft: 1,
-              verticalAlign: 'text-bottom',
-              animation: 'cursorBlink 0.8s step-end infinite',
+              background: done ? '#52c41a' : '#722ed1',
+              flexShrink: 0,
+              animation: loading ? 'aiPulse 2s ease-in-out infinite' : 'none',
             }}
           />
-        )}
-      </div>
+          <div style={{ maxWidth: '85%', minWidth: 200 }}>
+            <div style={{
+              background: loading ? '#f9f0ff' : '#f6ffed',
+              border: loading ? '1px solid #d3adf7' : '1px solid #b7eb8f',
+              borderRadius: '4px 16px 16px 16px',
+              padding: '12px 16px',
+              fontSize: 14,
+              lineHeight: 1.8,
+              fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              color: '#262626',
+              minHeight: 40,
+              position: 'relative',
+            }}>
+              {content || (
+                <span style={{ color: '#bfbfbf', fontStyle: 'italic' }}>...</span>
+              )}
+              {loading && (
+                <span style={{
+                  display: 'inline-block', width: 2, height: 18, background: '#722ed1',
+                  marginLeft: 1, verticalAlign: 'text-bottom',
+                  animation: 'cursorBlink 0.8s step-end infinite',
+                }} />
+              )}
+            </div>
+            {/* 小字提示 */}
+            <div style={{ marginTop: 4, paddingLeft: 4 }}>
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                {loading ? 'AI 正在生成...' : 'DeepSeek · 生成完毕'}
+              </Text>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes cursorBlink { 50% { opacity: 0; } }
-        @keyframes dotPulse {
-          0%, 100% { opacity: 0.3; transform: scale(0.8); }
-          50% { opacity: 1; transform: scale(1.2); }
-        }
+        @keyframes aiPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(114,46,209,0.4); } 50% { box-shadow: 0 0 0 6px rgba(114,46,209,0); } }
       `}</style>
     </div>
   );

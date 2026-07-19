@@ -1,6 +1,6 @@
 import { PageContainer } from '@ant-design/pro-components';
 import { useState } from 'react';
-import { Card, Form, Input, Button, message, Typography, Space, Tag, Select, Table, Statistic, Row, Col } from 'antd';
+import { Card, Form, Input, Button, message, Space, Tag, Select, Table, Statistic, Row, Col, Typography } from 'antd';
 import { AuditOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useAiStream } from '@/hooks/useAiStream';
 import AiStreamOutput from '@/components/AiStreamOutput';
@@ -12,12 +12,14 @@ const riskColor: Record<string, string> = { high: '#ff4d4f', medium: '#faad14', 
 export default function AiAuditPage() {
   const [form] = Form.useForm();
   const [result, setResult] = useState<any>(null);
+  const [userPrompt, setUserPrompt] = useState('');
   const { stream, start, stop } = useAiStream();
 
   const handleAnalyze = async () => {
     try {
       const values = await form.validateFields();
       setResult(null);
+      setUserPrompt(`分析 ${values.logType} 类型日志:\n${values.logData}`);
       start('audit', { logType: values.logType, logData: values.logData, timeRange: values.timeRange });
     } catch (err: any) {
       if (err?.errorFields) return;
@@ -34,27 +36,36 @@ export default function AiAuditPage() {
   };
 
   return (
-    <PageContainer header={{ title: <Space><AuditOutlined /><span>审计分析</span></Space>, subTitle: '粘贴日志，AI 实时分析风险并给出建议' }}>
+    <PageContainer header={{ title: <Space><AuditOutlined /><span>审计分析</span></Space>, subTitle: '粘贴日志，AI 实时分析风险' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        <Card>
-          <Form form={form} layout="vertical" initialValues={{ logType: 'all' }}>
-            <Form.Item name="logType" label="日志类型">
-              <Select options={[{ label: '全部', value: 'all' }, { label: '登录', value: 'login' }, { label: '接口访问', value: 'api_access' }, { label: '限流', value: 'rate_limit' }, { label: '异常', value: 'error' }]} />
+        <Card style={{ marginBottom: 16 }}>
+          <Form form={form} layout="inline" initialValues={{ logType: 'all' }} style={{ flexWrap: 'wrap', gap: 8 }}>
+            <Form.Item name="logType" label="类型">
+              <Select style={{ width: 120 }} options={[{ label: '全部', value: 'all' }, { label: '登录', value: 'login' }, { label: '接口', value: 'api_access' }, { label: '限流', value: 'rate_limit' }, { label: '异常', value: 'error' }]} />
             </Form.Item>
-            <Form.Item name="timeRange" label="时间范围（可选）"><Input placeholder="例如: 最近24小时" /></Form.Item>
-            <Form.Item name="logData" label="日志数据" rules={[{ required: true }, { max: 10000 }]}>
-              <TextArea rows={8} placeholder="粘贴日志内容..." maxLength={10000} showCount />
+            <Form.Item name="logData" label="日志" rules={[{ required: true }]}>
+              <TextArea rows={2} placeholder="粘贴日志..." style={{ width: 380 }} maxLength={10000} />
             </Form.Item>
-            <Space>
-              <Button type="primary" icon={<ThunderboltOutlined />} loading={stream.loading} onClick={handleAnalyze} size="large">流式分析</Button>
-              {stream.loading && <Button onClick={stop} danger>停止</Button>}
-              {!stream.loading && <Button onClick={() => { form.resetFields(); setResult(null); }}>重置</Button>}
-            </Space>
+            <Form.Item>
+              <Space>
+                <Button type="primary" icon={<ThunderboltOutlined />} loading={stream.loading} onClick={handleAnalyze} size="large">流式分析</Button>
+                {stream.loading && <Button onClick={stop} danger>停止</Button>}
+                {!stream.loading && <Button onClick={() => { form.resetFields(); setResult(null); }}>重置</Button>}
+              </Space>
+            </Form.Item>
           </Form>
         </Card>
-        <div style={{ marginTop: 16 }}>
-          <AiStreamOutput content={stream.content} loading={stream.loading} done={stream.done} onDone={handleStreamDone} />
-        </div>
+
+        <Card title="AI 对话" styles={{ body: { padding: '8px 16px' } }}>
+          <AiStreamOutput content={stream.content} loading={stream.loading} done={stream.done} userPrompt={userPrompt} onDone={handleStreamDone} />
+          {!stream.loading && !stream.content && (
+            <div style={{ textAlign: 'center', padding: 60, color: '#999' }}>
+              <AuditOutlined style={{ fontSize: 48, color: '#d9d9d9', marginBottom: 12 }} />
+              <div>粘贴日志数据，点击"流式分析"</div>
+            </div>
+          )}
+        </Card>
+
         {result && (
           <div style={{ marginTop: 16 }}>
             <Card style={{ marginBottom: 16 }}>
