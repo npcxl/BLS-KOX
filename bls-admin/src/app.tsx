@@ -56,6 +56,15 @@ function resolveMenuIcon(icon?: string | null) {
   return AntIconComponent ? <AntIconComponent /> : undefined;
 }
 
+/** 递归查找菜单树中是否存在指定 path */
+function deepFindPath(menus: any[], targetPath: string): boolean {
+  for (const m of menus) {
+    if (m.path === targetPath) return true;
+    if (m.children && deepFindPath(m.children, targetPath)) return true;
+  }
+  return false;
+}
+
 /**
  * 以接口为准，不以路由配置
  * router.ts只是能访问什么页面硬性配置，这里软配置显示什么和怎么显示
@@ -112,8 +121,8 @@ function mapBackendMenus(
       return item;
     });
 
-  // 后端菜单中无 /ai 父节点时，追加 AI 菜单作为兜底
-  const hasAiMenu = backendMenus.some((m) => m.path === '/ai');
+  // 后端菜单树中任意层级无 /ai 节点时，追加 AI 菜单作为兜底
+  const hasAiMenu = deepFindPath(backendMenus, '/ai');
 
   return [
     {
