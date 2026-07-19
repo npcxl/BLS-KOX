@@ -13,6 +13,12 @@ export default {
       changeOrigin: true,
       timeout: 120000,
     },
+    // AI WebSocket 流式推送
+    '/ws/ai': {
+      target: 'ws://localhost:7201',
+      ws: true,
+      changeOrigin: true,
+    },
     '/api/': {
       target: 'http://localhost:6001',
       changeOrigin: true,

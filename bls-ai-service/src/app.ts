@@ -12,6 +12,7 @@ import { auditLogMiddleware } from './middleware/audit-log';
 import { aiRateLimit } from './middleware/rate-limit';
 import { connectRedis, closeRedis } from './shared/redis';
 import { logger } from './core/logger';
+import { attachAiWs } from './ws/stream-handler';
 
 import crudGenerator from './api/crud/generator';
 import sqlGenerator from './api/sql/generator';
@@ -105,6 +106,9 @@ if (require.main === module) {
   const app = createApp();
   const server = http.createServer(app.callback());
 
+  // 挂载 AI 流式 WebSocket
+  attachAiWs(server);
+
   // 连接 Redis
   connectRedis().catch((err) => {
     logger.warn('Redis 连接失败，限流功能将降级', { error: String(err) });
@@ -143,6 +147,13 @@ if (require.main === module) {
     }
 
     try { await closeRedis(); } catch { /* ignore */ }
+    try {
+      const { getWsServer } = require('./ws/stream-handler');
+      const wss = getWsServer();
+      if (wss) {
+        await new Promise<void>((resolve) => wss.close(() => resolve()));
+      }
+    } catch { /* ignore */ }
     clearTimeout(forceExit);
     logger.info('Graceful shutdown complete');
     process.exit(0);
