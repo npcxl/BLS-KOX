@@ -8,10 +8,11 @@
 export default {
   dev: {
     // AI 微服务（必须放在 /api/ 之前，否则被通用规则拦截）
+    // proxyTimeout: 代理到 AI 服务的超时（AI 推理可能耗时较长）
     '/api/ai/': {
       target: 'http://localhost:7201',
       changeOrigin: true,
-      timeout: 120000,
+      proxyTimeout: 180000,
     },
     // AI WebSocket 流式推送
     '/ws/ai': {

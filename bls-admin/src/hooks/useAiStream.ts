@@ -48,8 +48,10 @@ export function useAiStream() {
       // 获取 token
       const token = localStorage.getItem('token')?.replace(/^Bearer\s+/i, '') || '';
 
+      // 直接连 AI 服务，不走前端代理（避免 ws 代理兼容问题）
+      const aiHost = window.location.hostname + ':7201';
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws/ai`;
+      const wsUrl = `${protocol}//${aiHost}/ws/ai`;
 
       let fullContent = '';
       let ws: WebSocket;
