@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import { getAiProvider } from '../provider/factory';
 import { logger } from '../core/logger';
+import { checkSqlSafety, injectTenantId } from '../api/sql/sql-guard';
 
 interface WsMessage {
   type: 'crud' | 'sql' | 'audit' | 'config';
@@ -16,7 +17,16 @@ interface JwtPayload {
   tenantId: string;
   username?: string;
   tokenType: string;
+  permissions?: string[];
 }
+
+/** 消息类型 → 所需权限码 */
+const PERMISSION_MAP: Record<string, string> = {
+  crud: 'ai:crud:generate',
+  sql: 'ai:sql:generate',
+  audit: 'ai:audit:analyze',
+  config: 'ai:config:review',
+};
 
 /** 输出到 WebSocket 的辅助函数 */
 function send(ws: WebSocket, data: Record<string, any>) {
@@ -45,6 +55,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage) {
   let authenticated = false;
   let userId = '';
   let tenantId = '';
+  let userPermissions: string[] = [];
 
   ws.on('message', async (raw) => {
     try {
@@ -61,7 +72,19 @@ function handleConnection(ws: WebSocket, req: IncomingMessage) {
         authenticated = true;
         userId = payload.userId;
         tenantId = payload.tenantId;
+        userPermissions = payload.permissions || [];
         logger.info('WebSocket AI 连接已认证', { userId, tenantId, clientIp });
+      }
+
+      // 权限校验（若 JWT 携带 permissions，则验证；否则降级放行）
+      if (userPermissions.length > 0) {
+        const requiredPerm = PERMISSION_MAP[msg.type];
+        if (requiredPerm && !userPermissions.includes(requiredPerm)) {
+          logger.warn('WebSocket 权限不足', { userId, type: msg.type, requiredPerm });
+          send(ws, { type: 'error', message: '无操作权限' });
+          ws.close(4003, 'Forbidden');
+          return;
+        }
       }
 
       // 路由到对应的 AI 处理
@@ -138,7 +161,67 @@ async function handleSqlStream(ws: WebSocket, params: any, tenantId: string) {
 
   const userPrompt = `${description}${tableInfo}`;
 
-  await streamToWs(ws, systemPrompt, userPrompt);
+  // 流式输出原始 SQL
+  const rawContent = await streamToWsAndCollect(ws, systemPrompt, userPrompt);
+
+  if (!rawContent) return;
+
+  // ====== SQL Guard 安全校验 ======
+  if (env.sqlGuard.enabled) {
+    const guardResult = checkSqlSafety(rawContent, tenantId);
+    if (!guardResult.safe) {
+      logger.warn('SQL Guard 拦截 WebSocket 输出', {
+        tenantId,
+        reason: guardResult.reason,
+        sql: rawContent.substring(0, 200),
+      });
+      throw new Error(`SQL 安全检查未通过: ${guardResult.reason}`);
+    }
+
+    // 注入 tenantId 隔离
+    let finalSql = guardResult.sanitized || rawContent;
+    if (tenantId) {
+      finalSql = injectTenantId(finalSql, tenantId);
+    }
+
+    send(ws, { type: 'guard_validated', sql: finalSql, original: rawContent, tenantIsolated: !!tenantId });
+
+    logger.info('SQL Guard 校验通过', { tenantId, sqlLength: finalSql.length });
+  }
+}
+
+/** 流式输出 + 收集完整内容（用于后续校验） */
+async function streamToWsAndCollect(
+  ws: WebSocket,
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<string> {
+  const ai = getAiProvider();
+
+  if (!ai.completeStream) {
+    send(ws, { type: 'start' });
+    const result = await ai.complete({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    });
+    send(ws, { type: 'chunk', content: result.content });
+    return result.content;
+  }
+
+  send(ws, { type: 'start' });
+  let full = '';
+  for await (const chunk of ai.completeStream({
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+  })) {
+    full += chunk;
+    send(ws, { type: 'chunk', content: chunk });
+  }
+  return full;
 }
 
 async function handleAuditStream(ws: WebSocket, params: any) {
