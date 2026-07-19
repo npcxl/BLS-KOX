@@ -8,7 +8,7 @@ export interface ApiResponse<T = unknown> {
 
 export function success<T>(ctx: Context, data?: T, message = '操作成功'): void {
   ctx.status = 200;
-  ctx.body = { code: 200, message, data } satisfies ApiResponse<T>;
+  ctx.body = { code: 0, message, data } satisfies ApiResponse<T>;
 }
 
 export function fail(ctx: Context, code: number, message: string): void {

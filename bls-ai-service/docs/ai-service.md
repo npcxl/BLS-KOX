@@ -166,6 +166,8 @@ docker compose --profile ai up -d --build bls-ai-service
 ## 注意事项
 
 - **这不是主业务后端**，不处理用户 CRUD、菜单、角色等业务逻辑
-- 不直接连接 MySQL 业务数据库
+- **AI 服务默认不访问 MySQL 业务数据库**，所有建议（SQL、CRUD 配置、菜单、权限码）仅为 AI 生成的分析结果，不自动执行变更
+- 如需执行 AI 生成的 SQL，应由人工审核后通过 bls-server 的安全接口执行
 - AI 请求的响应延迟取决于模型推理时间（通常 2-30 秒）
 - 生产环境请设置 `NODE_ENV=production` 并配置强密码
+- 所有 AI 请求都会写入结构化审计日志，便于合规审查
