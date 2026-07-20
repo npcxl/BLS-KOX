@@ -21,7 +21,7 @@ function getTenantId(ctx: Context): string {
 /** GET /api/ai/chat/conversations */
 router.get('/conversations', jwtAuth(), async (ctx: Context) => {
   const userId = getUserId(ctx);
-  if (!userId) { ctx.body = { code: 200, data: [] }; return; }
+  if (!userId) { ctx.status = 401; ctx.body = { code: 401, message: '未登录或无法获取用户上下文' }; return; }
   try {
     const db = (await getDb()) as any;
     const rows = await db.selectFrom('ai_conversation')
@@ -60,7 +60,7 @@ router.get('/conversations/:id/messages', jwtAuth(), async (ctx: Context) => {
 router.post('/conversations', jwtAuth(), async (ctx: Context) => {
   const userId = getUserId(ctx);
   const tenantId = getTenantId(ctx);
-  if (!userId) { ctx.body = { code: 200, data: null }; return; }
+  if (!userId) { ctx.status = 401; ctx.body = { code: 401, message: '未登录或无法获取用户上下文' }; return; }
 
   const body = ctx.request.body as { id?: string; title?: string; messages?: Array<{ role: string; content: string }> };
   try {
