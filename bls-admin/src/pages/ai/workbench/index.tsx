@@ -32,7 +32,7 @@ import '@ant-design/x-markdown/themes/light.css';
 import './code-theme.css';
 
 const useStyle = createStyles(({ token, css }) => ({
-  layout: css`position:relative;width:100%;height:80vh;background:${token.colorBgContainer};border-radius:12px;overflow:hidden;`,
+  layout: css`position:relative;width:100%;height:84vh;background:${token.colorBgContainer};border-radius:12px;overflow:hidden;`,
   side: css`position:absolute;left:0;top:0;bottom:0;width:280px;display:flex;flex-direction:column;padding:0 12px;box-sizing:border-box;background:${token.colorBgLayout}80;`,
   logo: css`display:flex;align-items:center;justify-content:start;padding:0 24px;box-sizing:border-box;gap:8px;margin:24px 0;span{font-weight:bold;color:${token.colorText};font-size:16px;}`,
   conversations: css`overflow-y:auto;margin-top:12px;padding:0;flex:1;.ant-conversations-list{padding-inline-start:0;}`,
