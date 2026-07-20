@@ -230,13 +230,13 @@ const role: BubbleListProps['role'] = {
 const DEFAULT_CONV = [{ key: 'default', label: t.newConversation, group: '今天' }];
 
 // ============================================================
-// ChatPanel — 单个对话聊天区，用 key 重挂载加载历史消息
+// ChatPanel — 对话聊天区
 // ============================================================
 function ChatPanel({ convKey, defaultMsgs }: { convKey: string; defaultMsgs: KMsg[] }) {
-  const { onRequest, messages, isRequesting, abort } = useXChat<KMsg>({
+  const { onRequest, messages, isRequesting, abort, setMessages } = useXChat<KMsg>({
     provider: getProvider(convKey),
     conversationKey: convKey,
-    defaultMessages: defaultMsgs,
+    defaultMessages: [],
     requestPlaceholder: { role: 'assistant', content: '' },
     requestFallback: (_, { error }) => {
       if (error.name === 'AbortError') return { role: 'assistant', content: '' };
@@ -246,6 +246,20 @@ function ChatPanel({ convKey, defaultMsgs }: { convKey: string; defaultMsgs: KMs
 
   const [inputValue, setInputValue] = useState('');
   const [lastSavedIdx, setLastSavedIdx] = useState(-1);
+  const lastConvRef = useRef(convKey);
+
+  // 切换对话时加载历史消息
+  useEffect(() => {
+    if (lastConvRef.current !== convKey) {
+      lastConvRef.current = convKey;
+      setLastSavedIdx(-1);
+      if (defaultMsgs?.length) {
+        setMessages(defaultMsgs);
+      } else {
+        setMessages([]);
+      }
+    }
+  }, [convKey, defaultMsgs]);
 
   const onSubmit = (val: string) => {
     if (!val?.trim() || isRequesting) return;
@@ -409,9 +423,9 @@ export default function AiWorkbench() {
           />
         </div>
 
-        {/* Center chat — key 驱动重挂载加载历史消息 */}
+        {/* Center chat */}
         <div className={styles.chat}>
-          <ChatPanel key={activeConversationKey} convKey={activeConversationKey} defaultMsgs={chatInitMsgs} />
+          <ChatPanel convKey={activeConversationKey} defaultMsgs={chatInitMsgs} />
         </div>
       </div>
     </XProvider>
