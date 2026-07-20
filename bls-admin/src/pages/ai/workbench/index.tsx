@@ -32,13 +32,14 @@ import '@ant-design/x-markdown/themes/light.css';
 import './code-theme.css';
 
 const useStyle = createStyles(({ token, css }) => ({
-  layout: css`display:flex;flex:1;min-height:0;overflow:hidden;width:100%;height:calc(100vh - 112px);background:${token.colorBgContainer};border-radius:12px;`,
-  side: css`background:${token.colorBgLayout}80;width:280px;height:100%;display:flex;flex-direction:column;padding:0 12px;box-sizing:border-box;flex-shrink:0;`,
+  layout: css`position:relative;width:100%;height:calc(100vh - 112px);background:${token.colorBgContainer};border-radius:12px;overflow:hidden;`,
+  side: css`position:absolute;left:0;top:0;bottom:0;width:280px;display:flex;flex-direction:column;padding:0 12px;box-sizing:border-box;background:${token.colorBgLayout}80;`,
   logo: css`display:flex;align-items:center;justify-content:start;padding:0 24px;box-sizing:border-box;gap:8px;margin:24px 0;span{font-weight:bold;color:${token.colorText};font-size:16px;}`,
   conversations: css`overflow-y:auto;margin-top:12px;padding:0;flex:1;.ant-conversations-list{padding-inline-start:0;}`,
-  chat: css`flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;`,
-  chatList: css`flex:1;min-height:0;overflow-y:auto;padding:16px 20px;max-width:940px;width:100%;margin:0 auto;`,
-  placeholder: css`padding-top:100px;`,
+  chat: css`position:absolute;left:280px;right:0;top:0;bottom:0;display:flex;flex-direction:column;`,
+  chatList: css`flex:1;overflow-y:auto;padding:16px 20px;`,
+  chatInner: css`max-width:940px;margin:0 auto;`,
+  placeholder: css`padding-top:100px;max-width:940px;margin:0 auto;`,
   senderWrapper: css`flex-shrink:0;padding:0 20px 16px;`,
 }));
 
@@ -311,9 +312,11 @@ export default function AiWorkbench() {
         <div className={styles.chat}>
           <div ref={scrollRef} className={styles.chatList}>
             {loadingMsgs ? (
-              <Flex justify="center" style={{ paddingTop: 100, width: '100%' }}><span style={{ color: '#999' }}>加载中...</span></Flex>
+              <Flex justify="center" style={{ paddingTop: 100 }}><span style={{ color: '#999' }}>加载中...</span></Flex>
             ) : bubbleItems.length ? (
-              <Bubble.List items={bubbleItems} role={getBubbleRole()} autoScroll={false} />
+              <div className={styles.chatInner}>
+                <Bubble.List items={bubbleItems} role={getBubbleRole()} autoScroll={false} />
+              </div>
             ) : (
               <Flex vertical gap={16} align="center" className={styles.placeholder}>
                 <Welcome variant="borderless" icon={<RobotOutlined style={{ fontSize: 48, color: tk.colorPrimary }} />} title={t.welcome} description={t.welcomeDescription} />
