@@ -40,6 +40,7 @@ const t = {
 
 // ==================== Style ====================
 import '@ant-design/x-markdown/themes/light.css';
+import './code-theme.css';
 
 const useStyle = createStyles(({ token, css }) => ({
   layout: css`width:100%;height:calc(100vh - 112px);display:flex;background:${token.colorBgContainer};border-radius:12px;overflow:hidden;`,
