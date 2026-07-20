@@ -197,7 +197,10 @@ export default function AiWorkbench() {
       .catch(() => {});
   }, []);
 
-  const { onRequest, messages, isRequesting, abort } = useXChat<KMsg>({
+  // 当前对话是否已从 DB 加载过消息
+  const [loadedConvKey, setLoadedConvKey] = useState<string>('');
+
+  const { onRequest, messages, isRequesting, abort, setMessages } = useXChat<KMsg>({
     provider: getProvider(activeConversationKey),
     conversationKey: activeConversationKey,
     defaultMessages: [],
@@ -207,6 +210,26 @@ export default function AiWorkbench() {
       return { role: 'assistant', content: `${t.requestFailed}: ${error.message}` };
     },
   });
+
+  // 切换对话时加载历史消息
+  useEffect(() => {
+    if (!activeConversationKey || activeConversationKey === 'default' || activeConversationKey === loadedConvKey) return;
+    const token = localStorage.getItem('token') || '';
+    fetch(`/api/ai/chat/conversations/${activeConversationKey}/messages`, { headers: { Authorization: token } })
+      .then(res => res.json())
+      .then(json => {
+        const msgs: Array<{ role: string; content: string }> = json.data || [];
+        if (msgs.length > 0) {
+          setMessages(msgs.map(m => ({
+            id: `${Date.now()}_${Math.random()}`,
+            message: { role: m.role as 'user' | 'assistant', content: m.content },
+            status: 'success' as const,
+          })) as any);
+        }
+        setLoadedConvKey(activeConversationKey);
+      })
+      .catch(() => setLoadedConvKey(activeConversationKey));
+  }, [activeConversationKey]);
 
   const saveToDb = (userContent: string, aiContent: string) => {
     const token = localStorage.getItem('token') || '';

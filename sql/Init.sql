@@ -424,6 +424,38 @@ INSERT INTO `sys_menu` VALUES
 ('storage_config_remove_0001','storage_config_0001','删除',NULL,NULL,'system:storage:remove',NULL,'2',3,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),('ai_workbench_0001','000000','KOX-AI','/ai',NULL,NULL,'RobotOutlined','0',50,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_workbench_0002','ai_workbench_0001','KOX-AI','/ai/workbench','ai/workbench','ai:workbench:view','RobotOutlined','1',1,'0','2026-07-19 00:00:00','2026-07-19 00:00:00');
 
 -- -------------------------------------------------------
+-- -------------------------------------------------------
+-- ai_conversation (AI 对话)
+-- -------------------------------------------------------
+DROP TABLE IF EXISTS `ai_conversation`;
+CREATE TABLE `ai_conversation` (
+  `id`          BIGINT       NOT NULL,
+  `user_id`     BIGINT       NOT NULL,
+  `tenant_id`   VARCHAR(20)  NOT NULL DEFAULT '000000',
+  `title`       VARCHAR(200) NOT NULL DEFAULT '新对话',
+  `deleted`     TINYINT      NOT NULL DEFAULT 0,
+  `created_at`  DATETIME     NOT NULL,
+  `updated_at`  DATETIME     NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_user_tenant` (`user_id`, `tenant_id`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- -------------------------------------------------------
+-- ai_conversation_message (AI 对话消息)
+-- -------------------------------------------------------
+DROP TABLE IF EXISTS `ai_conversation_message`;
+CREATE TABLE `ai_conversation_message` (
+  `id`              BIGINT        NOT NULL,
+  `conversation_id` BIGINT        NOT NULL,
+  `role`            VARCHAR(20)   NOT NULL,
+  `content`         LONGTEXT      NOT NULL,
+  `deleted`         TINYINT       NOT NULL DEFAULT 0,
+  `created_at`      DATETIME      NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_conversation` (`conversation_id`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- -------------------------------------------------------
 -- sys_migrations
 -- -------------------------------------------------------
 DROP TABLE IF EXISTS `sys_migrations`;
