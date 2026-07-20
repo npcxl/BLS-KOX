@@ -8,7 +8,7 @@ import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
 import { RobotOutlined, UserOutlined, GlobalOutlined } from '@ant-design/icons';
 import { Avatar, Button, Flex, message, Space, theme } from 'antd';
 import { createStyles } from 'antd-style';
-import React, { memo, useState, useRef, useEffect } from 'react';
+import React, { memo, useState, useEffect, useCallback } from 'react';
 
 // ==================== i18n ====================
 const t = {
@@ -167,43 +167,14 @@ const role: BubbleListProps['role'] = {
 
 const DEFAULT_CONV = [{ key: 'default', label: t.newConversation, group: '今天' }];
 
-export default function AiWorkbench() {
-  const { styles } = useStyle();
-  const { token: tk } = theme.useToken();
-
-  const {
-    conversations, activeConversationKey, setActiveConversationKey, addConversation, setConversations,
-  } = useXConversations({ defaultConversations: DEFAULT_CONV, defaultActiveConversationKey: 'default' });
-
-  const [messageApi, contextHolder] = message.useMessage();
-  const [inputValue, setInputValue] = useState('');
-
-  // Load conversations from DB on mount
-  useEffect(() => {
-    const token = localStorage.getItem('token') || '';
-    fetch('/api/ai/chat/conversations', { headers: { Authorization: token } })
-      .then(res => res.json())
-      .then(json => {
-        const list: Array<{ id: string; title: string; updated_at: string }> = json.data || [];
-        if (list.length > 0) {
-          setConversations(list.map(c => ({
-            key: c.id,
-            label: c.title || '新对话',
-            group: '历史',
-          })));
-          setActiveConversationKey(list[0].id);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // 当前对话是否已从 DB 加载过消息
-  const [loadedConvKey, setLoadedConvKey] = useState<string>('');
-
-  const { onRequest, messages, isRequesting, abort, setMessages } = useXChat<KMsg>({
-    provider: getProvider(activeConversationKey),
-    conversationKey: activeConversationKey,
-    defaultMessages: [],
+// ============================================================
+// ChatPanel — 单个对话聊天区，用 key 重挂载加载历史消息
+// ============================================================
+function ChatPanel({ convKey, defaultMsgs }: { convKey: string; defaultMsgs: KMsg[] }) {
+  const { onRequest, messages, isRequesting, abort } = useXChat<KMsg>({
+    provider: getProvider(convKey),
+    conversationKey: convKey,
+    defaultMessages: defaultMsgs,
     requestPlaceholder: { role: 'assistant', content: '' },
     requestFallback: (_, { error }) => {
       if (error.name === 'AbortError') return { role: 'assistant', content: '' };
@@ -211,44 +182,16 @@ export default function AiWorkbench() {
     },
   });
 
-  // 切换对话时加载历史消息
-  useEffect(() => {
-    if (!activeConversationKey || activeConversationKey === 'default' || activeConversationKey === loadedConvKey) return;
-    const token = localStorage.getItem('token') || '';
-    fetch(`/api/ai/chat/conversations/${activeConversationKey}/messages`, { headers: { Authorization: token } })
-      .then(res => res.json())
-      .then(json => {
-        const msgs: Array<{ role: string; content: string }> = json.data || [];
-        if (msgs.length > 0) {
-          setMessages(msgs.map(m => ({
-            id: `${Date.now()}_${Math.random()}`,
-            message: { role: m.role as 'user' | 'assistant', content: m.content },
-            status: 'success' as const,
-          })) as any);
-        }
-        setLoadedConvKey(activeConversationKey);
-      })
-      .catch(() => setLoadedConvKey(activeConversationKey));
-  }, [activeConversationKey]);
+  const [inputValue, setInputValue] = useState('');
+  const [lastSavedIdx, setLastSavedIdx] = useState(-1);
 
-  const saveToDb = (userContent: string, aiContent: string) => {
-    const token = localStorage.getItem('token') || '';
-    fetch('/api/ai/chat/conversations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: token },
-      body: JSON.stringify({
-        id: activeConversationKey,
-        title: userContent.slice(0, 30),
-        messages: [
-          { role: 'user', content: userContent },
-          { role: 'assistant', content: aiContent },
-        ],
-      }),
-    }).catch(() => {});
+  const onSubmit = (val: string) => {
+    if (!val?.trim() || isRequesting) return;
+    onRequest({ messages: [{ role: 'user', content: val.trim() }] });
+    setInputValue('');
   };
 
   // Auto-save to DB when AI finishes responding
-  const [lastSavedIdx, setLastSavedIdx] = useState(-1);
   useEffect(() => {
     if (messages.length < 2) return;
     const lastIdx = messages.length - 1;
@@ -259,18 +202,122 @@ export default function AiWorkbench() {
       setLastSavedIdx(lastIdx);
       const userC = prevMsg.message.content || '';
       const aiC = lastMsg.message?.content || '';
-      saveToDb(userC, aiC);
-      // Update sidebar label
-      const title = userC.slice(0, 30);
-      setConversations(prev => prev.map(x => x.key === activeConversationKey && x.label === '新对话' ? { ...x, label: title } : x));
+      const token = localStorage.getItem('token') || '';
+      fetch('/api/ai/chat/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: token },
+        body: JSON.stringify({
+          id: convKey,
+          title: userC.slice(0, 30),
+          messages: [{ role: 'user', content: userC }, { role: 'assistant', content: aiC }],
+        }),
+      }).catch(() => {});
     }
   }, [messages]);
 
-  const onSubmit = (val: string) => {
-    if (!val?.trim() || isRequesting) return;
-    onRequest({ messages: [{ role: 'user', content: val.trim() }] });
-    setInputValue('');
-  };
+  const { token: tk } = theme.useToken();
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ flex: 1, overflow: 'auto', paddingBottom: 16 }}>
+        {messages?.length ? (
+          <Bubble.List autoScroll role={role}
+            items={messages.map(i => ({
+              key: i.id,
+              role: (i.message?.role === 'user' ? 'user' : 'ai') as 'user' | 'ai',
+              content: i.message?.content || '',
+              status: i.status,
+              loading: i.status === 'loading',
+            }))}
+          />
+        ) : (
+          <Flex vertical gap={16} align="center" className="ai-placeholder"
+            style={{ paddingTop: 100 }}>
+            <Welcome variant="borderless"
+              icon={<RobotOutlined style={{ fontSize: 48, color: tk.colorPrimary }} />}
+              title={t.welcome} description={t.welcomeDescription}
+            />
+          </Flex>
+        )}
+      </div>
+      <div>
+        <Sender value={inputValue} onChange={setInputValue}
+          onSubmit={() => onSubmit(inputValue)} onCancel={abort}
+          loading={isRequesting} placeholder={t.askOrInputUseSkills}
+        />
+      </div>
+    </div>
+  );
+}
+
+export default function AiWorkbench() {
+  const { styles } = useStyle();
+  const { token: tk } = theme.useToken();
+
+  const {
+    conversations, activeConversationKey, setActiveConversationKey, addConversation, setConversations,
+  } = useXConversations({ defaultConversations: DEFAULT_CONV, defaultActiveConversationKey: 'default' });
+
+  const [messageApi, contextHolder] = message.useMessage();
+  // 当前对话的历史消息（从 DB 加载后缓存）
+  const [chatInitMsgs, setChatInitMsgs] = useState<KMsg[]>([]);
+
+  // Load conversations + first conversation's messages on mount
+  useEffect(() => {
+    const token = localStorage.getItem('token') || '';
+    fetch('/api/ai/chat/conversations', { headers: { Authorization: token } })
+      .then(res => res.json())
+      .then(json => {
+        const list: Array<{ id: string; title: string; updated_at: string }> = json.data || [];
+        if (list.length > 0) {
+          setConversations(list.map(c => ({ key: c.id, label: c.title || '新对话', group: '历史' })));
+          const firstId = list[0].id;
+          setActiveConversationKey(firstId);
+          return fetch(`/api/ai/chat/conversations/${firstId}/messages`, { headers: { Authorization: token } });
+        }
+        return null;
+      })
+      .then(res => res?.json())
+      .then(json => {
+        const msgs: Array<{ role: string; content: string }> = json?.data || [];
+        if (msgs.length > 0) {
+          setChatInitMsgs(msgs.map((m, i) => ({
+            id: `${i}`, message: { role: m.role as 'user' | 'assistant', content: m.content }, status: 'success' as const,
+          })) as any);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // 切换对话 → 从 API 加载历史
+  const handleConversationChange = useCallback(async (newKey: string) => {
+    if (!newKey || newKey === 'default') return;
+    const token = localStorage.getItem('token') || '';
+    try {
+      const res = await fetch(`/api/ai/chat/conversations/${newKey}/messages`, { headers: { Authorization: token } });
+      const json = await res.json();
+      const msgs: Array<{ role: string; content: string }> = json.data || [];
+      setChatInitMsgs(msgs.map((m, i) => ({
+        id: `${newKey}_${i}`, message: { role: m.role as 'user' | 'assistant', content: m.content }, status: 'success' as const,
+      })) as any);
+    } catch {
+      setChatInitMsgs([]);
+    }
+    setActiveConversationKey(newKey);
+  }, []);
+
+  // 新建对话时同步到 DB
+  const handleNewConversation = useCallback(() => {
+    const key = `c_${Date.now()}`;
+    addConversation({ key, label: '新对话' });
+    setChatInitMsgs([]);
+    setActiveConversationKey(key);
+    fetch('/api/ai/chat/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: localStorage.getItem('token') || '' },
+      body: JSON.stringify({ id: key, title: '新对话', messages: [] }),
+    }).catch(() => {});
+  }, []);
 
   return (
     <XProvider>
@@ -283,65 +330,19 @@ export default function AiWorkbench() {
             <span>KOX-AI</span>
           </div>
           <Conversations
-            creation={{
-              onClick: () => {
-                const key = `c_${Date.now()}`;
-                addConversation({ key, label: '新对话' });
-                setActiveConversationKey(key);
-                fetch('/api/ai/chat/conversations', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', Authorization: localStorage.getItem('token') || '' },
-                  body: JSON.stringify({ id: key, title: '新对话', messages: [] }),
-                }).catch(() => {});
-              },
-            }}
-            items={conversations.map(c => ({
-              key: c.key,
-              label: c.label,
-            }))}
+            creation={{ onClick: handleNewConversation }}
+            items={conversations.map(c => ({ key: c.key, label: c.label }))}
             className={styles.conversations}
             activeKey={activeConversationKey}
-            onActiveChange={setActiveConversationKey}
+            onActiveChange={handleConversationChange}
           />
         </div>
 
-        {/* Center chat */}
+        {/* Center chat — key 驱动重挂载加载历史消息 */}
         <div className={styles.chat}>
-          <div className={styles.chatList}>
-            {messages?.length ? (
-              <Bubble.List
-                autoScroll
-                role={role}
-                items={messages.map(i => ({
-                  key: i.id,
-                  role: (i.message?.role === 'user' ? 'user' : 'ai') as 'user' | 'ai',
-                  content: i.message?.content || '',
-                  status: i.status,
-                  loading: i.status === 'loading',
-                }))}
-              />
-            ) : (
-              <Flex vertical gap={16} align="center" className={styles.placeholder}>
-                <Welcome variant="borderless" icon={<RobotOutlined style={{ fontSize: 48, color: tk.colorPrimary }} />}
-                  title={t.welcome} description={t.welcomeDescription}
-                />
-                <Space size={8}>
-                  {[t.generateModule, t.sqlHelper, t.auditAnalysis, t.configReview].map(label => (
-                    <Button key={label} onClick={() => onSubmit(label)}>{label}</Button>
-                  ))}
-                </Space>
-              </Flex>
-            )}
-          </div>
-          <div className={styles.senderWrapper}>
-            <Sender value={inputValue} onChange={setInputValue}
-              onSubmit={() => onSubmit(inputValue)} onCancel={abort}
-              loading={isRequesting} placeholder={t.askOrInputUseSkills}
-            />
-          </div>
+          <ChatPanel key={activeConversationKey} convKey={activeConversationKey} defaultMsgs={chatInitMsgs} />
         </div>
       </div>
-      
     </XProvider>
   );
 }
