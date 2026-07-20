@@ -6,7 +6,8 @@ import type { TransformMessage } from '@ant-design/x-sdk';
 import { AbstractChatProvider, AbstractXRequestClass, useXChat, useXConversations, XRequestOptions } from '@ant-design/x-sdk';
 import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
 import { RobotOutlined, UserOutlined, GlobalOutlined } from '@ant-design/icons';
-import { Avatar, Button, Flex, message, Space, theme } from 'antd';
+import { Avatar, Button, Flex, message, Space, theme, Modal, Input } from 'antd';
+import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { createStyles } from 'antd-style';
 import React, { memo, useState, useRef, useEffect } from 'react';
 
@@ -234,9 +235,18 @@ export default function AiWorkbench() {
     const prevMsg = messages[lastIdx - 1];
     if (lastMsg.status === 'success' && prevMsg.message?.role === 'user') {
       setLastSavedIdx(lastIdx);
-      saveToDb(prevMsg.message.content || '', lastMsg.message?.content || '');
+      const userC = prevMsg.message.content || '';
+      const aiC = lastMsg.message?.content || '';
+      saveToDb(userC, aiC);
+      // Update sidebar label
+      const title = userC.slice(0, 30);
+      setConversations(prev => prev.map(x => x.key === activeConversationKey && x.label === '新对话' ? { ...x, label: title } : x));
     }
   }, [messages]);
+
+  const [hoveredConv, setHoveredConv] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameVal, setRenameVal] = useState('');
 
   const onSubmit = (val: string) => {
     if (!val?.trim() || isRequesting) return;
@@ -254,39 +264,89 @@ export default function AiWorkbench() {
             <RobotOutlined style={{ fontSize: 24, color: tk.colorPrimary }} />
             <span>KOX-AI</span>
           </div>
-          <Conversations
-            creation={{
-              onClick: () => {
-                const key = `c_${Date.now()}`;
-                addConversation({ key, label: t.newConversation });
-                setActiveConversationKey(key);
-                // Save to database
-                const token = localStorage.getItem('token') || '';
-                fetch('/api/ai/chat/conversations', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', Authorization: token },
-                  body: JSON.stringify({ id: key, title: t.newConversation, messages: [] }),
-                }).catch(() => {});
-              },
-            }}
-            items={conversations.map(c => ({
-              key: c.key,
-              label: c.key === activeConversationKey ? `[${t.curConversation}] ${c.label}` : c.label,
-            }))}
-            className={styles.conversations}
-            activeKey={activeConversationKey}
-            onActiveChange={setActiveConversationKey}
-            menu={(conv) => ({
-              items: [
-                { label: t.rename, key: 'rename' },
-                { label: t.delete, key: 'delete', danger: true, onClick: () => {
-                  const next = conversations.filter(x => x.key !== conv.key);
-                  setConversations(next);
-                  if (conv.key === activeConversationKey && next[0]) setActiveConversationKey(next[0].key);
-                }},
-              ],
-            })}
-          />
+          <Button type="primary" size="small" block onClick={() => {
+            const key = `c_${Date.now()}`;
+            addConversation({ key, label: '新对话' });
+            setActiveConversationKey(key);
+            fetch('/api/ai/chat/conversations', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: localStorage.getItem('token') || '' },
+              body: JSON.stringify({ id: key, title: '新对话', messages: [] }),
+            }).catch(() => {});
+          }}>+ 新建对话</Button>
+
+          <div style={{ flex: 1, overflow: 'auto', marginTop: 12 }}>
+            {conversations.map(c => (
+              <div
+                key={c.key}
+                onClick={() => { setActiveConversationKey(c.key); }}
+                onMouseEnter={() => setHoveredConv(c.key)}
+                onMouseLeave={() => setHoveredConv(null)}
+                style={{
+                  padding: '8px 12px', cursor: 'pointer', borderRadius: 6, marginBottom: 2,
+                  background: activeConversationKey === c.key ? tk.colorPrimaryBg : hoveredConv === c.key ? '#f5f5f5' : 'transparent',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}
+              >
+                {renamingId === c.key ? (
+                  <Input
+                    size="small"
+                    value={renameVal}
+                    onChange={e => setRenameVal(e.target.value)}
+                    onBlur={() => {
+                      if (renameVal.trim()) {
+                        setConversations(prev => prev.map(x => x.key === c.key ? { ...x, label: renameVal.trim() } : x));
+                        fetch('/api/ai/chat/conversations', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', Authorization: localStorage.getItem('token') || '' },
+                          body: JSON.stringify({ id: c.key, title: renameVal.trim() }),
+                        }).catch(() => {});
+                      }
+                      setRenamingId(null);
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      if (e.key === 'Escape') setRenamingId(null);
+                    }}
+                    autoFocus
+                    onClick={e => e.stopPropagation()}
+                    style={{ flex: 1, fontSize: 13 }}
+                  />
+                ) : (
+                  <>
+                    <span style={{
+                      flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13,
+                      color: activeConversationKey === c.key ? tk.colorPrimary : undefined, fontWeight: activeConversationKey === c.key ? 600 : 400,
+                    }}>
+                      {c.label}
+                    </span>
+                    {hoveredConv === c.key && (
+                      <Flex gap={2}>
+                        <Button type="text" size="small" icon={<EditOutlined />}
+                          onClick={e => { e.stopPropagation(); setRenamingId(c.key); setRenameVal(c.label); }} />
+                        <Button type="text" size="small" danger icon={<DeleteOutlined />}
+                          onClick={e => {
+                            e.stopPropagation();
+                            Modal.confirm({
+                              title: '删除对话', content: `确定删除「${c.label}」？`, okText: '删除', okType: 'danger', cancelText: '取消',
+                              onOk: () => {
+                                const next = conversations.filter(x => x.key !== c.key);
+                                setConversations(next);
+                                if (c.key === activeConversationKey && next[0]) setActiveConversationKey(next[0].key);
+                                fetch(`/api/ai/chat/conversations/${c.key}`, {
+                                  method: 'DELETE',
+                                  headers: { Authorization: localStorage.getItem('token') || '' },
+                                }).catch(() => {});
+                              },
+                            });
+                          }} />
+                      </Flex>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Center chat */}
@@ -325,6 +385,7 @@ export default function AiWorkbench() {
           </div>
         </div>
       </div>
+      
     </XProvider>
   );
 }

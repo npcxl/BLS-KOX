@@ -7,7 +7,12 @@
  */
 export default {
   dev: {
-    // AI 微服务（SSE 流式需要长超时）
+    // AI 对话管理 → Koa 后端 (bls-server)
+    '/api/ai/chat/conversations': {
+      target: 'http://localhost:6001',
+      changeOrigin: true,
+    },
+    // AI 流式接口 → AI 微服务 (7201)
     '/api/ai/': {
       target: 'http://localhost:7201',
       changeOrigin: true,

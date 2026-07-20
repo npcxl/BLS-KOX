@@ -1,12 +1,9 @@
-import Router from 'koa-router';
+﻿import Router from 'koa-router';
 import type { Context } from 'koa';
 import { success } from '../../core/response';
 import { getAiProvider } from '../../provider/factory';
 import type { AiMessage } from '../../provider/types';
 import { logger } from '../../core/logger';
-import { getDb } from '../../core/database.js';
-import { getRequestContext } from '../../core/request-context.js';
-import { generateSnowflakeId } from '../../shared/snowflake.js';
 
 const router = new Router();
 
@@ -77,7 +74,6 @@ router.post('/completions', async (ctx: Context) => {
   const body = ctx.request.body as {
     messages?: Array<{ role: string; content: string }>;
     stream?: boolean;
-    conversationId?: string;
   };
 
   if (!body?.messages?.length) {
@@ -142,101 +138,6 @@ router.post('/completions', async (ctx: Context) => {
     ctx.res.write(`data: ${JSON.stringify({ error: { message: err.message || 'AI 服务异常' } })}\n\n`);
   }
   ctx.res.end();
-});
-
-/** GET /api/ai/chat/conversations — 获取对话列表 */
-router.get('/conversations', async (ctx: Context) => {
-  const auth = getRequestContext();
-  if (!auth?.userId) { ctx.body = { code: 200, data: [] }; return; }
-  try {
-    const db = (await getDb()) as any;
-    const rows = await db.selectFrom('ai_conversation')
-      .selectAll()
-      .where('user_id', '=', auth.userId)
-      .where('deleted', '=', 0)
-      .orderBy('updated_at', 'desc')
-      .limit(50)
-      .execute();
-    ctx.body = { code: 200, data: rows };
-  } catch (err: any) {
-    logger.error('[Conversation] load error: %s', err.message);
-    ctx.status = 500;
-    ctx.body = { code: 500, message: `数据库错误: ${err.message}` };
-  }
-});
-
-/** GET /api/ai/chat/conversations/:id/messages — 获取对话消息 */
-router.get('/conversations/:id/messages', async (ctx: Context) => {
-  const { id } = ctx.params;
-  const auth = getRequestContext();
-  if (!auth?.userId) { ctx.body = { code: 200, data: [] }; return; }
-  try {
-    const db = (await getDb()) as any;
-    const rows = await db.selectFrom('ai_conversation_message')
-      .selectAll()
-      .where('conversation_id', '=', id)
-      .where('deleted', '=', 0)
-      .orderBy('created_at', 'asc')
-      .execute();
-    ctx.body = { code: 200, data: rows };
-  } catch (err: any) {
-    logger.error('[Conversation] messages load error: %s', err.message);
-    ctx.status = 500;
-    ctx.body = { code: 500, message: `数据库错误: ${err.message}` };
-  }
-});
-
-/** POST /api/ai/chat/conversations — 创建/更新对话 */
-router.post('/conversations', async (ctx: Context) => {
-  const auth = getRequestContext();
-  if (!auth?.userId) { ctx.body = { code: 200, data: null }; return; }
-  const body = ctx.request.body as { id?: string; title?: string; messages?: Array<{ role: string; content: string }> };
-  try {
-    const db = (await getDb()) as any;
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
-
-    let convId = body.id || generateSnowflakeId();
-    const title = body.title || '新对话';
-
-    const existing = await db.selectFrom('ai_conversation')
-      .select('id').where('id', '=', convId).executeTakeFirst();
-
-    if (existing) {
-      await db.updateTable('ai_conversation').set({ title, updated_at: now }).where('id', '=', convId).execute();
-    } else {
-      await db.insertInto('ai_conversation').values({
-        id: convId, user_id: auth.userId, tenant_id: auth.tenantId || '000000',
-        title, created_at: now, updated_at: now,
-      }).execute();
-    }
-
-    // Save messages
-    if (body.messages?.length) {
-      for (const msg of body.messages) {
-        await db.insertInto('ai_conversation_message').values({
-          id: generateSnowflakeId(), conversation_id: convId,
-          role: msg.role, content: msg.content, created_at: now,
-        }).execute();
-      }
-    }
-
-    ctx.body = { code: 200, data: { id: convId, title } };
-  } catch (err: any) {
-    logger.error('[Conversation] save error: %s', err.message);
-    ctx.body = { code: 500, message: err.message };
-  }
-});
-
-/** DELETE /api/ai/chat/conversations/:id */
-router.delete('/conversations/:id', async (ctx: Context) => {
-  const { id } = ctx.params;
-  const auth = getRequestContext();
-  if (!auth?.userId) { ctx.body = { code: 401 }; return; }
-  try {
-    const db = (await getDb()) as any;
-    await db.updateTable('ai_conversation').set({ deleted: 1 }).where('id', '=', id).where('user_id', '=', auth.userId).execute();
-    ctx.body = { code: 200, message: '已删除' };
-  } catch { ctx.body = { code: 500 }; }
 });
 
 export default router;
