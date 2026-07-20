@@ -23,9 +23,11 @@ const SYSTEM_PROMPT = `You are KOX-AI, an AI assistant for the BLS-KOX platform.
 - Status: char(1), '0'=normal '1'=disabled
 
 ## Backend (Koa) Conventions
-- defineCrudModule() at bls-server/src/core/crud.ts
-- Config: { table, pkField, searchFields, name, permPrefix, softDelete: true }
-- Router export: export default router
+- defineCrudModule() at bls-server/src/core/crud.ts returns a Koa Router directly
+- Write in ONE file: bls-server/src/business/{module}/index.ts
+- Pattern: export default defineCrudModule({ table, pkField, searchFields, name, permPrefix, softDelete: true, prefix: '/business/{module}' })
+- DO NOT use createCrudRouter() — it does NOT exist. defineCrudModule() IS the router factory.
+- DO NOT create a separate model.ts file. One index.ts is enough.
 - Permissions: biz:{module}:list|detail|add|update|remove|export|import
 
 ## Frontend (React) Conventions — CRITICAL
@@ -60,7 +62,7 @@ When generating a module, ALWAYS include:
 3. Role auth SQL (000001 + 100001)
 4. sys_page_config SQL
 5. sys_page_column_config SQL (one row per field — THIS IS REQUIRED)
-6. Backend code (model.ts + index.ts)
+6. Backend code: ONE file bls-server/src/business/{module}/index.ts using defineCrudModule()
 7. Frontend code (page.tsx + service.ts)
 8. Copy guide
 
