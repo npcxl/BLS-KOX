@@ -34,12 +34,12 @@ import '@ant-design/x-markdown/themes/light.css';
 import './code-theme.css';
 
 const useStyle = createStyles(({ token, css }) => ({
-  layout: css`width:100%;height:calc(100vh - 112px);display:flex;background:${token.colorBgContainer};border-radius:12px;overflow:hidden;`,
+  layout: css`display:flex;flex:1;min-height:0;overflow:hidden;width:100%;height:calc(100vh - 112px);background:${token.colorBgContainer};border-radius:12px;`,
   side: css`background:${token.colorBgLayout}80;width:280px;height:100%;display:flex;flex-direction:column;padding:0 12px;box-sizing:border-box;flex-shrink:0;`,
   logo: css`display:flex;align-items:center;justify-content:start;padding:0 24px;box-sizing:border-box;gap:8px;margin:24px 0;span{font-weight:bold;color:${token.colorText};font-size:16px;}`,
   conversations: css`overflow-y:auto;margin-top:12px;padding:0;flex:1;.ant-conversations-list{padding-inline-start:0;}`,
-  chat: css`flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;height:100%;`,
-  chatList: css`flex:1;overflow-y:auto;padding:16px 20px;min-height:0;`,
+  chat: css`flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;`,
+  chatList: css`flex:1;min-height:0;overflow:hidden;display:flex;justify-content:center;`,
   placeholder: css`padding-top:100px;`,
   senderWrapper: css`flex-shrink:0;padding:0 20px 16px;`,
 }));
@@ -133,10 +133,10 @@ export default function AiWorkbench() {
   useEffect(() => {
     (async () => {
       const list = await getAiConversations();
-      const items = list.map(c => ({ key: c.id, label: c.title || '新对话', group: '历史' }));
+      const items = list.map(c => ({ key: String(c.id), label: c.title || '新对话', group: '历史' }));
       setConversations(items);
       if (items.length > 0) {
-        const firstKey = items[0].key;
+        const firstKey = String(items[0].key);
         activeKeyRef.current = firstKey;
         setActiveKey(firstKey);
         const history = await getAiConversationMessages(firstKey);
@@ -147,20 +147,20 @@ export default function AiWorkbench() {
 
   // ---- 点击会话: abort 当前 + 加载新消息 ----
   const handleActiveChange = useCallback(async (key: string) => {
-    if (!key || key === activeKeyRef.current) return;
-    // abort 正在生成的请求
+    const nextKey = String(key);
+    if (!nextKey || nextKey === activeKeyRef.current) return;
     ctrlRef.current?.abort();
     ctrlRef.current = null;
     setIsRequesting(false);
-    activeKeyRef.current = key;
-    setActiveKey(key);
+    activeKeyRef.current = nextKey;
+    setActiveKey(nextKey);
     setLoadingMsgs(true);
     setMessages([]);
     try {
-      const history = await getAiConversationMessages(key);
-      if (activeKeyRef.current === key) setMessages(history);
+      const history = await getAiConversationMessages(nextKey);
+      if (activeKeyRef.current === nextKey) setMessages(history);
     } finally {
-      if (activeKeyRef.current === key) setLoadingMsgs(false);
+      if (activeKeyRef.current === nextKey) setLoadingMsgs(false);
     }
   }, []);
 
@@ -170,7 +170,7 @@ export default function AiWorkbench() {
     ctrlRef.current = null;
     setIsRequesting(false);
     const created = await createAiConversation('新对话');
-    const key = created?.id || `c_${Date.now()}`;
+    const key = String(created?.id || `c_${Date.now()}`);
     activeKeyRef.current = key;
     setConversations(prev => [{ key, label: '新对话', group: '今天' }, ...prev]);
     setActiveKey(key);
@@ -186,7 +186,7 @@ export default function AiWorkbench() {
     let convId = activeKeyRef.current;
     if (!convId) {
       const created = await createAiConversation(val.slice(0, 20));
-      convId = created?.id || `c_${Date.now()}`;
+      convId = String(created?.id || `c_${Date.now()}`);
       setConversations(prev => [{ key: convId!, label: val.slice(0, 20), group: '今天' }, ...prev]);
       activeKeyRef.current = convId;
       setActiveKey(convId);
@@ -264,12 +264,15 @@ export default function AiWorkbench() {
     ], title).catch(() => {});
   }, [isRequesting, messages]);
 
-  // ---- 消息变化时自动滚底 ----
+  // ---- 自动滚底 (手动兜底) ----
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    if (!isRequesting) return;
     const el = scrollRef.current;
-    if (!el || !isRequesting) return;
-    el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    });
   }, [messages, isRequesting]);
 
   // ---- Bubble items ----
@@ -303,12 +306,21 @@ export default function AiWorkbench() {
         <div className={styles.chat}>
           <div ref={scrollRef} className={styles.chatList}>
             {loadingMsgs ? (
-              <Flex justify="center" style={{ paddingTop: 100 }}><span style={{ color: '#999' }}>加载中...</span></Flex>
+              <Flex justify="center" style={{ paddingTop: 100, width: '100%' }}><span style={{ color: '#999' }}>加载中...</span></Flex>
             ) : bubbleItems.length ? (
               <Bubble.List
                 items={bubbleItems}
                 role={getBubbleRole(isRequesting)}
-                autoScroll={isRequesting}
+                autoScroll={false}
+                styles={{
+                  root: {
+                    width: '100%',
+                    maxWidth: 940,
+                    height: '100%',
+                    overflowY: 'auto',
+                    padding: '16px 20px',
+                  },
+                }}
               />
             ) : (
               <Flex vertical gap={16} align="center" className={styles.placeholder}>
