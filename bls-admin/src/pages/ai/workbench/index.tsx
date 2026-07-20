@@ -37,7 +37,7 @@ const useStyle = createStyles(({ token, css }) => ({
   logo: css`display:flex;align-items:center;justify-content:start;padding:0 24px;box-sizing:border-box;gap:8px;margin:24px 0;span{font-weight:bold;color:${token.colorText};font-size:16px;}`,
   conversations: css`overflow-y:auto;margin-top:12px;padding:0;flex:1;.ant-conversations-list{padding-inline-start:0;}`,
   chat: css`flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;`,
-  chatList: css`flex:1;min-height:0;overflow:hidden;display:flex;justify-content:center;`,
+  chatList: css`flex:1;min-height:0;overflow-y:auto;padding:16px 20px;max-width:940px;width:100%;margin:0 auto;`,
   placeholder: css`padding-top:100px;`,
   senderWrapper: css`flex-shrink:0;padding:0 20px 16px;`,
 }));
@@ -270,12 +270,12 @@ export default function AiWorkbench() {
     ], title).catch(() => {});
   }, [isRequesting, messages, updateAssistantMsg]);
 
-  // ---- 自动滚底 (手动兜底) ----
+  // ---- 自动滚底 (消息内容区自身滚动) ----
   useEffect(() => {
     if (!isRequesting) return;
-    const id = requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'auto' });
-    });
+    const el = scrollRef.current;
+    if (!el) return;
+    const id = requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
     return () => cancelAnimationFrame(id);
   }, [messages, isRequesting]);
 
@@ -309,29 +309,16 @@ export default function AiWorkbench() {
 
         {/* Center chat */}
         <div className={styles.chat}>
-          <div className={styles.chatList}>
+          <div ref={scrollRef} className={styles.chatList}>
             {loadingMsgs ? (
               <Flex justify="center" style={{ paddingTop: 100, width: '100%' }}><span style={{ color: '#999' }}>加载中...</span></Flex>
             ) : bubbleItems.length ? (
-              <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', width: '100%', padding: '16px 20px' }}>
-                <div style={{ maxWidth: 940, margin: '0 auto' }}>
-                  <Bubble.List
-                    items={bubbleItems}
-                    role={getBubbleRole()}
-                    autoScroll={false}
-                  />
-                </div>
-              </div>
+              <Bubble.List items={bubbleItems} role={getBubbleRole()} autoScroll={false} />
             ) : (
               <Flex vertical gap={16} align="center" className={styles.placeholder}>
-                <Welcome variant="borderless"
-                  icon={<RobotOutlined style={{ fontSize: 48, color: tk.colorPrimary }} />}
-                  title={t.welcome} description={t.welcomeDescription}
-                />
+                <Welcome variant="borderless" icon={<RobotOutlined style={{ fontSize: 48, color: tk.colorPrimary }} />} title={t.welcome} description={t.welcomeDescription} />
                 <Space size={8}>
-                  {['CRUD 模块', 'SQL 助手', '审计分析', '配置审查'].map(label => (
-                    <Button key={label} onClick={() => sendMessage(label)}>{label}</Button>
-                  ))}
+                  {['CRUD 模块', 'SQL 助手', '审计分析', '配置审查'].map(label => (<Button key={label} onClick={() => sendMessage(label)}>{label}</Button>))}
                 </Space>
               </Flex>
             )}
