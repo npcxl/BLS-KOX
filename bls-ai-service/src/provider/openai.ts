@@ -145,7 +145,7 @@ export class OpenAIProvider implements AiProvider {
           try {
             const parsed = JSON.parse(data);
             const content = parsed.choices?.[0]?.delta?.content;
-            if (content) yield content;
+            if (content) { yield content; await new Promise(r => setTimeout(r, 15)); }
           } catch {
             // 跳过无法解析的行
           }

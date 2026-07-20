@@ -56,7 +56,6 @@ function resolveMenuIcon(icon?: string | null) {
   return AntIconComponent ? <AntIconComponent /> : undefined;
 }
 
-
 /**
  * 以接口为准，不以路由配置
  * router.ts只是能访问什么页面硬性配置，这里软配置显示什么和怎么显示
@@ -95,18 +94,6 @@ function mapBackendMenus(
             { key: '/system/log/login', path: '/system/log/login', name: '登录日志', locale: false },
             { key: '/system/log/audit', path: '/system/log/audit', name: '操作审计', locale: false },
             { key: '/system/log/security', path: '/system/log/security', name: '安全日志', locale: false },
-          ],
-        };
-      }
-      if (item.path === '/ai') {
-        return {
-          ...item,
-          children: [
-            { key: '/ai/workbench', path: '/ai/workbench', name: 'AI 工作台', locale: false },
-            { key: '/ai/crud', path: '/ai/crud', name: 'CRUD 生成', locale: false },
-            { key: '/ai/sql', path: '/ai/sql', name: 'SQL 助手', locale: false },
-            { key: '/ai/audit', path: '/ai/audit', name: '审计分析', locale: false },
-            { key: '/ai/config-review', path: '/ai/config-review', name: '配置审查', locale: false },
           ],
         };
       }

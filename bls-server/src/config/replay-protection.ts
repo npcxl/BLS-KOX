@@ -120,6 +120,13 @@ export const defaultReplayRules: ReplayRule[] = [
     nonceTtlSeconds: 300,  // >= window*2+30
   },
 
+  // ===== AI 对话管理：豁免 =====
+  {
+    path: '/api/ai/chat/conversations',
+    methods: ['GET', 'POST', 'DELETE'],
+    mode: 'off',
+  },
+
   // ===== 默认：读操作不拦截 =====
   {
     path: '/api/**',
