@@ -18,6 +18,7 @@ import crudGenerator from './api/crud/generator';
 import sqlGenerator from './api/sql/generator';
 import auditAnalyzer from './api/audit/analyzer';
 import configReviewer from './api/config/reviewer';
+import chatRouter from './api/chat';
 
 export function createApp(): Koa {
   const app = new Koa();
@@ -77,6 +78,15 @@ export function createApp(): Koa {
   configR.use(configReviewer.allowedMethods());
   aiRouter.use(configR.routes());
   aiRouter.use(configR.allowedMethods());
+
+  // ====== KOX-AI Chat ======
+  // POST /api/ai/chat/completions (SSE streaming)
+  const chatR = new Router({ prefix: '/chat' });
+  chatR.use(aiRateLimit(env.rateLimit.aiPerMinute));
+  chatR.use(chatRouter.routes());
+  chatR.use(chatRouter.allowedMethods());
+  aiRouter.use(chatR.routes());
+  aiRouter.use(chatR.allowedMethods());
 
   app.use(aiRouter.routes());
   app.use(aiRouter.allowedMethods());
