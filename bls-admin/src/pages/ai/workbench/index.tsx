@@ -1,10 +1,8 @@
-import type { BubbleListProps, ThoughtChainItemProps } from '@ant-design/x';
-import {
-  Bubble, Conversations, Sender, ThoughtChain, Welcome, XProvider,
-} from '@ant-design/x';
+import type { BubbleListProps } from '@ant-design/x';
+import { Bubble, Conversations, Sender, Welcome, XProvider } from '@ant-design/x';
 import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
-import { RobotOutlined, UserOutlined, GlobalOutlined, CopyOutlined, CheckOutlined } from '@ant-design/icons';
-import { Avatar, Button, Flex, message, Space, theme, Tooltip } from 'antd';
+import { RobotOutlined, UserOutlined, CopyOutlined } from '@ant-design/icons';
+import { Avatar, Button, Flex, message, Space, theme } from 'antd';
 import { createStyles } from 'antd-style';
 import React, { memo, useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -44,7 +42,24 @@ const useStyle = createStyles(({ token, css }) => ({
   senderWrapper: css`flex-shrink:0;padding:0 20px 16px;`,
 }));
 
-// ==================== 代码块提取 + 复制 ====================
+// ==================== 通用复制函数 (含 fallback) ====================
+async function copyText(text?: string) {
+  const value = text || '';
+  if (!value.trim()) { message.warning('没有可复制的内容'); return; }
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = value; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    }
+    message.success('已复制');
+  } catch { message.error('复制失败，请手动选择复制'); }
+}
+
+// ==================== 代码块 ====================
 function extractCodeText(children: any): string {
   if (typeof children === 'string') return children.endsWith('\n') ? children.slice(0, -1) : children;
   if (Array.isArray(children)) return children.map(extractCodeText).join('');
@@ -54,18 +69,12 @@ function extractCodeText(children: any): string {
 }
 
 const CodeBlock = memo(function CodeBlock({ language, children }: { language?: string; children: string }) {
-  const [copied, setCopied] = useState(false);
   const code = typeof children === 'string' ? children : '';
-  const doCopy = useCallback(() => {
-    navigator.clipboard.writeText(code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
-  }, [code]);
   return (
     <div style={{ margin: '12px 0', maxWidth: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f0f0f0', borderRadius: '8px 8px 0 0', padding: '4px 16px', border: '1px solid #e1e4e8', borderBottom: 'none' }}>
         <span style={{ fontSize: 12, color: '#888' }}>{language || 'code'}</span>
-        <Tooltip title={copied ? '已复制' : '复制'}>
-          <Button type="text" size="small" icon={copied ? <CheckOutlined style={{ color: '#52c41a' }} /> : <CopyOutlined />} onClick={doCopy} />
-        </Tooltip>
+        <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => copyText(code)} />
       </div>
       <pre style={{ background: '#f6f8fa', margin: 0, padding: '16px 20px', borderRadius: '0 0 8px 8px', border: '1px solid #e1e4e8', borderTop: 'none', overflowX: 'auto', fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
         <code>{code}</code>
@@ -81,18 +90,15 @@ const ThinkComponent = memo((props: ComponentProps) => {
   return <div style={{ padding: '4px 0', fontSize: 13, color: '#8c8c8c' }}>{done ? '思考完成' : '思考中...'}</div>;
 });
 
-const getBubbleRole = (streaming: boolean): BubbleListProps['role'] => ({
+const getBubbleRole = (): BubbleListProps['role'] => ({
   ai: {
     placement: 'start',
+    typing: false,
     avatar: <Avatar icon={<RobotOutlined />} style={{ background: '#1677ff' }} />,
-    variant: 'filled',
-    header: (_, { status }) => {
-      const c = ({ loading: { title: t.modelIsRunning, status: 'loading' }, success: { title: t.modelExecutionCompleted, status: 'success' }, error: { title: t.executionFailed, status: 'error' } } as any)[status === 'loading' || status === 'updating' ? 'loading' : status as string];
-      return c ? <ThoughtChain.Item style={{ marginBottom: 8 }} status={c.status as any} variant="solid" icon={<GlobalOutlined />} title={c.title} /> : null;
-    },
     contentRender: (content: string, { status }: any) => {
-      // 卡顿优化: 流式输出中纯文本渲染，完成后转 XMarkdown
-      if (streaming || status === 'updating' || status === 'loading') {
+      if (!content) return null;
+      // 流式中纯文本，完成后 XMarkdown
+      if (status === 'updating' || status === 'loading') {
         return <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{content}</div>;
       }
       return (
@@ -111,25 +117,42 @@ const getBubbleRole = (streaming: boolean): BubbleListProps['role'] => ({
       );
     },
   },
-  user: { placement: 'end', avatar: <Avatar icon={<UserOutlined />} style={{ background: '#52c41a' }} />, variant: 'shadow' },
+  user: { placement: 'end', avatar: <Avatar icon={<UserOutlined />} style={{ background: '#52c41a' }} /> },
 });
+
+// ==================== 消息类型 (带 status 控制渲染) ====================
+interface UiMsg { id: string; role: 'user' | 'assistant'; content: string; status?: 'updating' | 'done' | 'error'; }
 
 // ============================================================
 export default function AiWorkbench() {
   const { styles } = useStyle();
   const { token: tk } = theme.useToken();
 
-  // ---- 业务状态（不依赖 useXChat parsedMessages） ----
   const [conversations, setConversations] = useState<Array<{ key: string; label: string; group: string }>>([]);
   const [activeKey, setActiveKey] = useState<string>('');
-  const [messages, setMessages] = useState<AiMessage[]>([]);          // ← 唯一消息源
+  const [messages, setMessages] = useState<UiMsg[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isRequesting, setIsRequesting] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const activeKeyRef = useRef('');
-  const ctrlRef = useRef<AbortController | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const pendingContentRef = useRef('');
+  const rafRef = useRef<number>(0);
 
-  // ---- 初始化: 加载会话列表 + 第一条会话的历史消息 ----
+  // ---- 流式更新 (节流) ----
+  const updateAssistantMsg = useCallback((id: string, content: string) => {
+    pendingContentRef.current = content;
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      setMessages(prev => prev.map(m =>
+        m.id === id ? { ...m, content: pendingContentRef.current } : m
+      ));
+      rafRef.current = 0;
+    });
+  }, []);
+
+  // ---- 初始化 ----
   useEffect(() => {
     (async () => {
       const list = await getAiConversations();
@@ -140,17 +163,17 @@ export default function AiWorkbench() {
         activeKeyRef.current = firstKey;
         setActiveKey(firstKey);
         const history = await getAiConversationMessages(firstKey);
-        setMessages(history);
+        setMessages(history.map(m => ({ ...m, status: 'done' })));
       }
     })();
   }, []);
 
-  // ---- 点击会话: abort 当前 + 加载新消息 ----
+  // ---- 点击会话 ----
   const handleActiveChange = useCallback(async (key: string) => {
     const nextKey = String(key);
     if (!nextKey || nextKey === activeKeyRef.current) return;
-    ctrlRef.current?.abort();
-    ctrlRef.current = null;
+    abortRef.current?.abort();
+    abortRef.current = null;
     setIsRequesting(false);
     activeKeyRef.current = nextKey;
     setActiveKey(nextKey);
@@ -158,7 +181,7 @@ export default function AiWorkbench() {
     setMessages([]);
     try {
       const history = await getAiConversationMessages(nextKey);
-      if (activeKeyRef.current === nextKey) setMessages(history);
+      if (activeKeyRef.current === nextKey) setMessages(history.map(m => ({ ...m, status: 'done' })));
     } finally {
       if (activeKeyRef.current === nextKey) setLoadingMsgs(false);
     }
@@ -166,9 +189,7 @@ export default function AiWorkbench() {
 
   // ---- 新建对话 ----
   const handleNewConversation = useCallback(async () => {
-    ctrlRef.current?.abort();
-    ctrlRef.current = null;
-    setIsRequesting(false);
+    abortRef.current?.abort(); abortRef.current = null; setIsRequesting(false);
     const created = await createAiConversation('新对话');
     const key = String(created?.id || `c_${Date.now()}`);
     activeKeyRef.current = key;
@@ -177,7 +198,7 @@ export default function AiWorkbench() {
     setMessages([]);
   }, []);
 
-  // ---- 发送消息 ----
+  // ---- 发送消息 (手动 SSE) ----
   const sendMessage = useCallback(async (content: string) => {
     const val = content.trim();
     if (!val || isRequesting) return;
@@ -192,32 +213,29 @@ export default function AiWorkbench() {
       setActiveKey(convId);
     }
 
-    // 1) 添加用户消息
-    const userMsg: AiMessage = { id: `u_${Date.now()}`, role: 'user', content: val };
-    setMessages(prev => [...prev, userMsg]);
-
-    // 2) 添加空的 assistant 占位
+    const userMsg: UiMsg = { id: `u_${Date.now()}`, role: 'user', content: val, status: 'done' };
     const aiId = `a_${Date.now()}`;
-    const aiMsg: AiMessage = { id: aiId, role: 'assistant', content: '' };
-    setMessages(prev => [...prev, aiMsg]);
-
+    const aiMsg: UiMsg = { id: aiId, role: 'assistant', content: '', status: 'updating' };
+    const currentMessages = [...messages, userMsg];
+    setMessages([...currentMessages, aiMsg]);
     setIsRequesting(true);
 
-    // 3) SSE 流式请求
-    const ctrl = new AbortController(); ctrlRef.current = ctrl;
+    const ctrl = new AbortController(); abortRef.current = ctrl;
     let full = '';
-    let raf: number | undefined;
 
     try {
       const res = await fetch('/api/ai/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: localStorage.getItem('token') || '' },
-        body: JSON.stringify({ messages: [...messages, { role: 'user', content: val }].filter(m => m.role === 'user' || m.role === 'assistant').map(m => ({ role: m.role, content: m.content })), stream: true }),
+        body: JSON.stringify({
+          messages: [...currentMessages.filter(m => m.role === 'user' || m.role === 'assistant'), { role: 'user', content: val }].map(m => ({ role: m.role, content: m.content })),
+          stream: true,
+        }),
         signal: ctrl.signal,
       });
       if (!res.ok) throw new Error(`请求失败(${res.status})`);
       const reader = res.body?.getReader();
-      if (!reader) throw new Error('无响应');
+      if (!reader) throw new Error('浏览器不支持流式响应');
       const dec = new TextDecoder(); let buf = '';
       while (true) {
         const { done, value } = await reader.read();
@@ -227,52 +245,38 @@ export default function AiWorkbench() {
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           const d = line.slice(6).trim();
-          if (d === '[DONE]') continue;
+          if (!d || d === '[DONE]') continue;
           try {
-            const j = JSON.parse(d);
-            const chunk = j.choices?.[0]?.delta?.content || '';
-            if (chunk) {
-              full += chunk;
-              // requestAnimationFrame 节流合并更新
-              if (!raf) {
-                raf = requestAnimationFrame(() => {
-                  setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: full } : m));
-                  raf = undefined;
-                });
-              }
-            }
+            const chunk = JSON.parse(d).choices?.[0]?.delta?.content;
+            if (chunk) { full += chunk; updateAssistantMsg(aiId, full); }
           } catch {}
         }
       }
-      // 确保最后一次更新
-      setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: full } : m));
+      setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: full, status: 'done' } : m));
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: `[错误] ${err.message}` } : m));
+        setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: `[错误] ${err.message}`, status: 'error' } : m));
       }
     } finally {
       setIsRequesting(false);
-      ctrlRef.current = null;
+      abortRef.current = null;
     }
 
-    // 4) 保存到数据库
+    // 保存到数据库
     const title = val.slice(0, 30);
     setConversations(prev => prev.map(c => c.key === convId ? { ...c, label: c.label === '新对话' ? title : c.label } : c));
     saveConversationMessages(convId!, [
-      { role: 'user', content: val },
-      { role: 'assistant', content: full },
+      { role: 'user', content: val }, { role: 'assistant', content: full },
     ], title).catch(() => {});
-  }, [isRequesting, messages]);
+  }, [isRequesting, messages, updateAssistantMsg]);
 
   // ---- 自动滚底 (手动兜底) ----
-  const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!isRequesting) return;
-    const el = scrollRef.current;
-    if (!el) return;
-    requestAnimationFrame(() => {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    const id = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'auto' });
     });
+    return () => cancelAnimationFrame(id);
   }, [messages, isRequesting]);
 
   // ---- Bubble items ----
@@ -281,6 +285,7 @@ export default function AiWorkbench() {
       key: msg.id,
       role: (msg.role === 'assistant' ? 'ai' : 'user') as 'ai' | 'user',
       content: msg.content,
+      status: msg.status === 'updating' ? 'updating' : msg.status === 'error' ? 'error' : 'success',
     })),
   [messages]);
 
@@ -304,24 +309,19 @@ export default function AiWorkbench() {
 
         {/* Center chat */}
         <div className={styles.chat}>
-          <div ref={scrollRef} className={styles.chatList}>
+          <div className={styles.chatList}>
             {loadingMsgs ? (
               <Flex justify="center" style={{ paddingTop: 100, width: '100%' }}><span style={{ color: '#999' }}>加载中...</span></Flex>
             ) : bubbleItems.length ? (
-              <Bubble.List
-                items={bubbleItems}
-                role={getBubbleRole(isRequesting)}
-                autoScroll={false}
-                styles={{
-                  root: {
-                    width: '100%',
-                    maxWidth: 940,
-                    height: '100%',
-                    overflowY: 'auto',
-                    padding: '16px 20px',
-                  },
-                }}
-              />
+              <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', width: '100%', padding: '16px 20px' }}>
+                <div style={{ maxWidth: 940, margin: '0 auto' }}>
+                  <Bubble.List
+                    items={bubbleItems}
+                    role={getBubbleRole()}
+                    autoScroll={false}
+                  />
+                </div>
+              </div>
             ) : (
               <Flex vertical gap={16} align="center" className={styles.placeholder}>
                 <Welcome variant="borderless"
@@ -339,7 +339,7 @@ export default function AiWorkbench() {
           <div className={styles.senderWrapper}>
             <Sender value={inputValue} onChange={setInputValue}
               onSubmit={() => sendMessage(inputValue)}
-              onCancel={() => { ctrlRef.current?.abort(); setIsRequesting(false); }}
+              onCancel={() => { abortRef.current?.abort(); setIsRequesting(false); }}
               loading={isRequesting} placeholder={t.askOrInputUseSkills}
             />
           </div>
