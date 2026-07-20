@@ -88,58 +88,67 @@ hljs.registerLanguage('md', markdown);
 
 /** 从 react-markdown code children 中提取纯文本 */
 function extractCodeText(children: any): string {
-  if (typeof children === 'string') return children;
+  // 纯字符串
+  if (typeof children === 'string') return children.endsWith('\n') ? children.slice(0, -1) : children;
+  // 数组递归
   if (Array.isArray(children)) return children.map(extractCodeText).join('');
-  // react-markdown sometimes wraps text in { type: 'text', value: 'xxx' } objects
+  // react-markdown 子节点对象: { props: { children: ... } }
   if (children?.props?.children) return extractCodeText(children.props.children);
-  if (children?.value) return children.value;
-  return String(children ?? '');
+  // 原始文本节点: { type: 'text', value: 'xxx' }
+  if (children?.value !== undefined) return String(children.value);
+  // 兜底
+  return '';
 }
 
-// ==================== 带复制按钮的代码块 ====================
-function CodeBlock({ language, children }: { language?: string; children: string }) {
+// ==================== 带复制按钮的代码块 (memo + useMemo 防卡) ====================
+const CodeBlock = memo(function CodeBlock({ language, children }: { language?: string; children: string }) {
   const [copied, setCopied] = useState(false);
 
-  let html = '';
-  if (language && hljs.getLanguage(language)) {
-    html = hljs.highlight(children, { language }).value;
-  } else {
-    html = hljs.highlightAuto(children).value;
-  }
+  const html = React.useMemo(() => {
+    if (!children) return '';
+    const code = typeof children === 'string' ? children : '';
+    try {
+      if (language && hljs.getLanguage(language)) {
+        return hljs.highlight(code, { language, ignoreIllegals: true }).value;
+      }
+      return hljs.highlightAuto(code).value;
+    } catch {
+      return code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+  }, [children, language]);
 
-  const doCopy = () => {
-    navigator.clipboard.writeText(children).then(() => {
+  const doCopy = React.useCallback(() => {
+    const text = typeof children === 'string' ? children : '';
+    navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  };
+  }, [children]);
 
   return (
     <div style={{ position: 'relative', margin: '12px 0' }}>
-      {/* 语言标签 + 复制按钮 */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         background: '#f0f0f0', borderRadius: '8px 8px 0 0', padding: '4px 16px',
         border: '1px solid #e1e4e8', borderBottom: 'none',
       }}>
-        <span style={{ fontSize: 12, color: '#888', fontFamily: 'monospace' }}>
-          {language || 'code'}
-        </span>
-        <Tooltip title={copied ? '已复制' : '复制代码'}>
-          <Button type="text" size="small" icon={copied ? <CheckOutlined style={{ color: '#52c41a' }} /> : <CopyOutlined />}
-            onClick={doCopy} style={{ fontSize: 12 }} />
+        <span style={{ fontSize: 12, color: '#888' }}>{language || 'code'}</span>
+        <Tooltip title={copied ? '已复制' : '复制'}>
+          <Button type="text" size="small"
+            icon={copied ? <CheckOutlined style={{ color: '#52c41a' }} /> : <CopyOutlined />}
+            onClick={doCopy} />
         </Tooltip>
       </div>
       <pre style={{
         background: '#f6f8fa', margin: 0, padding: '16px 20px',
         borderRadius: '0 0 8px 8px', border: '1px solid #e1e4e8', borderTop: 'none',
-        overflowX: 'auto', fontSize: 13, lineHeight: 1.7,
+        overflowX: 'auto', fontSize: 13, lineHeight: 1.7, fontFamily: "monospace",
       }}>
         <code dangerouslySetInnerHTML={{ __html: html }} />
       </pre>
     </div>
   );
-}
+});
 
 // ==================== Custom API Request ====================
 interface KMsg { content: string; role: string }
@@ -313,10 +322,19 @@ function ChatPanel({ convKey, defaultMsgs }: { convKey: string; defaultMsgs: KMs
   }, [messages]);
 
   const { token: tk } = theme.useToken();
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 消息变化时自动滚到底部
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // 延迟一帧等 DOM 渲染完成
+    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+  }, [messages]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ flex: 1, overflow: 'auto', paddingBottom: 16 }}>
+      <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', paddingBottom: 16 }}>
         {messages?.length ? (
           <Bubble.List autoScroll role={role}
             items={messages.map(i => ({
