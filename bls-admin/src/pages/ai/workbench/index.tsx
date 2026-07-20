@@ -9,18 +9,6 @@ import { RobotOutlined, UserOutlined, GlobalOutlined, CopyOutlined, CheckOutline
 import { Avatar, Button, Flex, message, Space, theme, Tooltip } from 'antd';
 import { createStyles } from 'antd-style';
 import React, { memo, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import hljs from 'highlight.js/lib/core';
-import sql from 'highlight.js/lib/languages/sql';
-import javascript from 'highlight.js/lib/languages/javascript';
-import typescript from 'highlight.js/lib/languages/typescript';
-import java from 'highlight.js/lib/languages/java';
-import python from 'highlight.js/lib/languages/python';
-import bash from 'highlight.js/lib/languages/bash';
-import json from 'highlight.js/lib/languages/json';
-import xml from 'highlight.js/lib/languages/xml';
-import yaml from 'highlight.js/lib/languages/yaml';
-import markdown from 'highlight.js/lib/languages/markdown';
-import 'highlight.js/styles/github.css';
 
 // ==================== i18n ====================
 const t = {
@@ -67,26 +55,7 @@ const useStyle = createStyles(({ token, css }) => ({
   senderPrompt: css`width:100%;max-width:840px;margin:0 auto;color:${token.colorText};`,
 }));
 
-// ==================== highlight.js 语言注册 ====================
-hljs.registerLanguage('sql', sql);
-hljs.registerLanguage('javascript', javascript);
-hljs.registerLanguage('typescript', typescript);
-hljs.registerLanguage('java', java);
-hljs.registerLanguage('python', python);
-hljs.registerLanguage('bash', bash);
-hljs.registerLanguage('json', json);
-hljs.registerLanguage('xml', xml);
-hljs.registerLanguage('yaml', yaml);
-hljs.registerLanguage('markdown', markdown);
-hljs.registerLanguage('ts', typescript);
-hljs.registerLanguage('tsx', typescript);
-hljs.registerLanguage('js', javascript);
-hljs.registerLanguage('jsx', javascript);
-hljs.registerLanguage('sh', bash);
-hljs.registerLanguage('yml', yaml);
-hljs.registerLanguage('md', markdown);
-
-/** 从 react-markdown code children 中提取纯文本 */
+/** 从 react-markdown children 递归提取纯文本 */
 function extractCodeText(children: any): string {
   // 纯字符串
   if (typeof children === 'string') return children.endsWith('\n') ? children.slice(0, -1) : children;
@@ -104,18 +73,6 @@ function extractCodeText(children: any): string {
 const CodeBlock = memo(function CodeBlock({ language, children }: { language?: string; children: string }) {
   const [copied, setCopied] = useState(false);
   const code = typeof children === 'string' ? children : '';
-
-  const html = useMemo(() => {
-    if (!code) return '';
-    try {
-      if (language && hljs.getLanguage(language)) {
-        return hljs.highlight(code, { language, ignoreIllegals: true }).value;
-      }
-      return hljs.highlightAuto(code).value;
-    } catch {
-      return code.replace(/</g, '&lt;');
-    }
-  }, [code, language]);
 
   const doCopy = useCallback(() => {
     navigator.clipboard.writeText(code).then(() => {
@@ -141,9 +98,9 @@ const CodeBlock = memo(function CodeBlock({ language, children }: { language?: s
       <pre style={{
         background: '#f6f8fa', margin: 0, padding: '16px 20px',
         borderRadius: '0 0 8px 8px', border: '1px solid #e1e4e8', borderTop: 'none',
-        overflowX: 'auto', fontSize: 13, lineHeight: 1.7,
+        overflowX: 'auto', fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap',
       }}>
-        <code dangerouslySetInnerHTML={{ __html: html }} />
+        <code>{code}</code>
       </pre>
     </div>
   );
