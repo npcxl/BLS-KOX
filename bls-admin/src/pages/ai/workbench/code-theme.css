@@ -1,24 +1,4 @@
-/* AI 对话代码块样式 — 亮色主题，与页面白色背景协调 */
-
-/* 代码块容器 */
-.x-markdown pre {
-  background: #f6f8fa !important;
-  border: 1px solid #e1e4e8;
-  border-radius: 8px !important;
-  padding: 16px 20px !important;
-  overflow-x: auto;
-  margin: 12px 0;
-}
-
-/* 代码块内 code */
-.x-markdown pre code {
-  background: transparent !important;
-  color: #24292e;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
-  font-size: 13px;
-  line-height: 1.7;
-  padding: 0 !important;
-}
+/* AI 对话 Markdown 内容样式 — 代码块由 highlight.js + CodeBlock 处理 */
 
 /* 内联代码 */
 .x-markdown :not(pre) > code {
@@ -29,49 +9,28 @@
   font-size: 0.9em;
 }
 
-/* ---- 标题 ---- */
+/* 标题 */
 .x-markdown h1 { font-size: 1.5em; margin: 16px 0 8px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
 .x-markdown h2 { font-size: 1.3em; margin: 14px 0 6px; }
 .x-markdown h3 { font-size: 1.15em; margin: 12px 0 4px; }
-.x-markdown h4 { font-size: 1.05em; margin: 10px 0 4px; }
 
-/* ---- 段落和列表 ---- */
+/* 段落列表 */
 .x-markdown p  { margin: 8px 0; line-height: 1.8; }
 .x-markdown ul, .x-markdown ol { padding-left: 22px; margin: 8px 0; }
 .x-markdown li { margin: 4px 0; }
 
-/* ---- 引用 ---- */
+/* 引用 */
 .x-markdown blockquote {
   border-left: 4px solid #1677ff;
-  margin: 12px 0;
-  padding: 6px 14px;
-  background: #f0f5ff;
-  border-radius: 0 6px 6px 0;
-  color: #555;
+  margin: 12px 0; padding: 6px 14px;
+  background: #f0f5ff; border-radius: 0 6px 6px 0; color: #555;
 }
 
-/* ---- 表格 ---- */
-.x-markdown table {
-  border-collapse: collapse;
-  margin: 12px 0;
-  width: 100%;
-  font-size: 13px;
-}
-.x-markdown th, .x-markdown td {
-  border: 1px solid #d9d9d9;
-  padding: 8px 12px;
-  text-align: left;
-}
+/* 表格 */
+.x-markdown table { border-collapse: collapse; margin: 12px 0; width: 100%; font-size: 13px; }
+.x-markdown th, .x-markdown td { border: 1px solid #d9d9d9; padding: 8px 12px; text-align: left; }
 .x-markdown th { background: #fafafa; font-weight: 600; }
 .x-markdown tr:nth-child(even) td { background: #fafafa; }
 
-/* ---- 分割线 ---- */
+/* 分割线 */
 .x-markdown hr { border: none; border-top: 1px solid #e8e8e8; margin: 16px 0; }
-
-/* ---- 链接 ---- */
-.x-markdown a { color: #1677ff; }
-.x-markdown a:hover { color: #4096ff; }
-
-/* ---- 强和斜体 ---- */
-.x-markdown strong { font-weight: 600; }
-.x-markdown em { font-style: italic; }

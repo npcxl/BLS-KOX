@@ -5,10 +5,22 @@ import {
 import type { TransformMessage } from '@ant-design/x-sdk';
 import { AbstractChatProvider, AbstractXRequestClass, useXChat, useXConversations, XRequestOptions } from '@ant-design/x-sdk';
 import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
-import { RobotOutlined, UserOutlined, GlobalOutlined } from '@ant-design/icons';
-import { Avatar, Button, Flex, message, Space, theme } from 'antd';
+import { RobotOutlined, UserOutlined, GlobalOutlined, CopyOutlined, CheckOutlined } from '@ant-design/icons';
+import { Avatar, Button, Flex, message, Space, theme, Tooltip } from 'antd';
 import { createStyles } from 'antd-style';
-import React, { memo, useState, useEffect, useCallback } from 'react';
+import React, { memo, useState, useEffect, useCallback, useRef } from 'react';
+import hljs from 'highlight.js/lib/core';
+import sql from 'highlight.js/lib/languages/sql';
+import javascript from 'highlight.js/lib/languages/javascript';
+import typescript from 'highlight.js/lib/languages/typescript';
+import java from 'highlight.js/lib/languages/java';
+import python from 'highlight.js/lib/languages/python';
+import bash from 'highlight.js/lib/languages/bash';
+import json from 'highlight.js/lib/languages/json';
+import xml from 'highlight.js/lib/languages/xml';
+import yaml from 'highlight.js/lib/languages/yaml';
+import markdown from 'highlight.js/lib/languages/markdown';
+import 'highlight.js/styles/github.css';
 
 // ==================== i18n ====================
 const t = {
@@ -54,6 +66,80 @@ const useStyle = createStyles(({ token, css }) => ({
   sender: css`width:100%;max-width:940px;margin:0 auto 16px;`,
   senderPrompt: css`width:100%;max-width:840px;margin:0 auto;color:${token.colorText};`,
 }));
+
+// ==================== highlight.js 语言注册 ====================
+hljs.registerLanguage('sql', sql);
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('typescript', typescript);
+hljs.registerLanguage('java', java);
+hljs.registerLanguage('python', python);
+hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('json', json);
+hljs.registerLanguage('xml', xml);
+hljs.registerLanguage('yaml', yaml);
+hljs.registerLanguage('markdown', markdown);
+hljs.registerLanguage('ts', typescript);
+hljs.registerLanguage('tsx', typescript);
+hljs.registerLanguage('js', javascript);
+hljs.registerLanguage('jsx', javascript);
+hljs.registerLanguage('sh', bash);
+hljs.registerLanguage('yml', yaml);
+hljs.registerLanguage('md', markdown);
+
+/** 从 react-markdown code children 中提取纯文本 */
+function extractCodeText(children: any): string {
+  if (typeof children === 'string') return children;
+  if (Array.isArray(children)) return children.map(extractCodeText).join('');
+  // react-markdown sometimes wraps text in { type: 'text', value: 'xxx' } objects
+  if (children?.props?.children) return extractCodeText(children.props.children);
+  if (children?.value) return children.value;
+  return String(children ?? '');
+}
+
+// ==================== 带复制按钮的代码块 ====================
+function CodeBlock({ language, children }: { language?: string; children: string }) {
+  const [copied, setCopied] = useState(false);
+
+  let html = '';
+  if (language && hljs.getLanguage(language)) {
+    html = hljs.highlight(children, { language }).value;
+  } else {
+    html = hljs.highlightAuto(children).value;
+  }
+
+  const doCopy = () => {
+    navigator.clipboard.writeText(children).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div style={{ position: 'relative', margin: '12px 0' }}>
+      {/* 语言标签 + 复制按钮 */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        background: '#f0f0f0', borderRadius: '8px 8px 0 0', padding: '4px 16px',
+        border: '1px solid #e1e4e8', borderBottom: 'none',
+      }}>
+        <span style={{ fontSize: 12, color: '#888', fontFamily: 'monospace' }}>
+          {language || 'code'}
+        </span>
+        <Tooltip title={copied ? '已复制' : '复制代码'}>
+          <Button type="text" size="small" icon={copied ? <CheckOutlined style={{ color: '#52c41a' }} /> : <CopyOutlined />}
+            onClick={doCopy} style={{ fontSize: 12 }} />
+        </Tooltip>
+      </div>
+      <pre style={{
+        background: '#f6f8fa', margin: 0, padding: '16px 20px',
+        borderRadius: '0 0 8px 8px', border: '1px solid #e1e4e8', borderTop: 'none',
+        overflowX: 'auto', fontSize: 13, lineHeight: 1.7,
+      }}>
+        <code dangerouslySetInnerHTML={{ __html: html }} />
+      </pre>
+    </div>
+  );
+}
 
 // ==================== Custom API Request ====================
 interface KMsg { content: string; role: string }
@@ -157,7 +243,17 @@ const role: BubbleListProps['role'] = {
       <XMarkdown
         streaming={{ hasNextChunk: status !== 'success' && status !== 'error' && status !== 'abort', enableAnimation: true }}
         openLinksInNewTab config={{ breaks: true }}
-        components={{ think: ThinkComponent }}
+        components={{
+          think: ThinkComponent,
+          pre: ({ children }: any) => {
+            // 从 <pre><code className="language-xxx">content</code></pre> 提取
+            const codeEl = React.Children.only(children);
+            const className: string = codeEl?.props?.className || '';
+            const lang = className.replace('language-', '') || undefined;
+            const text = extractCodeText(codeEl?.props?.children);
+            return <CodeBlock language={lang}>{text}</CodeBlock>;
+          },
+        }}
       >
         {content || ''}
       </XMarkdown>
