@@ -8,7 +8,7 @@ import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
 import { RobotOutlined, UserOutlined, GlobalOutlined, CopyOutlined, CheckOutlined } from '@ant-design/icons';
 import { Avatar, Button, Flex, message, Space, theme, Tooltip } from 'antd';
 import { createStyles } from 'antd-style';
-import React, { memo, useState, useEffect, useCallback, useRef } from 'react';
+import React, { memo, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import hljs from 'highlight.js/lib/core';
 import sql from 'highlight.js/lib/languages/sql';
 import javascript from 'highlight.js/lib/languages/javascript';
@@ -100,33 +100,32 @@ function extractCodeText(children: any): string {
   return '';
 }
 
-// ==================== 带复制按钮的代码块 (memo + useMemo 防卡) ====================
+// ==================== 带复制按钮的代码块 ====================
 const CodeBlock = memo(function CodeBlock({ language, children }: { language?: string; children: string }) {
   const [copied, setCopied] = useState(false);
+  const code = typeof children === 'string' ? children : '';
 
-  const html = React.useMemo(() => {
-    if (!children) return '';
-    const code = typeof children === 'string' ? children : '';
+  const html = useMemo(() => {
+    if (!code) return '';
     try {
       if (language && hljs.getLanguage(language)) {
         return hljs.highlight(code, { language, ignoreIllegals: true }).value;
       }
       return hljs.highlightAuto(code).value;
     } catch {
-      return code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return code.replace(/</g, '&lt;');
     }
-  }, [children, language]);
+  }, [code, language]);
 
-  const doCopy = React.useCallback(() => {
-    const text = typeof children === 'string' ? children : '';
-    navigator.clipboard.writeText(text).then(() => {
+  const doCopy = useCallback(() => {
+    navigator.clipboard.writeText(code).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }, [children]);
+  }, [code]);
 
   return (
-    <div style={{ position: 'relative', margin: '12px 0' }}>
+    <div style={{ margin: '12px 0', maxWidth: '100%' }}>
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         background: '#f0f0f0', borderRadius: '8px 8px 0 0', padding: '4px 16px',
@@ -142,7 +141,7 @@ const CodeBlock = memo(function CodeBlock({ language, children }: { language?: s
       <pre style={{
         background: '#f6f8fa', margin: 0, padding: '16px 20px',
         borderRadius: '0 0 8px 8px', border: '1px solid #e1e4e8', borderTop: 'none',
-        overflowX: 'auto', fontSize: 13, lineHeight: 1.7, fontFamily: "monospace",
+        overflowX: 'auto', fontSize: 13, lineHeight: 1.7,
       }}>
         <code dangerouslySetInnerHTML={{ __html: html }} />
       </pre>
