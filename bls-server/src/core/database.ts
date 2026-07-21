@@ -34,6 +34,8 @@ const commonDbConfig = {
   namedPlaceholders: true,
   timezone: '+08:00',
   dateStrings: true,
+  supportBigNumbers: true,
+  bigNumberStrings: true,
   charset: 'utf8mb4',
 };
 
