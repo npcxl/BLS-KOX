@@ -36,6 +36,7 @@
 
 ## 模块专题
 
+- [AI 智能助手](./modules/ai-service.md) — 快速生成 CRUD 模块、SQL 助手、安全审计、配置审查
 - [CrudTable 和 Hook 封装](./frontend/crud-table.md) — 前端表格组件使用文档
 - [Webhook 集成](./modules/webhook.md) — Webhook 使用场景和底层集成
 - [全局搜索](./modules/global-search.md) — 前端全局搜索技术实现

@@ -12,11 +12,12 @@
 
 > 双后端并存的开源多租户后台开发框架与管理系统模板。
 > **一套前端、一套 MySQL、一套 Redis**，同时支持 Koa (TypeScript) 和 Spring Boot (Java 21) 两套后端。
-> 内置 RBAC、多租户隔离、JWT 会话体系、防重放、限流、安全审计、WebSocket、Prometheus Metrics。
+> 内置 RBAC、多租户隔离、JWT 会话体系、防重放、限流、安全审计、WebSocket、Prometheus Metrics、**AI 智能助手**。
 
 ## ✨ Why BLS-KOX
 
 - **双后端并存** — Koa (TypeScript) 与 Spring Boot (Java 21) 两套后端，API 完全兼容，按需选择或共存
+- **AI 智能助手** — 内置 AI 微服务，自然语言一键生成 CRUD 模块、SQL 查询、安全审计、配置审查
 - **安全内置，而非事后追加** — 防重放、限流、审计日志随框架自带
 - **多租户原生支持** — tenant_id 自动注入，跨租户访问自动告警
 - **一行配置生成接口** — Koa `defineCrudModule()` 生成完整的 list/add/edit/remove/status
@@ -46,38 +47,32 @@
 │              static files · /api proxy · gzip                    │
 └───────────────────────────┬──────────────────────────────────────┘
                             │
-              ┌─────────────┴─────────────┐
-              ▼                           ▼
-┌──────────────────────────┐  ┌──────────────────────────┐
-│  bls-server (Koa 3)      │  │  bls-java-server         │
-│  TypeScript · 默认后端    │  │  Spring Boot 3 · Java 21 │
-│                          │  │  可选后端 · API 兼容      │
-│  ┌────────────────────┐  │  │                          │
-│  │  Middleware Chain   │  │  │  ┌────────────────────┐  │
-│  │  JWT · Tenant ·    │  │  │  │  Security Chain     │  │
-│  │  RBAC · Rate Limit │  │  │  │  JWT Filter ·       │  │
-│  │  Replay · IP Block │  │  │  │  @PreAuthorize ·    │  │
-│  └────────────────────┘  │  │  │  TenantContext       │  │
-│                          │  │  └────────────────────┘  │
-│  ┌────────────────────┐  │  │                          │
-│  │  CRUD Factory       │  │  │  ┌────────────────────┐  │
-│  │  defineCrudModule() │  │  │  │  Controller+Service │  │
-│  │  Kysely ORM + Zod   │  │  │  │  +Mapper (MyBatis-  │  │
-│  └────────────────────┘  │  │  │  Plus)              │  │
-│                          │  │  └────────────────────┘  │
-└──────────┬───────────────┘  └──────────┬───────────────┘
-           │                             │
-           └──────────┬──────────────────┘
-                      │
-    ┌─────────────────┼─────────────────┐
-    ▼                 ▼                 ▼
+       ┌────────────────────┼────────────────────┐
+       ▼                    ▼                    ▼
+┌──────────────┐  ┌──────────────────┐  ┌──────────────┐
+│  bls-server  │  │ bls-ai-service   │  │bls-java-server│
+│  Koa 3       │  │ Koa · AI 微服务   │  │ Spring Boot 3 │
+│  默认后端     │  │ :7201            │  │ Java 21       │
+│  :7001       │  │                  │  │ :8080 (可选)   │
+│              │  │ ┌──────────────┐  │  │               │
+│ ┌──────────┐ │  │ │ CRUD 生成器   │  │  │ ┌───────────┐ │
+│ │CRUD工厂  │ │  │ │ SQL 助手      │  │  │ │Security   │ │
+│ │Middleware│ │  │ │ 审计分析器    │  │  │ │Chain      │ │
+│ └──────────┘ │  │ │ 配置审查器    │  │  │ └───────────┘ │
+│              │  │ │ KOX-AI 对话   │  │  │               │
+└──────┬───────┘  │ └──────────────┘  │  └───────┬───────┘
+       │          └────────┬─────────┘          │
+       └───────────┬───────┴────────────────────┘
+                   │
+    ┌──────────────┼──────────────┐
+    ▼              ▼              ▼
 ┌────────┐  ┌──────────────┐  ┌──────────────────┐
 │ MySQL  │  │    Redis 7   │  │   Prometheus     │
 │  8.0   │  │ Session/Limit│  │   /api/metrics   │
 └────────┘  └──────────────┘  └──────────────────┘
 ```
 
-> **关键设计**：两套后端共用同一套 MySQL 数据库（`sql/Init.sql`）、同一套 Redis、同一套前端代码。Nginx 通过 upstream 切换后端，前端无需任何修改。
+> **关键设计**：两套后端共用同一套 MySQL 数据库（`sql/Init.sql`）、同一套 Redis、同一套前端代码。Nginx 通过 upstream 切换后端，前端无需任何修改。AI 微服务独立部署，通过 `/api/ai/*` 路由提供智能能力。
 
 ## 🛡️ Security
 
@@ -97,6 +92,7 @@
 
 | 模块 | 说明 |
 |------|------|
+| **AI 智能助手** | 自然语言一键生成 CRUD 模块、SQL 查询、安全审计、配置审查 |
 | 多租户隔离 | 自动 tenant_id 注入，跨租户访问告警，Ownership Guard |
 | RBAC 权限 | 角色 → 菜单 → 按钮三级权限 |
 | JWT 会话体系 | Access/Refresh Token，Rotation，Reuse Detection，Session Center |
@@ -312,6 +308,7 @@ BLS-KOX/
 ├── bls-server/              # Koa + TypeScript 后端（默认主后端）
 │   ├── src/
 │   │   ├── api/             # 业务接口（自动扫描注册）
+│   │   │   ├── ai/          # AI 对话存储接口
 │   │   │   ├── auth/        # 登录/登出/刷新/用户信息
 │   │   │   ├── system/      # 用户/角色/菜单/部门/字典/配置等
 │   │   │   └── common/      # Excel 导入导出
@@ -324,6 +321,17 @@ BLS-KOX/
 │   │   ├── queue/           # Job Worker（轮询 sys_jobs）
 │   │   └── outbox/          # Outbox Pattern 事务事件发布
 │   └── sql/                 # 数据库迁移
+├── bls-ai-service/          # AI 智能助手微服务（独立部署）
+│   └── src/
+│       ├── api/             # AI 能力接口
+│       │   ├── chat/        # KOX-AI 对话（SSE 流式）
+│       │   ├── crud/        # CRUD 模块生成器
+│       │   ├── sql/         # SQL 助手 + 安全守卫
+│       │   ├── audit/       # 审计日志分析器
+│       │   └── config/      # 配置文件安全审查器
+│       ├── provider/        # AI Provider 抽象层（OpenAI/DeepSeek/通义千问）
+│       ├── middleware/      # JWT 认证/限流/审计日志
+│       └── ws/              # WebSocket 流式传输
 ├── bls-java-server/         # Spring Boot 3 + Java 21 后端（并存后端，API 兼容）
 │   └── src/main/java/com/bls/server/
 │       ├── common/          # ApiResponse 统一响应、GlobalExceptionHandler
@@ -340,11 +348,11 @@ BLS-KOX/
 │   └── src/
 │       ├── components/      # CrudTablePage、全局搜索、ExcelToolbar 等
 │       ├── hooks/           # usePageConfig、useCrudTable、useWebSocket 等
-│       └── pages/           # 各业务页面（dashboard / system / tenant）
+│       └── pages/           # 各业务页面（dashboard / system / ai）
 ├── sql/                     # 共享数据库初始化 SQL（两套后端共用）
 │   └── Init.sql             # 完整表结构 + 最小种子数据
 ├── deploy/                  # 部署配置（Prometheus 告警规则等）
-├── docker-compose.yml       # 全栈编排（Koa 默认）
+├── docker-compose.yml       # 全栈编排（Koa + AI 默认）
 ├── docker-compose.dev.yml   # 开发环境覆盖（暴露端口）
 └── docs/                    # 详细文档
 ```
@@ -356,9 +364,10 @@ BLS-KOX/
 | 文档 | 说明 |
 |------|------|
 | [快速开始](./docs/getting-started.md) | 环境要求、安装、启动、演示账号 |
-| [Docker 部署](./docs/docker-deploy.md) | Docker Compose 一键部署、Koa/Java 切换、故障排查 |
+| [Docker 部署](./docs/docker-deploy.md) | Docker Compose 一键部署、Koa/Java 切换、AI 服务配置、故障排查 |
+| [AI 智能助手](./docs/modules/ai-service.md) | 自然语言生成 CRUD、SQL 助手、安全审计、配置审查 |
 | [双后端定位](./docs/backend-comparison.md) | Koa vs Java 定位差异、对比表、如何选择 |
-| [架构设计](./docs/architecture.md) | 请求链路、中间件、双后端总览 |
+| [架构设计](./docs/architecture.md) | 请求链路、中间件、双后端总览、AI 服务架构 |
 | [Koa 后端](./docs/backend-koa.md) | Koa + TypeScript 架构、CRUD 工厂、中间件链 |
 | [Java 后端](./docs/backend-java.md) | Spring Boot 架构、Security、MyBatis-Plus、JWT |
 | [API 兼容性](./docs/api-compatibility.md) | 双后端 API 规范、返回结构、字段命名一致性 |
