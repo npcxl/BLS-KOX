@@ -5,6 +5,15 @@ import { RobotOutlined, UserOutlined, CopyOutlined } from '@ant-design/icons';
 import { Avatar, Button, Flex, message, Space, theme } from 'antd';
 import { createStyles } from 'antd-style';
 import React, { memo, useState, useEffect, useCallback, useRef } from 'react';
+import hljs from 'highlight.js/lib/core';
+import javascript from 'highlight.js/lib/languages/javascript';
+import typescript from 'highlight.js/lib/languages/typescript';
+import xml from 'highlight.js/lib/languages/xml';
+import sql from 'highlight.js/lib/languages/sql';
+import json from 'highlight.js/lib/languages/json';
+import bash from 'highlight.js/lib/languages/bash';
+import css from 'highlight.js/lib/languages/css';
+import 'highlight.js/styles/github.css';
 import {
   getAiConversations,
   getAiConversationMessages,
@@ -12,6 +21,20 @@ import {
   saveConversationMessages,
   type AiMessage,
 } from '@/services/ai/conversation';
+
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('js', javascript);
+hljs.registerLanguage('typescript', typescript);
+hljs.registerLanguage('ts', typescript);
+hljs.registerLanguage('tsx', typescript);
+hljs.registerLanguage('jsx', xml);
+hljs.registerLanguage('html', xml);
+hljs.registerLanguage('xml', xml);
+hljs.registerLanguage('sql', sql);
+hljs.registerLanguage('json', json);
+hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('shell', bash);
+hljs.registerLanguage('css', css);
 
 // ==================== i18n ====================
 const t = {
@@ -69,16 +92,44 @@ function extractCodeText(children: any): string {
   return '';
 }
 
+function normalizeLanguage(language?: string) {
+  const lang = (language || '').toLowerCase();
+  if (lang === 'typescript' || lang === 'tsx') return 'typescript';
+  if (lang === 'javascript' || lang === 'jsx') return 'javascript';
+  if (lang === 'shell' || lang === 'sh') return 'bash';
+  return lang;
+}
+
 const CodeBlock = memo(function CodeBlock({ language, children }: { language?: string; children: string }) {
   const code = typeof children === 'string' ? children : '';
+  const lang = normalizeLanguage(language);
+
+  const highlighted = React.useMemo(() => {
+    if (!code) return '';
+    try {
+      if (lang && hljs.getLanguage(lang)) {
+        return hljs.highlight(code, { language: lang }).value;
+      }
+      return hljs.highlightAuto(code).value;
+    } catch {
+      return code
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+  }, [code, lang]);
+
   return (
-    <div style={{ margin: '12px 0', maxWidth: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f0f0f0', borderRadius: '8px 8px 0 0', padding: '4px 16px', border: '1px solid #e1e4e8', borderBottom: 'none' }}>
+    <div className="ai-code-block" style={{ margin: '12px 0', maxWidth: '100%' }}>
+      <div className="ai-code-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f0f0f0', borderRadius: '8px 8px 0 0', padding: '4px 16px', border: '1px solid #e1e4e8', borderBottom: 'none' }}>
         <span style={{ fontSize: 12, color: '#888' }}>{language || 'code'}</span>
         <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => copyText(code)} />
       </div>
-      <pre style={{ background: '#f6f8fa', margin: 0, padding: '16px 20px', borderRadius: '0 0 8px 8px', border: '1px solid #e1e4e8', borderTop: 'none', overflowX: 'auto', fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-        <code>{code}</code>
+      <pre className="hljs ai-code-pre" style={{ background: '#f6f8fa', margin: 0, padding: '16px 20px', borderRadius: '0 0 8px 8px', border: '1px solid #e1e4e8', borderTop: 'none', overflowX: 'auto', fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+        <code
+          className={lang ? `language-${lang}` : undefined}
+          dangerouslySetInnerHTML={{ __html: highlighted }}
+        />
       </pre>
     </div>
   );
