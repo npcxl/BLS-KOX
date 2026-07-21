@@ -1,7 +1,7 @@
 ﻿import Router from 'koa-router';
 import type { Context } from 'koa';
 import { success } from '../../core/response';
-import { getAiProvider } from '../../provider/factory';
+import { getAiProvider, getAiProviderForModel } from '../../provider/factory';
 import type { AiMessage } from '../../provider/types';
 import { logger } from '../../core/logger';
 
@@ -114,6 +114,7 @@ Be concise.`;
 router.post('/completions', async (ctx: Context) => {
   const body = ctx.request.body as {
     messages?: Array<{ role: string; content: string }>;
+    model?: string;
     stream?: boolean;
   };
 
@@ -128,11 +129,12 @@ router.post('/completions', async (ctx: Context) => {
     content: m.content,
   }));
 
+  const model = body.model || undefined;
   const useStream = body.stream !== false;
 
   if (!useStream) {
     try {
-      const ai = getAiProvider();
+      const ai = model ? getAiProviderForModel(model) : getAiProvider();
       const result = await ai.complete({
         messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
         temperature: 0.3,
@@ -161,7 +163,7 @@ router.post('/completions', async (ctx: Context) => {
   });
 
   try {
-    const ai = getAiProvider();
+    const ai = model ? getAiProviderForModel(model) : getAiProvider();
     const allMessages: AiMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }, ...messages];
 
     if (ai.completeStream) {

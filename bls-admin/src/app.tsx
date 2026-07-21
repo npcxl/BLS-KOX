@@ -469,7 +469,10 @@ export const layout: RunTimeLayoutConfig = ({
         <AvatarDropdown>{avatarChildren}</AvatarDropdown>
       ),
     },
-    footerRender: () => <Footer />,
+    footerRender: () => {
+      const isAiPage = history.location.pathname.startsWith('/ai/');
+      return isAiPage ? null : <Footer />;
+    },
     onPageChange: () => {
       const { location } = history;
       if (!initialState?.currentUser && location.pathname !== loginPath) {

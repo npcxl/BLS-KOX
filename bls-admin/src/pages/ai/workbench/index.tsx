@@ -1,7 +1,7 @@
 import { Conversations, Sender, Welcome, XProvider } from '@ant-design/x';
 import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
 import { RobotOutlined, UserOutlined, CopyOutlined } from '@ant-design/icons';
-import { Avatar, Button, Flex, message, Space, theme } from 'antd';
+import { Avatar, Button, Flex, message, Select, Space, theme } from 'antd';
 import { createStyles } from 'antd-style';
 import React, { memo, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import hljs from 'highlight.js/lib/core';
@@ -18,6 +18,7 @@ import {
   getAiConversationMessages,
   createAiConversation,
   saveConversationMessages,
+  getAiModels,
 } from '@/services/ai/conversation';
 
 hljs.registerLanguage('javascript', javascript);
@@ -100,8 +101,26 @@ const useStyle = createStyles(({ token, css }) => ({
   inputDock: css`
     flex-shrink: 0;
     padding: 12px 20px 16px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.82), #fff 32%);
+  `,
+  chatInputBox: css`
+    max-width: 880px;
+    margin: 0 auto;
+    border: 1px solid #e5eaf3;
+    border-radius: 18px;
     background: #fff;
-    border-top: 1px solid #edf0f5;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+    &:focus-within {
+      border-color: #1677ff;
+      box-shadow: 0 12px 32px rgba(22, 119, 255, 0.14);
+    }
+  `,
+  inputToolbar: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px 0;
   `,
   placeholder: css`
     padding-top: 100px;
@@ -287,9 +306,13 @@ export default function AiWorkbench() {
   const [inputValue, setInputValue] = useState('');
   const [isRequesting, setIsRequesting] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [modelOptions, setModelOptions] = useState<Array<{ label: string; value: string }>>([]);
+  const [modelLoading, setModelLoading] = useState(false);
   const activeKeyRef = useRef('');
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const selectedModelRef = useRef('');
 
   // ---- 自动滚底 ----
   useEffect(() => {
@@ -304,9 +327,20 @@ export default function AiWorkbench() {
   // ---- 初始化 ----
   useEffect(() => {
     (async () => {
-      const list = await getAiConversations();
+      const [list, modelsRes] = await Promise.all([
+        getAiConversations(),
+        getAiModels().catch(() => ({ provider: '', currentModel: '', models: [] })),
+      ]);
       const items = list.map(c => ({ key: String(c.id), label: c.title || '新对话', group: '历史' }));
       setConversations(items);
+
+      if (modelsRes.models.length > 0) {
+        setModelOptions(modelsRes.models);
+        const initialModel = modelsRes.currentModel || modelsRes.models[0]?.value || '';
+        setSelectedModel(initialModel);
+        selectedModelRef.current = initialModel;
+      }
+
       if (items.length > 0) {
         const firstKey = String(items[0].key);
         activeKeyRef.current = firstKey;
@@ -334,6 +368,12 @@ export default function AiWorkbench() {
     } finally {
       if (activeKeyRef.current === nextKey) setLoadingMsgs(false);
     }
+  }, []);
+
+  // ---- 切换模型 ----
+  const handleModelChange = useCallback((value: string) => {
+    setSelectedModel(value);
+    selectedModelRef.current = value;
   }, []);
 
   // ---- 新建对话 ----
@@ -380,6 +420,7 @@ export default function AiWorkbench() {
             ...messages.filter(m => m.role === 'user' || m.role === 'assistant'),
             { role: 'user', content: val },
           ].map(m => ({ role: m.role, content: m.content })),
+          model: selectedModelRef.current || undefined,
           stream: true,
         }),
         signal: ctrl.signal,
@@ -483,14 +524,31 @@ export default function AiWorkbench() {
             )}
           </div>
           <div className={styles.inputDock}>
-            <Sender
-              value={inputValue}
-              onChange={setInputValue}
-              onSubmit={() => sendMessage(inputValue)}
-              onCancel={() => { abortRef.current?.abort(); setIsRequesting(false); }}
-              loading={isRequesting}
-              placeholder={t.askOrInputUseSkills}
-            />
+            <div className={styles.chatInputBox}>
+              {modelOptions.length > 1 && (
+                <div className={styles.inputToolbar}>
+                  <Select
+                    size="small"
+                    variant="borderless"
+                    value={selectedModel || modelOptions[0]?.value}
+                    options={modelOptions}
+                    loading={modelLoading}
+                    onChange={handleModelChange}
+                    style={{ minWidth: 120 }}
+                    popupMatchSelectWidth={false}
+                  />
+                </div>
+              )}
+              <Sender
+                value={inputValue}
+                onChange={setInputValue}
+                onSubmit={() => sendMessage(inputValue)}
+                onCancel={() => { abortRef.current?.abort(); setIsRequesting(false); }}
+                loading={isRequesting}
+                placeholder={t.askOrInputUseSkills}
+                style={{ border: 'none', boxShadow: 'none' }}
+              />
+            </div>
           </div>
         </main>
       </div>

@@ -56,3 +56,14 @@ export async function deleteAiConversation(conversationId: string) {
     method: 'DELETE',
   });
 }
+
+export interface AiModelsResult {
+  provider: string;
+  currentModel: string;
+  models: Array<{ label: string; value: string }>;
+}
+
+export async function getAiModels(): Promise<AiModelsResult> {
+  const res = await request<{ code: number; data: AiModelsResult }>('/api/ai/models');
+  return res.data || { provider: '', currentModel: '', models: [] };
+}
