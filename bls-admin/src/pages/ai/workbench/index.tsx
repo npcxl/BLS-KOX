@@ -1,10 +1,9 @@
-import type { BubbleListProps } from '@ant-design/x';
-import { Bubble, Conversations, Sender, Welcome, XProvider } from '@ant-design/x';
+import { Conversations, Sender, Welcome, XProvider } from '@ant-design/x';
 import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
 import { RobotOutlined, UserOutlined, CopyOutlined } from '@ant-design/icons';
 import { Avatar, Button, Flex, message, Space, theme } from 'antd';
 import { createStyles } from 'antd-style';
-import React, { memo, useState, useEffect, useCallback, useRef } from 'react';
+import React, { memo, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
 import typescript from 'highlight.js/lib/languages/typescript';
@@ -19,7 +18,6 @@ import {
   getAiConversationMessages,
   createAiConversation,
   saveConversationMessages,
-  type AiMessage,
 } from '@/services/ai/conversation';
 
 hljs.registerLanguage('javascript', javascript);
@@ -39,34 +37,115 @@ hljs.registerLanguage('css', css);
 // ==================== i18n ====================
 const t = {
   newConversation: '新对话',
-  modelIsRunning: '模型运行中',
-  modelExecutionCompleted: '模型执行完成',
-  executionFailed: '执行失败',
-  aborted: '已中止',
-  requestFailed: '请求失败，请重试',
   welcome: '你好，我是 KOX-AI',
   welcomeDescription: 'BLS-KOX-AI 基于大模型的多租户 SaaS 开发辅助工具。',
   askOrInputUseSkills: '描述你的需求...',
-  delete: '删除',
 };
 
-// ==================== Style ====================
+// ==================== Styles ====================
 import '@ant-design/x-markdown/themes/light.css';
 import './code-theme.css';
 
 const useStyle = createStyles(({ token, css }) => ({
-  layout: css`position:relative;width:100%;height:84vh;background:${token.colorBgContainer};border-radius:12px;overflow:hidden;`,
-  side: css`position:absolute;left:0;top:0;bottom:0;width:280px;display:flex;flex-direction:column;padding:0 12px;box-sizing:border-box;background:${token.colorBgLayout}80;`,
-  logo: css`display:flex;align-items:center;justify-content:start;padding:0 24px;box-sizing:border-box;gap:8px;margin:24px 0;span{font-weight:bold;color:${token.colorText};font-size:16px;}`,
-  conversations: css`overflow-y:auto;margin-top:12px;padding:0;flex:1;.ant-conversations-list{padding-inline-start:0;}`,
-  chat: css`position:absolute;left:280px;right:0;top:0;bottom:0;display:flex;flex-direction:column;`,
-  chatList: css`flex:1;overflow-y:auto;padding:16px 20px;`,
-  chatInner: css`max-width:940px;margin:0 auto;`,
-  placeholder: css`padding-top:100px;max-width:940px;margin:0 auto;`,
-  senderWrapper: css`flex-shrink:0;padding:0 20px 16px;`,
+  workbench: css`
+    display: flex;
+    width: 100%;
+    height: calc(100vh - 120px);
+    background: ${token.colorBgContainer};
+    border-radius: 12px;
+    overflow: hidden;
+  `,
+  sidebar: css`
+    width: 280px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0 12px;
+    box-sizing: border-box;
+    background: ${token.colorBgLayout}80;
+  `,
+  logo: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 24px;
+    margin: 24px 0;
+    span { font-weight: bold; color: ${token.colorText}; font-size: 16px; }
+  `,
+  conversations: css`
+    overflow-y: auto;
+    margin-top: 12px;
+    padding: 0;
+    flex: 1;
+    .ant-conversations-list { padding-inline-start: 0; }
+  `,
+  chatMain: css`
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  `,
+  messageScroller: css`
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 20px 24px;
+  `,
+  messageList: css`
+    max-width: 900px;
+    margin: 0 auto;
+  `,
+  inputDock: css`
+    flex-shrink: 0;
+    padding: 12px 20px 16px;
+    background: #fff;
+    border-top: 1px solid #edf0f5;
+  `,
+  placeholder: css`
+    padding-top: 100px;
+    max-width: 900px;
+    margin: 0 auto;
+  `,
+  msgRow: css`
+    display: flex;
+    margin-bottom: 20px;
+    &:last-child { margin-bottom: 0; }
+  `,
+  msgUser: css`justify-content: flex-end;`,
+  msgAi: css`justify-content: flex-start;`,
+  msgBubble: css`
+    max-width: 85%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.75;
+    word-break: break-word;
+  `,
+  msgBubbleUser: css`
+    background: ${token.colorPrimary};
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  `,
+  msgBubbleAi: css`
+    background: ${token.colorBgElevated};
+    border: 1px solid ${token.colorBorderSecondary};
+    border-bottom-left-radius: 4px;
+  `,
+  msgBubbleError: css`
+    background: #fff2f0;
+    border: 1px solid #ffccc7;
+    color: #d93026;
+  `,
+  msgAvatar: css`
+    flex-shrink: 0;
+    margin-right: 10px;
+    margin-top: 2px;
+  `,
 }));
 
-// ==================== 通用复制函数 (含 fallback) ====================
+// ==================== 复制 ====================
 async function copyText(text?: string) {
   const value = text || '';
   if (!value.trim()) { message.warning('没有可复制的内容'); return; }
@@ -103,19 +182,13 @@ function normalizeLanguage(language?: string) {
 const CodeBlock = memo(function CodeBlock({ language, children }: { language?: string; children: string }) {
   const code = typeof children === 'string' ? children : '';
   const lang = normalizeLanguage(language);
-
-  const highlighted = React.useMemo(() => {
+  const highlighted = useMemo(() => {
     if (!code) return '';
     try {
-      if (lang && hljs.getLanguage(lang)) {
-        return hljs.highlight(code, { language: lang }).value;
-      }
+      if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang }).value;
       return hljs.highlightAuto(code).value;
     } catch {
-      return code
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+      return code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
   }, [code, lang]);
 
@@ -126,54 +199,82 @@ const CodeBlock = memo(function CodeBlock({ language, children }: { language?: s
         <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => copyText(code)} />
       </div>
       <pre className="hljs ai-code-pre" style={{ background: '#f6f8fa', margin: 0, padding: '16px 20px', borderRadius: '0 0 8px 8px', border: '1px solid #e1e4e8', borderTop: 'none', overflowX: 'auto', fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-        <code
-          className={lang ? `language-${lang}` : undefined}
-          dangerouslySetInnerHTML={{ __html: highlighted }}
-        />
+        <code className={lang ? `language-${lang}` : undefined} dangerouslySetInnerHTML={{ __html: highlighted }} />
       </pre>
     </div>
   );
 });
 
-// ==================== Think/Role 配置 ====================
+// ==================== 流式文本 + 闪烁光标 ====================
+const StreamingText = memo(function StreamingText({ content }: { content: string }) {
+  return (
+    <div className="ai-streaming-text">
+      {content}
+      <span className="ai-streaming-cursor" />
+    </div>
+  );
+});
+
 const ThinkComponent = memo((props: ComponentProps) => {
   const [done, setDone] = useState(false);
   useEffect(() => { if (props.streamStatus === 'done') setDone(true); }, [props.streamStatus]);
   return <div style={{ padding: '4px 0', fontSize: 13, color: '#8c8c8c' }}>{done ? '思考完成' : '思考中...'}</div>;
 });
 
-const getBubbleRole = (): BubbleListProps['role'] => ({
-  ai: {
-    placement: 'start',
-    typing: false,
-    avatar: <Avatar icon={<RobotOutlined />} style={{ background: '#1677ff' }} />,
-    contentRender: (content: string, { status }: any) => {
-      if (!content) return null;
-      // 流式中纯文本，完成后 XMarkdown
-      if (status === 'updating' || status === 'loading') {
-        return <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{content}</div>;
-      }
-      return (
-        <XMarkdown openLinksInNewTab config={{ breaks: true }}
-          components={{
-            think: ThinkComponent,
-            pre: ({ children }: any) => {
-              const codeEl = React.Children.only(children);
-              const lang = (codeEl?.props?.className || '').replace('language-', '') || undefined;
-              return <CodeBlock language={lang}>{extractCodeText(codeEl?.props?.children)}</CodeBlock>;
-            },
-          }}
-        >
-          {content || ''}
-        </XMarkdown>
-      );
-    },
-  },
-  user: { placement: 'end', avatar: <Avatar icon={<UserOutlined />} style={{ background: '#52c41a' }} /> },
-});
+// ==================== 消息内容渲染 ====================
+function MessageContent({ content, status }: { content: string; status?: 'updating' | 'done' | 'error' }) {
+  if (status === 'updating') {
+    return <StreamingText content={content} />;
+  }
+  if (status === 'error') {
+    return <div className="ai-message-error">{content}</div>;
+  }
+  if (!content) return null;
+  return (
+    <XMarkdown openLinksInNewTab config={{ breaks: true }}
+      components={{
+        think: ThinkComponent,
+        pre: ({ children }: any) => {
+          const codeEl = React.Children.only(children);
+          const lang = (codeEl?.props?.className || '').replace('language-', '') || undefined;
+          return <CodeBlock language={lang}>{extractCodeText(codeEl?.props?.children)}</CodeBlock>;
+        },
+      }}
+    >
+      {content}
+    </XMarkdown>
+  );
+}
 
-// ==================== 消息类型 (带 status 控制渲染) ====================
+// ==================== 消息类型 ====================
 interface UiMsg { id: string; role: 'user' | 'assistant'; content: string; status?: 'updating' | 'done' | 'error'; }
+
+// ==================== 单条消息 ====================
+const ChatMessage = memo(function ChatMessage({ msg }: { msg: UiMsg }) {
+  const { styles } = useStyle();
+  const isUser = msg.role === 'user';
+  return (
+    <div className={`${styles.msgRow} ${isUser ? styles.msgUser : styles.msgAi}`}>
+      {!isUser && (
+        <div className={styles.msgAvatar}>
+          <Avatar icon={<RobotOutlined />} style={{ background: '#1677ff' }} size={32} />
+        </div>
+      )}
+      <div className={`${styles.msgBubble} ${isUser ? styles.msgBubbleUser : msg.status === 'error' ? styles.msgBubbleError : styles.msgBubbleAi}`}>
+        {isUser ? (
+          <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75 }}>{msg.content}</div>
+        ) : (
+          <MessageContent content={msg.content} status={msg.status} />
+        )}
+      </div>
+      {isUser && (
+        <div style={{ flexShrink: 0, marginLeft: 10, marginTop: 2 }}>
+          <Avatar icon={<UserOutlined />} style={{ background: '#52c41a' }} size={32} />
+        </div>
+      )}
+    </div>
+  );
+});
 
 // ============================================================
 export default function AiWorkbench() {
@@ -189,20 +290,16 @@ export default function AiWorkbench() {
   const activeKeyRef = useRef('');
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const pendingContentRef = useRef('');
-  const rafRef = useRef<number>(0);
 
-  // ---- 流式更新 (节流) ----
-  const updateAssistantMsg = useCallback((id: string, content: string) => {
-    pendingContentRef.current = content;
-    if (rafRef.current) return;
-    rafRef.current = requestAnimationFrame(() => {
-      setMessages(prev => prev.map(m =>
-        m.id === id ? { ...m, content: pendingContentRef.current } : m
-      ));
-      rafRef.current = 0;
+  // ---- 自动滚底 ----
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const id = requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: isRequesting ? 'auto' : 'smooth' });
     });
-  }, []);
+    return () => cancelAnimationFrame(id);
+  }, [messages, isRequesting]);
 
   // ---- 初始化 ----
   useEffect(() => {
@@ -215,7 +312,7 @@ export default function AiWorkbench() {
         activeKeyRef.current = firstKey;
         setActiveKey(firstKey);
         const history = await getAiConversationMessages(firstKey);
-        setMessages(history.map(m => ({ ...m, status: 'done' })));
+        setMessages(history.map(m => ({ ...m, status: 'done' as const })));
       }
     })();
   }, []);
@@ -233,7 +330,7 @@ export default function AiWorkbench() {
     setMessages([]);
     try {
       const history = await getAiConversationMessages(nextKey);
-      if (activeKeyRef.current === nextKey) setMessages(history.map(m => ({ ...m, status: 'done' })));
+      if (activeKeyRef.current === nextKey) setMessages(history.map(m => ({ ...m, status: 'done' as const })));
     } finally {
       if (activeKeyRef.current === nextKey) setLoadingMsgs(false);
     }
@@ -250,7 +347,7 @@ export default function AiWorkbench() {
     setMessages([]);
   }, []);
 
-  // ---- 发送消息 (手动 SSE) ----
+  // ---- 发送消息 (SSE 流式) ----
   const sendMessage = useCallback(async (content: string) => {
     const val = content.trim();
     if (!val || isRequesting) return;
@@ -268,8 +365,7 @@ export default function AiWorkbench() {
     const userMsg: UiMsg = { id: `u_${Date.now()}`, role: 'user', content: val, status: 'done' };
     const aiId = `a_${Date.now()}`;
     const aiMsg: UiMsg = { id: aiId, role: 'assistant', content: '', status: 'updating' };
-    const currentMessages = [...messages, userMsg];
-    setMessages([...currentMessages, aiMsg]);
+    setMessages(prev => [...prev, userMsg, aiMsg]);
     setIsRequesting(true);
 
     const ctrl = new AbortController(); abortRef.current = ctrl;
@@ -280,15 +376,21 @@ export default function AiWorkbench() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: localStorage.getItem('token') || '' },
         body: JSON.stringify({
-          messages: [...currentMessages.filter(m => m.role === 'user' || m.role === 'assistant'), { role: 'user', content: val }].map(m => ({ role: m.role, content: m.content })),
+          messages: [
+            ...messages.filter(m => m.role === 'user' || m.role === 'assistant'),
+            { role: 'user', content: val },
+          ].map(m => ({ role: m.role, content: m.content })),
           stream: true,
         }),
         signal: ctrl.signal,
       });
       if (!res.ok) throw new Error(`请求失败(${res.status})`);
+
       const reader = res.body?.getReader();
       if (!reader) throw new Error('浏览器不支持流式响应');
-      const dec = new TextDecoder(); let buf = '';
+
+      const dec = new TextDecoder();
+      let buf = ''; 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -300,10 +402,14 @@ export default function AiWorkbench() {
           if (!d || d === '[DONE]') continue;
           try {
             const chunk = JSON.parse(d).choices?.[0]?.delta?.content;
-            if (chunk) { full += chunk; updateAssistantMsg(aiId, full); }
+            if (chunk) {
+              full += chunk;
+              setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: full, status: 'updating' } : m));
+            }
           } catch {}
         }
       }
+
       setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: full, status: 'done' } : m));
     } catch (err: any) {
       if (err.name !== 'AbortError') {
@@ -315,39 +421,22 @@ export default function AiWorkbench() {
     }
 
     // 保存到数据库
-    const title = val.slice(0, 30);
-    setConversations(prev => prev.map(c => c.key === convId ? { ...c, label: c.label === '新对话' ? title : c.label } : c));
+    const currentConversation = conversations.find(c => c.key === convId);
+    const shouldUpdateTitle = currentConversation?.label === '新对话';
+    const title = shouldUpdateTitle ? val.slice(0, 30) : undefined;
+    setConversations(prev => prev.map(c => c.key === convId ? { ...c, label: shouldUpdateTitle ? title! : c.label } : c));
     saveConversationMessages(convId!, [
       { role: 'user', content: val }, { role: 'assistant', content: full },
     ], title).catch(() => {});
-  }, [isRequesting, messages, updateAssistantMsg]);
-
-  // ---- 自动滚底 (消息内容区自身滚动) ----
-  useEffect(() => {
-    if (!isRequesting) return;
-    const el = scrollRef.current;
-    if (!el) return;
-    const id = requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
-    return () => cancelAnimationFrame(id);
-  }, [messages, isRequesting]);
-
-  // ---- Bubble items ----
-  const bubbleItems = React.useMemo(() =>
-    messages.map(msg => ({
-      key: msg.id,
-      role: (msg.role === 'assistant' ? 'ai' : 'user') as 'ai' | 'user',
-      content: msg.content,
-      status: msg.status === 'updating' ? 'updating' : msg.status === 'error' ? 'error' : 'success',
-    })),
-  [messages]);
+  }, [isRequesting, messages]);
 
   return (
     <XProvider>
-      <div className={styles.layout}>
-        {/* Left sidebar */}
-        <div className={styles.side}>
+      <div className={styles.workbench}>
+        {/* 左侧会话列表 */}
+        <aside className={styles.sidebar}>
           <div className={styles.logo}>
-            <RobotOutlined style={{ fontSize: 24, color: tk.colorPrimary }} />
+            <img src={require('../img/kox-ai.png')} alt="KOX-AI" style={{ width: 28, height: 28 }} />
             <span>KOX-AI</span>
           </div>
           <Conversations
@@ -357,34 +446,43 @@ export default function AiWorkbench() {
             activeKey={activeKey}
             onActiveChange={handleActiveChange}
           />
-        </div>
+        </aside>
 
-        {/* Center chat */}
-        <div className={styles.chat}>
-          <div ref={scrollRef} className={styles.chatList}>
+        {/* 右侧聊天区 */}
+        <main className={styles.chatMain}>
+          <div ref={scrollRef} className={styles.messageScroller}>
             {loadingMsgs ? (
-              <Flex justify="center" style={{ paddingTop: 100 }}><span style={{ color: '#999' }}>加载中...</span></Flex>
-            ) : bubbleItems.length ? (
-              <div className={styles.chatInner}>
-                <Bubble.List items={bubbleItems} role={getBubbleRole()} autoScroll={false} />
+              <Flex justify="center" style={{ paddingTop: 100 }}>
+                <span style={{ color: '#999' }}>加载中...</span>
+              </Flex>
+            ) : messages.length ? (
+              <div className={styles.messageList}>
+                {messages.map(msg => (
+                  <ChatMessage key={msg.id} msg={msg} />
+                ))}
               </div>
             ) : (
               <Flex vertical gap={16} align="center" className={styles.placeholder}>
                 <Welcome variant="borderless" icon={<RobotOutlined style={{ fontSize: 48, color: tk.colorPrimary }} />} title={t.welcome} description={t.welcomeDescription} />
                 <Space size={8}>
-                  {['CRUD 模块', 'SQL 助手', '审计分析', '配置审查'].map(label => (<Button key={label} onClick={() => sendMessage(label)}>{label}</Button>))}
+                  {['CRUD 模块', 'SQL 助手', '审计分析', '配置审查'].map(label => (
+                    <Button key={label} onClick={() => sendMessage(label)}>{label}</Button>
+                  ))}
                 </Space>
               </Flex>
             )}
           </div>
-          <div className={styles.senderWrapper}>
-            <Sender value={inputValue} onChange={setInputValue}
+          <div className={styles.inputDock}>
+            <Sender
+              value={inputValue}
+              onChange={setInputValue}
               onSubmit={() => sendMessage(inputValue)}
               onCancel={() => { abortRef.current?.abort(); setIsRequesting(false); }}
-              loading={isRequesting} placeholder={t.askOrInputUseSkills}
+              loading={isRequesting}
+              placeholder={t.askOrInputUseSkills}
             />
           </div>
-        </div>
+        </main>
       </div>
     </XProvider>
   );

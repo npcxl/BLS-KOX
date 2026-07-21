@@ -74,7 +74,11 @@ router.post('/conversations', jwtAuth(), async (ctx: Context) => {
       .select('id').where('id', '=', convId).executeTakeFirst();
 
     if (existing) {
-      await db.updateTable('ai_conversation').set({ title, updated_at: now }).where('id', '=', convId).execute();
+      const updateData: any = { updated_at: now };
+      if (body.title && body.title.trim()) {
+        updateData.title = body.title.trim();
+      }
+      await db.updateTable('ai_conversation').set(updateData).where('id', '=', convId).execute();
     } else {
       await db.insertInto('ai_conversation').values({
         id: convId, user_id: userId, tenant_id: tenantId,
