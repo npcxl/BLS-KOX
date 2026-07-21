@@ -1,5 +1,22 @@
 # 架构设计
 
+## 系统架构
+
+```
+Browser ─── Nginx(80) ─── bls-admin (前端 SPA)
+                │
+                ├── /api/auth/* ──────── bls-server (Koa :7001)
+                ├── /api/ai/chat/conversations ── bls-server (Koa :7001)
+                ├── /api/ai/* ────────── bls-ai-service (Koa :7201, SSE 流式)
+                ├── /api/* ───────────── bls-server (Koa :7001)
+                ├── /ws/* ────────────── bls-server (WebSocket)
+                └── /files/* ─────────── MinIO (:9000)
+                          │
+            ┌─────────────┼─────────────┐
+            │             │             │
+         MySQL 8.0    Redis 7     MinIO
+```
+
 ## 请求链路
 
 ```
@@ -33,6 +50,24 @@ Audit Log → Security Event Center (P10) → Auto-dispose
   ↓
 Prometheus Metrics
 ```
+
+### AI 服务架构
+
+```
+bls-admin (前端) ── POST /api/ai/chat/completions ──→ bls-ai-service (:7201)
+    │                                                     │
+    │  GET/POST/DELETE                                    │ DeepSeek / OpenAI
+    │  /api/ai/chat/conversations                         │ SSE Streaming
+    │                                                     │
+    └──────────────────→ bls-server (:6001)               │
+                              │                           │
+                         MySQL (ai_conversation           │
+                                ai_conversation_message)  │
+```
+
+- **bls-ai-service**：独立微服务，负责调用 AI 大模型（DeepSeek/OpenAI）并流式返回 SSE
+- **bls-server**：负责 AI 对话的 CRUD 存储（会话列表、消息历史）
+- **SSE 流式**：Nginx 对 `/api/ai/` 路径关闭 proxy_buffering，确保流式响应实时推送
 
 ## 模块分层
 

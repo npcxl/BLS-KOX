@@ -3,7 +3,7 @@
 ## 快速开始
 
 - [快速开始](./getting-started.md) — 环境要求、安装、启动、演示账号
-- [Docker 部署指南](./docker-deploy.md) — Docker Compose 一键部署、Koa/Java 切换、故障排查
+- [Docker 部署指南](./docker-deploy.md) — Docker Compose 一键部署、Koa/Java 切换、AI 服务配置、故障排查
 - [部署指南](./deployment.md) — 传统部署方式
 - [生产检查清单](./production-checklist.md) — 上线前安全检查
 
