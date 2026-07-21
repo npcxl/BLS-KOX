@@ -88,6 +88,22 @@ export function createApp(): Koa {
   aiRouter.use(chatR.routes());
   aiRouter.use(chatR.allowedMethods());
 
+  // ====== Models ======
+  // GET /api/ai/models
+  aiRouter.get('/models', (ctx: Koa.Context) => {
+    const models = env.ai.modelOptions.length > 0
+      ? env.ai.modelOptions.map(m => ({ label: m, value: m }))
+      : [{ label: env.ai.model, value: env.ai.model }];
+    ctx.body = {
+      code: 0,
+      data: {
+        provider: env.ai.provider,
+        currentModel: env.ai.model,
+        models,
+      },
+    };
+  });
+
   app.use(aiRouter.routes());
   app.use(aiRouter.allowedMethods());
 

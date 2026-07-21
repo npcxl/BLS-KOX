@@ -4,6 +4,16 @@ import { env } from '../config/env';
 
 let provider: AiProvider | null = null;
 
+function createProvider(model: string): AiProvider {
+  return new OpenAIProvider({
+    apiKey: env.ai.apiKey,
+    model,
+    baseUrl: env.ai.baseUrl || getDefaultBaseUrl(env.ai.provider),
+    timeoutMs: env.ai.timeoutMs,
+    temperature: env.ai.temperature,
+  });
+}
+
 /**
  * AI Provider 工厂
  * 根据 AI_PROVIDER 环境变量创建对应的 Provider 实例
@@ -13,26 +23,16 @@ let provider: AiProvider | null = null;
  */
 export function getAiProvider(): AiProvider {
   if (provider) return provider;
-
-  switch (env.ai.provider) {
-    case 'openai':
-    case 'deepseek':
-    case 'qwen':
-    case 'custom':
-    default:
-      // 所有兼容 OpenAI API 格式的 provider 都复用 OpenAIProvider
-      // 通过 AI_BASE_URL 区分不同服务端点
-      provider = new OpenAIProvider({
-        apiKey: env.ai.apiKey,
-        model: env.ai.model,
-        baseUrl: env.ai.baseUrl || getDefaultBaseUrl(env.ai.provider),
-        timeoutMs: env.ai.timeoutMs,
-        temperature: env.ai.temperature,
-      });
-      break;
-  }
-
+  provider = createProvider(env.ai.model);
   return provider;
+}
+
+/**
+ * 使用指定模型创建 Provider（每次新建，不使用缓存）
+ * 用于前端动态切换模型
+ */
+export function getAiProviderForModel(model: string): AiProvider {
+  return createProvider(model);
 }
 
 function getDefaultBaseUrl(providerName: string): string {
