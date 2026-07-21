@@ -401,12 +401,22 @@ export default function AiWorkbench() {
           const d = line.slice(6).trim();
           if (!d || d === '[DONE]') continue;
           try {
-            const chunk = JSON.parse(d).choices?.[0]?.delta?.content;
+            const parsed = JSON.parse(d);
+            // 检查是否有错误
+            if (parsed.error) {
+              throw new Error(parsed.error.message || 'AI 服务异常');
+            }
+            const chunk = parsed.choices?.[0]?.delta?.content;
             if (chunk) {
               full += chunk;
               setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: full, status: 'updating' } : m));
             }
-          } catch {}
+          } catch (e: any) {
+            // JSON parse error — might be partial chunk, ignore
+            if (e.message && !e.message.includes('JSON')) {
+              throw e; // re-throw real errors
+            }
+          }
         }
       }
 
