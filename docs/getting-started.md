@@ -1,5 +1,7 @@
 # 快速开始
 
+> ⚠️ **分支说明**：当前文档基于 `master` 分支。`dev` 分支包含最新功能和实验性特性，可能存在未修复的 Bug，生产环境请使用 `master` 分支。
+
 ## 选择后端
 
 本项目包含两套后端，API 完全兼容，**选一套即可**：
@@ -36,13 +38,15 @@ git clone https://github.com/npcxl/BLS-KOX.git && cd BLS-KOX
 cp .env.example .env
 # 编辑 .env，把所有 CHANGE_TO_* 改成强密码
 
-# 启动全部服务（默认 Koa 后端）
+# 启动全部服务（默认 Koa 后端 + AI 服务）
 docker compose up -d --build
 ```
 
 启动成功访问：**http://localhost**
 
 默认账号：`superadmin` / `123456`
+
+> **KOX-AI 对话**：登录后左侧菜单点击「KOX-AI」即可使用 AI 智能助手，需要在 `.env` 中配置 `OPENAI_API_KEY`。
 
 > 想用 **Java 后端**？加上 profile：
 > ```bash
@@ -169,6 +173,9 @@ proxy_pass http://bls-java-server:8080;
 | `DB_NAME` | 数据库名 | `bls` |
 | `JWT_SECRET` | JWT 密钥 | 生产务必改 |
 | `REDIS_PASSWORD` | Redis 密码 | 必填 |
+| `OPENAI_API_KEY` | AI API 密钥 | 使用 AI 功能必填 |
+| `AI_PROVIDER` | AI 提供商 | `deepseek` |
+| `AI_MODEL` | AI 模型名称 | `deepseek-chat` |
 
 ---
 

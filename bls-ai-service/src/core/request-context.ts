@@ -1,0 +1,72 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomUUID } from 'node:crypto';
+
+export interface RequestContext {
+  requestId: string;
+  traceId: string;
+  tenantId: string | null;
+  userId: string | null;
+  username?: string;
+  clientIp: string;
+  userAgent?: string;
+  startTime: number;
+}
+
+const ctxStorage = new AsyncLocalStorage<RequestContext>();
+
+export function getRequestContext(): RequestContext | undefined {
+  return ctxStorage.getStore();
+}
+
+export function getCurrentTenantId(): string | null {
+  return ctxStorage.getStore()?.tenantId ?? null;
+}
+
+export function getCurrentUserId(): string | null {
+  return ctxStorage.getStore()?.userId ?? null;
+}
+
+export function getRequestId(): string {
+  return ctxStorage.getStore()?.requestId ?? 'unknown';
+}
+
+function normalizeRequestId(value?: string): string {
+  if (value && /^[A-Za-z0-9_-]{8,64}$/.test(value)) return value;
+  return randomUUID().replace(/-/g, '').slice(0, 16);
+}
+
+function normalizeIp(value?: string): string | undefined {
+  if (!value) return undefined;
+  const ip = value.trim();
+  return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+}
+
+/** 中间件：初始化请求上下文 */
+export async function requestContextMiddleware(ctx: any, next: () => Promise<void>) {
+  const store: RequestContext = {
+    requestId: normalizeRequestId(ctx.headers['x-request-id'] as string),
+    traceId: normalizeRequestId(ctx.headers['x-trace-id'] as string),
+    tenantId: null,
+    userId: null,
+    clientIp: normalizeIp(ctx.ip) ?? 'unknown',
+    userAgent: ctx.get('user-agent') || undefined,
+    startTime: Date.now(),
+  };
+
+  // 将 requestId 写入响应头
+  ctx.set('X-Request-Id', store.requestId);
+
+  await ctxStorage.run(store, async () => {
+    await next();
+  });
+}
+
+/** 更新上下文（JWT 认证后调用） */
+export function setAuthContext(user: { userId: string; tenantId: string; username?: string }) {
+  const store = ctxStorage.getStore();
+  if (store) {
+    store.userId = user.userId;
+    store.tenantId = user.tenantId;
+    store.username = user.username;
+  }
+}

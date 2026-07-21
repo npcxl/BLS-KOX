@@ -1,45 +1,22 @@
-# Dependencies
-node_modules/
-
-# Build outputs
-dist/
-build/
-out/
-coverage/
-
-# OpenAPI (auto-generated)
-openapi.json
-
-# BLS-KOX
-BLS-KOX
-BLS-KOX_
-
-# Environment variables
-.env
-!.env.example
-.env.docker
-!.env.docker.example
-
-# Logs
-logs/
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
 *.log
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Editors / IDEs
-.vscode/
 .idea/
+*.iml
+.settings/
+.project
+.classpath
+.vscode/
 *.swp
 *.swo
-
-# Local caches
-.cache/
-.tmp/
-bls-server/backups/
-
-Bls-Java.md
-Bls-Java/
-分布式服务器初始化
-分布式服务初始化.md
+.env
+.env.docker
+uploads/
+src/main/resources/application.yml
+dist/
+node_modules/
+AI模块生成指南.md
+.gitignore

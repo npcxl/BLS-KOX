@@ -1,0 +1,50 @@
+{
+  "name": "bls-ai-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BLS-KOX AI Service — 轻量 AI 能力微服务（Koa + TypeScript）",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/npcxl/BLS-KOX.git",
+    "directory": "bls-ai-service"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/app.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/app.js",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@koa/cors": "~5.0.0",
+    "dotenv": "~17.4.2",
+    "helmet": "^8.0.0",
+    "ioredis": "^5.11.1",
+    "jsonwebtoken": "~9.0.3",
+    "koa": "~3.2.1",
+    "koa-bodyparser": "~4.4.1",
+    "koa-helmet": "~9.0.0",
+    "koa-router": "~14.0.0",
+    "kysely": "^0.29.4",
+    "mysql2": "^3.23.1",
+    "openai": "^4.83.0",
+    "ws": "^8.21.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "~9.0.10",
+    "@types/koa": "~3.0.3",
+    "@types/koa__cors": "^5.0.1",
+    "@types/koa-bodyparser": "~4.3.13",
+    "@types/koa-router": "~7.4.9",
+    "@types/node": "~25.9.2",
+    "@types/ws": "^8.18.1",
+    "tsx": "~4.22.4",
+    "typescript": "~6.0.3",
+    "vitest": "^3.2.4"
+  }
+}

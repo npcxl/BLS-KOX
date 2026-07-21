@@ -30,13 +30,14 @@ docker compose ps
 全部 `Up` (healthy) 即为成功：
 
 ```
-NAME           STATUS
-bls-admin      Up
-bls-minio      Up (healthy)
-bls-mysql      Up (healthy)
-bls-nginx      Up
-bls-redis      Up (healthy)
-bls-server     Up (healthy)
+NAME             STATUS
+bls-admin        Up
+bls-ai-service   Up (healthy)
+bls-minio        Up (healthy)
+bls-mysql        Up (healthy)
+bls-nginx        Up
+bls-redis        Up (healthy)
+bls-server       Up (healthy)
 ```
 
 ![Docker Desktop 运行状态](../img/docker-ok/1.png)
@@ -48,6 +49,7 @@ bls-server     Up (healthy)
 | 服务 | 地址 | 说明 |
 |------|------|------|
 | 前端管理台 | http://localhost | Nginx 统一入口 |
+| KOX-AI 对话 | http://localhost → 菜单「KOX-AI」 | AI 智能助手 |
 | MinIO 控制台 | http://localhost:9001 | 对象存储管理 |
 | API 健康检查 | http://localhost/api/health | 后端健康状态 |
 
@@ -138,6 +140,7 @@ Java 版通过 `docker-compose.java.yml` 覆盖文件实现：
 |------|-----------|------|
 | **启动命令** | `docker compose --env-file .env.docker up -d --build` | `docker compose --env-file .env.docker -f docker-compose.yml -f docker-compose.java.yml up -d --build` |
 | **后端容器** | `bls-server:7001` | `bls-java-server:8080` |
+| **AI 服务** | `bls-ai-service:7201`（默认启动） | 同样可用 |
 | **nginx 配置** | `nginx.conf` | `nginx-java.conf` |
 | **接口文档** | 需本地开发模式查看 | Swagger UI: `http://localhost:8080/swagger-ui.html` |
 | **WebSocket** | 支持 | 暂不支持 |
@@ -161,6 +164,7 @@ Browser → Nginx(80) → bls-admin(前端 SPA)
 | bls-nginx | nginx:alpine | 80 | 反向代理 |
 | bls-admin | 构建 | - | 前端 SPA |
 | bls-server | 构建 | 7001 | 后端 Koa（默认） |
+| bls-ai-service | 构建 | 7201 | AI 对话服务（流式 SSE） |
 | bls-java-server | 构建 | 8080 | 后端 Java（可选） |
 | bls-mysql | mysql:8.0 | 3306 | 数据库 |
 | bls-redis | redis:7-alpine | 6379 | 缓存 |
@@ -219,6 +223,11 @@ docker compose --env-file .env.docker down
 | JWT_SECRET | JWT 签名密钥 | 至少 32 位 |
 | CORS_ORIGINS | 允许的跨域域名 | http://localhost |
 | API_SIGN_SECRET | 防重放签名密钥 | 自定义 |
+| **AI 服务** | | |
+| AI_PROVIDER | AI 提供商 | deepseek / openai |
+| AI_MODEL | AI 模型名称 | deepseek-chat / gpt-4o-mini |
+| OPENAI_API_KEY | AI API 密钥 | 从平台获取 |
+| AI_BASE_URL | AI API 自定义地址 | 可选，默认用官方地址 |
 
 ---
 

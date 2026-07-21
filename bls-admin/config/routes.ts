@@ -180,6 +180,22 @@ export default [
     ],
   },
   {
+    path: "/ai",
+    name: "KOX-AI",
+    icon: "RobotOutlined",
+    routes: [
+      {
+        path: "/ai",
+        redirect: "/ai/workbench",
+      },
+      {
+        path: "/ai/workbench",
+        name: "KOX-AI",
+        component: "./ai/workbench",
+      },
+    ],
+  },
+  {
     path: "/",
     redirect: "/dashboard",
   },

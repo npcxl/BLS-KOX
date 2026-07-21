@@ -421,7 +421,39 @@ INSERT INTO `sys_menu` VALUES
 ('storage_config_0001','file_center_0001','存储配置','/file-config/storage','system/file-config/storage','system:storage:list','DatabaseOutlined','1',1,'0','2026-06-15 08:41:06','2026-06-16 01:57:24'),
 ('storage_config_add_0001','storage_config_0001','新增',NULL,NULL,'system:storage:add',NULL,'2',1,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),
 ('storage_config_edit_0001','storage_config_0001','修改',NULL,NULL,'system:storage:edit',NULL,'2',2,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),
-('storage_config_remove_0001','storage_config_0001','删除',NULL,NULL,'system:storage:remove',NULL,'2',3,'0','2026-06-15 08:41:37','2026-06-15 08:41:37');
+('storage_config_remove_0001','storage_config_0001','删除',NULL,NULL,'system:storage:remove',NULL,'2',3,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),('ai_workbench_0001','000000','AI 工作台','/ai',NULL,NULL,'RobotOutlined','0',50,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_workbench_0002','ai_workbench_0001','AI 工作台','/ai/workbench','ai/workbench','ai:workbench:view','RobotOutlined','1',1,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_crud_0001','ai_workbench_0001','CRUD 生成','/ai/crud','ai/crud','ai:crud:generate','CodeOutlined','1',2,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_sql_0001','ai_workbench_0001','SQL 助手','/ai/sql','ai/sql','ai:sql:generate','ConsoleSqlOutlined','1',3,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_audit_0001','ai_workbench_0001','审计分析','/ai/audit','ai/audit','ai:audit:analyze','AuditOutlined','1',4,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_config_0001','ai_workbench_0001','配置审查','/ai/config-review','ai/config-review','ai:config:review','SafetyOutlined','1',5,'0','2026-07-19 00:00:00','2026-07-19 00:00:00');
+
+-- -------------------------------------------------------
+-- -------------------------------------------------------
+-- ai_conversation (AI 对话)
+-- -------------------------------------------------------
+DROP TABLE IF EXISTS `ai_conversation`;
+CREATE TABLE `ai_conversation` (
+  `id`          BIGINT       NOT NULL,
+  `user_id`     BIGINT       NOT NULL,
+  `tenant_id`   VARCHAR(20)  NOT NULL DEFAULT '000000',
+  `title`       VARCHAR(200) NOT NULL DEFAULT '新对话',
+  `deleted`     TINYINT      NOT NULL DEFAULT 0,
+  `created_at`  DATETIME     NOT NULL,
+  `updated_at`  DATETIME     NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_user_tenant` (`user_id`, `tenant_id`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- -------------------------------------------------------
+-- ai_conversation_message (AI 对话消息)
+-- -------------------------------------------------------
+DROP TABLE IF EXISTS `ai_conversation_message`;
+CREATE TABLE `ai_conversation_message` (
+  `id`              BIGINT        NOT NULL,
+  `conversation_id` BIGINT        NOT NULL,
+  `role`            VARCHAR(20)   NOT NULL,
+  `content`         LONGTEXT      NOT NULL,
+  `deleted`         TINYINT       NOT NULL DEFAULT 0,
+  `created_at`      DATETIME      NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_conversation` (`conversation_id`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- -------------------------------------------------------
 -- sys_migrations
@@ -536,7 +568,10 @@ INSERT INTO `sys_package_menu` VALUES
 ('P001','file_manage_upload_0001'),('P100','file_manage_upload_0001'),('P001','storage_config_0001'),
 ('P100','storage_config_0001'),('P001','storage_config_add_0001'),('P100','storage_config_add_0001'),
 ('P001','storage_config_edit_0001'),('P100','storage_config_edit_0001'),('P001','storage_config_remove_0001'),
-('P100','storage_config_remove_0001');
+('P100','storage_config_remove_0001'),('P001','ai_workbench_0001'),('P001','ai_workbench_0002'),
+('P001','ai_crud_0001'),('P001','ai_sql_0001'),('P001','ai_audit_0001'),('P001','ai_config_0001'),
+('P100','ai_workbench_0001'),('P100','ai_workbench_0002'),('P100','ai_crud_0001'),('P100','ai_sql_0001'),
+('P100','ai_audit_0001'),('P100','ai_config_0001');
 
 -- -------------------------------------------------------
 -- sys_page_column_config
@@ -680,7 +715,10 @@ INSERT INTO `sys_role_menu` VALUES
 ('100001','file_manage_0001'),('100001','file_manage_download_0001'),('100001','file_manage_remove_0001'),
 ('100001','file_manage_upload_0001'),
 ('100002','000100'),('100002','000120'),('100002','000121'),('100002','000130'),('100002','000131'),
-('100002','000160'),('100002','000161');
+('100002','000160'),('100002','000161'),('000001','ai_workbench_0001'),('000001','ai_workbench_0002'),
+('000001','ai_crud_0001'),('000001','ai_sql_0001'),('000001','ai_audit_0001'),('000001','ai_config_0001'),
+('100001','ai_workbench_0001'),('100001','ai_workbench_0002'),('100001','ai_crud_0001'),('100001','ai_sql_0001'),
+('100001','ai_audit_0001'),('100001','ai_config_0001');
 
 -- -------------------------------------------------------
 -- sys_search_index

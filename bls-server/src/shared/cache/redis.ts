@@ -9,6 +9,7 @@ export function getRedisClient(): Redis | null {
     client = new Redis({
       host: env.redis.host,
       port: env.redis.port,
+      username: env.redis.username || undefined,
       password: env.redis.password || undefined,
       keyPrefix: env.redis.keyPrefix,
       lazyConnect: false,

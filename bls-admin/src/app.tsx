@@ -115,6 +115,7 @@ function mapBackendMenus(
 function normalizeSelectedKeys(pathname: string) {
   if (pathname.startsWith('/system/')) return [pathname];
   if (pathname.startsWith('/tenant/')) return [pathname];
+  if (pathname.startsWith('/ai/')) return [pathname];
   if (pathname === '/dashboard') return ['/dashboard'];
   return [pathname];
 }

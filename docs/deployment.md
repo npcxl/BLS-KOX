@@ -1,5 +1,7 @@
 # 部署指南
 
+> ⚠️ **分支说明**：当前文档基于 `master` 分支。`dev` 分支包含最新功能和实验性特性，可能存在未修复的 Bug，生产环境请使用 `master` 分支。
+
 ## Docker Compose 部署
 
 ```bash
@@ -17,6 +19,7 @@ docker compose up -d --build
 ```bash
 docker compose ps
 docker compose logs -f bls-server
+docker compose logs -f bls-ai-service
 curl -f http://localhost/api/health
 ```
 
@@ -27,11 +30,14 @@ curl -f http://localhost/api/health
 | `DB_PASSWORD` | MySQL root 密码 | ✅ |
 | `REDIS_PASSWORD` | Redis 密码 | ✅ |
 | `JWT_SECRET` | JWT 签名密钥（≥32字符） | ✅ |
+| `OPENAI_API_KEY` | AI API 密钥 | 使用 AI 必填 |
 | `API_SIGN_SECRET` | API 签名密钥（HMAC模式必填） | 按需 |
 | `CORS_ORIGINS` | 允许的跨域来源 | 生产必填 |
 | `DB_HOST` | MySQL 地址 | 默认 mysql |
 | `REDIS_HOST` | Redis 地址 | 默认 redis |
 | `DB_NAME` | 数据库名 | 默认 bls |
+| `AI_PROVIDER` | AI 提供商（deepseek/openai） | 默认 deepseek |
+| `AI_MODEL` | AI 模型名称 | 默认 deepseek-chat |
 
 ## 数据库初始化
 

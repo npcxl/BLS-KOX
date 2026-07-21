@@ -2,11 +2,22 @@
  * @name 代理配置
  * @doc https://umijs.org/docs/guides/proxy
  *
- * 默认指向 Koa 后端 (6001)。
- * 切换 Java 后端：将 target 改为 http://localhost:8080
+ * 默认指向 Koa 后端 (6001)，AI 接口指向 AI 服务 (7201)。
+ * 切换 Java 后端：将 /api/ 的 target 改为 http://localhost:8080
  */
 export default {
   dev: {
+    // AI 对话管理 → Koa 后端 (bls-server)
+    '/api/ai/chat/conversations': {
+      target: 'http://localhost:6001',
+      changeOrigin: true,
+    },
+    // AI 流式接口 → AI 微服务 (7201)
+    '/api/ai/': {
+      target: 'http://localhost:7201',
+      changeOrigin: true,
+      proxyTimeout: 300000,
+    },
     '/api/': {
       target: 'http://localhost:6001',
       changeOrigin: true,

@@ -78,6 +78,7 @@ export const env = {
   redis: {
     host: process.env.REDIS_HOST ?? '127.0.0.1',
     port: numberEnv('REDIS_PORT', 6379),
+    username: process.env.REDIS_USERNAME ?? '',
     password: process.env.REDIS_PASSWORD ?? '',
     enabled: (process.env.REDIS_ENABLED ?? 'true') === 'true',
     keyPrefix: process.env.REDIS_KEY_PREFIX ?? 'bls:',
