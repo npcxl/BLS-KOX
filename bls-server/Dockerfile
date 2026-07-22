@@ -15,7 +15,6 @@ RUN npm install --legacy-peer-deps
 
 COPY tsconfig.json ./
 COPY src ./src
-COPY sql ./sql
 
 RUN npm run build
 
@@ -37,7 +36,6 @@ COPY package.json ./
 RUN npm install --omit=dev --legacy-peer-deps && npm cache clean --force && apk del python3 make g++
 
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/sql ./sql
 
 EXPOSE 7001
 

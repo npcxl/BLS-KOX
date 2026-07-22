@@ -94,12 +94,12 @@ export function createApp(): Koa {
   // GET /api/ai/models (优先从配置表读取，fallback 环境变量)
   aiRouter.get('/models', async (ctx: Koa.Context) => {
     try {
-      const { getModelConfigs } = await import('./provider/factory');
+      const { getModelConfigs } = require('./provider/factory');
       const configs = await getModelConfigs();
       if (configs.length > 0) {
-        const enabled = configs.filter(c => c.status === '0');
-        const defaultCfg = enabled.find(c => c.isDefault === '1') || enabled[0];
-        const models = enabled.map(c => ({ value: c.modelId, label: c.modelName }));
+        const enabled = configs.filter((c: any) => c.status === '0');
+        const defaultCfg = enabled.find((c: any) => c.isDefault === '1') || enabled[0];
+        const models = enabled.map((c: any) => ({ value: c.modelId, label: c.modelName }));
         ctx.body = {
           code: 0,
           data: {

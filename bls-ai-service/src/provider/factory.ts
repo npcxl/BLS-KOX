@@ -34,7 +34,7 @@ async function fetchModelConfigs(): Promise<ModelConfig[]> {
       },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
+    const json: any = await res.json();
     return (json.data || []) as ModelConfig[];
   } catch (err: any) {
     logger.warn('[ModelConfig] 无法从 bls-server 获取模型配置，降级使用环境变量', { error: err.message });
@@ -95,7 +95,7 @@ export async function getAiProvider(): Promise<AiProvider> {
       timeoutMs: cfg.timeoutMs || env.ai.timeoutMs,
       temperature: cfg.temperature ?? env.ai.temperature,
     });
-    logger.info('[Provider] 使用模型配置表: %s (%s)', cfg.modelName, cfg.modelId);
+    logger.info(`[Provider] 使用模型配置表: ${cfg.modelName} (${cfg.modelId})`);
   } else {
     defaultProvider = createProvider({
       apiKey: env.ai.apiKey,
@@ -104,7 +104,7 @@ export async function getAiProvider(): Promise<AiProvider> {
       timeoutMs: env.ai.timeoutMs,
       temperature: env.ai.temperature,
     });
-    logger.info('[Provider] 使用环境变量: %s/%s', env.ai.provider, env.ai.model);
+    logger.info(`[Provider] 使用环境变量: ${env.ai.provider}/${env.ai.model}`);
   }
   return defaultProvider;
 }
@@ -113,7 +113,7 @@ export async function getAiProvider(): Promise<AiProvider> {
 export async function getAiProviderForModel(modelId: string): Promise<AiProvider> {
   const cfg = await findModelConfig(modelId);
   if (cfg) {
-    logger.info('[Provider] 动态模型: %s (%s)', cfg.modelName, cfg.modelId);
+    logger.info(`[Provider] 动态模型: ${cfg.modelName} (${cfg.modelId})`);
     return createProvider({
       apiKey: cfg.apiKey || env.ai.apiKey,
       model: cfg.modelId,
