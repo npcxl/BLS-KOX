@@ -165,16 +165,22 @@ router.post('/completions', async (ctx: Context) => {
   try {
     const ai = model ? await getAiProviderForModel(model) : await getAiProvider();
     const allMessages: AiMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }, ...messages];
+    const startTime = Date.now();
+    let totalChars = 0;
 
     if (ai.completeStream) {
       const stream = ai.completeStream({ messages: allMessages, temperature: 0.3 });
       for await (const chunk of stream) {
+        totalChars += chunk.length;
         ctx.res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: chunk } }] })}\n\n`);
       }
     } else {
       const result = await ai.complete({ messages: allMessages, temperature: 0.3 });
+      totalChars = result.content.length;
       ctx.res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: result.content } }] })}\n\n`);
     }
+    const elapsed = Date.now() - startTime;
+    logger.info(`[Chat] 成本统计: ${totalChars} 字符, ${elapsed}ms, 模型=${model || 'default'}`);
     ctx.res.write('data: [DONE]\n\n');
   } catch (err: any) {
     logger.error('[Chat] stream error: %s', err.message);

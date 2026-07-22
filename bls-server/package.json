@@ -52,7 +52,7 @@
     "koa-compose": "~4.1.0",
     "koa-helmet": "~9.0.0",
     "koa-router": "~14.0.0",
-    "kysely": "^0.29.2",
+    "kysely": "^0.29.4",
     "minio": "^8.0.7",
     "mysql2": "~3.22.5",
     "prom-client": "^15.1.3",
