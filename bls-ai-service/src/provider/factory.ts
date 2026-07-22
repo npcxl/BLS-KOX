@@ -26,7 +26,7 @@ const CACHE_TTL = 30_000; // 30秒缓存
 async function fetchModelConfigs(): Promise<ModelConfig[]> {
   try {
     const serverUrl = env.blsServerUrl || 'http://bls-server:7001';
-    const res = await fetch(`${serverUrl}/api/system/ai-model/list`, {
+    const res = await fetch(`${serverUrl}/api/system/ai-model/internal-list`, {
       headers: {
         'Content-Type': 'application/json',
         'X-Internal-Secret': env.internalSecret,
@@ -89,8 +89,9 @@ export async function getAiProvider(): Promise<AiProvider> {
 
   const cfg = await findModelConfig();
   if (cfg) {
+    const apiKey = (cfg.apiKey && !cfg.apiKey.startsWith('CHANGE_TO_')) ? cfg.apiKey : env.ai.apiKey;
     defaultProvider = createProvider({
-      apiKey: cfg.apiKey || env.ai.apiKey,
+      apiKey,
       model: cfg.modelId,
       baseUrl: cfg.baseUrl || getDefaultBaseUrl(cfg.provider),
       timeoutMs: cfg.timeoutMs || env.ai.timeoutMs,
@@ -114,9 +115,10 @@ export async function getAiProvider(): Promise<AiProvider> {
 export async function getAiProviderForModel(modelId: string): Promise<AiProvider> {
   const cfg = await findModelConfig(modelId);
   if (cfg) {
-    logger.info(`[Provider] 动态模型: ${cfg.modelName} (${cfg.modelId})`);
+    const apiKey = (cfg.apiKey && !cfg.apiKey.startsWith('CHANGE_TO_')) ? cfg.apiKey : env.ai.apiKey;
+    logger.info(`[Provider] 动态模型: ${cfg.modelName} (${cfg.modelId}), keyLen=${apiKey.length}, keyPrefix=${apiKey.slice(0, 10)}`);
     return createProvider({
-      apiKey: cfg.apiKey || env.ai.apiKey,
+      apiKey,
       model: cfg.modelId,
       baseUrl: cfg.baseUrl || getDefaultBaseUrl(cfg.provider),
       timeoutMs: cfg.timeoutMs || env.ai.timeoutMs,

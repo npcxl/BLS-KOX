@@ -5,6 +5,7 @@ import { getAiProvider, getAiProviderForModel } from '../../provider/factory';
 import type { AiMessage } from '../../provider/types';
 import { logger } from '../../core/logger';
 import { trackUsage } from '../../core/usage-tracker';
+import { getCurrentTenantId, getCurrentUserId } from '../../core/request-context';
 
 const router = new Router();
 
@@ -163,10 +164,10 @@ router.post('/completions', async (ctx: Context) => {
     'Connection': 'keep-alive',
   });
 
+  const startTime = Date.now();
   try {
     const ai = model ? await getAiProviderForModel(model) : await getAiProvider();
     const allMessages: AiMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }, ...messages];
-    const startTime = Date.now();
     let totalChars = 0;
     let promptTokens = 0;
     let completionTokens = 0;
@@ -205,18 +206,17 @@ router.post('/completions', async (ctx: Context) => {
     logger.info('[Chat] 成本统计', costInfo);
 
     // 异步上报 AI 用量（不阻塞响应）
-    const userState = (ctx.state as any)?.user ?? {};
     trackUsage({
-      tenantId: userState.tenantId,
-      userId: userState.userId,
-      username: userState.username,
+      tenantId: getCurrentTenantId() ?? undefined,
+      userId: getCurrentUserId() ?? undefined,
+      username: undefined,
       modelName: costInfo.model,
-      provider: (ctx.state as any)?.provider ?? 'unknown',
+      provider: 'deepseek',
       endpoint: 'chat',
       promptTokens: costInfo.promptTokens,
       completionTokens: costInfo.completionTokens,
       totalTokens: costInfo.totalTokens,
-      estimatedCost: 0, // 由 tracker 内部根据模型单价计算
+      estimatedCost: 0,
       elapsedMs: costInfo.elapsedMs,
       success: true,
       streamMode: !completionTokens || (ai.completeStream ? true : false),
@@ -226,13 +226,12 @@ router.post('/completions', async (ctx: Context) => {
   } catch (err: any) {
     logger.error('[Chat] stream error: %s', err.message);
     // 记录失败的调用
-    const userState = (ctx.state as any)?.user ?? {};
     trackUsage({
-      tenantId: userState.tenantId,
-      userId: userState.userId,
-      username: userState.username,
+      tenantId: getCurrentTenantId() ?? undefined,
+      userId: getCurrentUserId() ?? undefined,
+      username: undefined,
       modelName: model || 'default',
-      provider: (ctx.state as any)?.provider ?? 'unknown',
+      provider: 'deepseek',
       endpoint: 'chat',
       promptTokens: 0,
       completionTokens: 0,

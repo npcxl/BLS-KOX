@@ -421,6 +421,7 @@ INSERT INTO `sys_menu` VALUES
 ('storage_config_0001','file_center_0001','存储配置','/file-config/storage','system/file-config/storage','system:storage:list','DatabaseOutlined','1',1,'0','2026-06-15 08:41:06','2026-06-16 01:57:24'),
 ('storage_config_add_0001','storage_config_0001','新增',NULL,NULL,'system:storage:add',NULL,'2',1,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),
 ('storage_config_edit_0001','storage_config_0001','修改',NULL,NULL,'system:storage:edit',NULL,'2',2,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),
+('ai_usage_0001','ai_workbench_0001','AI 用量中心','/ai/usage','ai/usage','ai:usage:view','DashboardOutlined','1',3,'0','2026-07-22 00:00:00','2026-07-22 00:00:00'),
 ('storage_config_remove_0001','storage_config_0001','删除',NULL,NULL,'system:storage:remove',NULL,'2',3,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),('ai_workbench_0001','000000','KOX-AI','/ai',NULL,NULL,'RobotOutlined','0',50,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_workbench_0002','ai_workbench_0001','KOX-AI','/ai/workbench','ai/workbench','ai:workbench:view','RobotOutlined','1',1,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_model_0001','ai_workbench_0001','AI 模型配置','/ai/models','system/ai-model','ai:models:view','SettingOutlined','1',2,'0','2026-07-22 00:00:00','2026-07-22 00:00:00');
 
 -- -------------------------------------------------------
@@ -632,7 +633,9 @@ INSERT INTO `sys_package_menu` VALUES
 ('P100','storage_config_remove_0001'),('P001','ai_workbench_0001'),('P001','ai_workbench_0002'),
 ('P001','ai_crud_0001'),('P001','ai_sql_0001'),('P001','ai_audit_0001'),('P001','ai_config_0001'),
 ('P100','ai_workbench_0001'),('P100','ai_workbench_0002'),('P100','ai_crud_0001'),('P100','ai_sql_0001'),
-('P100','ai_audit_0001'),('P100','ai_config_0001');
+('P100','ai_audit_0001'),('P100','ai_config_0001'),
+('P001','ai_model_0001'),('P001','ai_usage_0001'),
+('P100','ai_model_0001'),('P100','ai_usage_0001');
 
 -- -------------------------------------------------------
 -- sys_page_column_config

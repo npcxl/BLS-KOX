@@ -22,6 +22,25 @@ function getUserId(ctx: Context): string {
   return (ctx.state as any).user?.userId ?? '';
 }
 
+/** GET /internal-list — 内部调用专用，不脱敏 api_key */
+router.get('/internal-list', async (ctx: Context) => {
+  if (ctx.get('X-Internal-Secret') !== INTERNAL_SECRET || !INTERNAL_SECRET) {
+    ctx.status = 403;
+    ctx.body = { code: 403, message: 'Forbidden' };
+    return;
+  }
+  try {
+    const db = (await getDb()) as any;
+    const rows = await db.selectFrom('ai_model_config')
+      .selectAll().where('deleted', '=', 0)
+      .orderBy('sort_num', 'asc').execute();
+    ctx.body = { code: 200, data: rows, total: rows.length, message: '操作成功' };
+  } catch (err: any) {
+    ctx.status = 500;
+    ctx.body = { code: 500, message: err.message };
+  }
+});
+
 /** GET /api/system/ai-model/list (内部调用豁免 + JWT) */
 router.get('/list', async (ctx: Context, next) => {
   // 内部调用直接放行
