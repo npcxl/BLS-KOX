@@ -4,6 +4,7 @@ import { success } from '../../core/response';
 import { getAiProvider, getAiProviderForModel } from '../../provider/factory';
 import type { AiMessage } from '../../provider/types';
 import { logger } from '../../core/logger';
+import { trackUsage } from '../../core/usage-tracker';
 
 const router = new Router();
 
@@ -202,9 +203,46 @@ router.post('/completions', async (ctx: Context) => {
       totalTokens: promptTokens + completionTokens,
     };
     logger.info('[Chat] 成本统计', costInfo);
+
+    // 异步上报 AI 用量（不阻塞响应）
+    const userState = (ctx.state as any)?.user ?? {};
+    trackUsage({
+      tenantId: userState.tenantId,
+      userId: userState.userId,
+      username: userState.username,
+      modelName: costInfo.model,
+      provider: (ctx.state as any)?.provider ?? 'unknown',
+      endpoint: 'chat',
+      promptTokens: costInfo.promptTokens,
+      completionTokens: costInfo.completionTokens,
+      totalTokens: costInfo.totalTokens,
+      estimatedCost: 0, // 由 tracker 内部根据模型单价计算
+      elapsedMs: costInfo.elapsedMs,
+      success: true,
+      streamMode: !completionTokens || (ai.completeStream ? true : false),
+    });
+
     ctx.res.write('data: [DONE]\n\n');
   } catch (err: any) {
     logger.error('[Chat] stream error: %s', err.message);
+    // 记录失败的调用
+    const userState = (ctx.state as any)?.user ?? {};
+    trackUsage({
+      tenantId: userState.tenantId,
+      userId: userState.userId,
+      username: userState.username,
+      modelName: model || 'default',
+      provider: (ctx.state as any)?.provider ?? 'unknown',
+      endpoint: 'chat',
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      estimatedCost: 0,
+      elapsedMs: Date.now() - startTime,
+      success: false,
+      errorMsg: err.message,
+      streamMode: useStream,
+    });
     ctx.res.write(`data: ${JSON.stringify({ error: { message: err.message || 'AI 服务异常' } })}\n\n`);
   }
   ctx.res.end();
