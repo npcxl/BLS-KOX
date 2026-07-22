@@ -198,6 +198,11 @@ export default [
         name: "AI 模型配置",
         component: "./system/ai-model",
       },
+      {
+        path: "/ai/usage",
+        name: "AI 用量中心",
+        component: "./ai/usage",
+      },
     ],
   },
   {
