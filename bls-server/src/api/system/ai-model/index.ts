@@ -6,7 +6,7 @@ import { getCurrentTenantId } from '../../../middleware/tenant';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { logger } from '../../../core/logger';
 
-const router = new Router();
+const router = new Router({ prefix: '/system/ai-model' });
 
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
 
@@ -22,19 +22,26 @@ function getUserId(ctx: Context): string {
   return (ctx.state as any).user?.userId ?? '';
 }
 
-/** GET /api/system/ai-model/list */
-router.get('/list', jwtAuth(), async (ctx: Context) => {
+/** GET /api/system/ai-model/list (内部调用豁免 + JWT) */
+router.get('/list', async (ctx: Context, next) => {
+  // 内部调用直接放行
+  if (ctx.get('X-Internal-Secret') === INTERNAL_SECRET && INTERNAL_SECRET) {
+    return next();
+  }
+  // 外部调用走 JWT
+  return jwtAuth()(ctx, next);
+}, async (ctx: Context) => {
   const tid = getTenantId(ctx);
+  const pageNum = Math.max(1, Number(ctx.query.pageNum) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(ctx.query.pageSize) || 10));
+  const offset = (pageNum - 1) * pageSize;
   try {
     const db = (await getDb()) as any;
-    const rows = await db.selectFrom('ai_model_config')
-      .selectAll()
-      .where('tenant_id', '=', tid)
-      .where('deleted', '=', 0)
-      .orderBy('sort_num', 'asc')
-      .orderBy('create_time', 'desc')
-      .execute();
-    ctx.body = { code: 200, data: rows, message: '操作成功' };
+    const base = db.selectFrom('ai_model_config').where('tenant_id', '=', tid).where('deleted', '=', 0);
+    const rows = await base.selectAll().orderBy('sort_num', 'asc').orderBy('create_time', 'desc').limit(pageSize).offset(offset).execute();
+    const allRows = await base.select('config_id').execute();
+    const total = allRows.length;
+    ctx.body = { code: 200, data: rows, total, message: '操作成功' };
   } catch (err: any) {
     logger.error('[AI-Model] list error: %s', err.message);
     ctx.status = 500;

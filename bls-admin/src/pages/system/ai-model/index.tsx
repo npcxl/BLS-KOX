@@ -130,7 +130,7 @@ export default function AiModelConfigPage() {
     <CrudTablePage<AiModelRecord>
       title="AI 模型配置"
       rowKey="configId"
-      resource={{ basePath: '/api/system/ai-model', status: true }}
+      resource={{ basePath: '/api/system/ai-model', status: false }}
       columns={[
         { title: '模型名称', dataIndex: 'modelName', key: 'modelName' },
         {
@@ -151,7 +151,7 @@ export default function AiModelConfigPage() {
           dataIndex: 'isDefault',
           key: 'isDefault',
           width: 70,
-          render: (_: any, r: AiModelRecord) => (r.isDefault === '1' ? '✅' : '-'),
+          render: (_: any, r: AiModelRecord) => (r.isDefault === '1' ? <span style={{ color: '#1677ff' }}>默认</span> : '-'),
         },
         {
           title: '状态',
