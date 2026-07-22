@@ -2,26 +2,83 @@
 
 BLS-KOX 内置的 AI 能力微服务，基于大模型提供**快速生成页面**、SQL 助手、安全审计等智能功能。
 
-> 当前支持的 AI 提供商：DeepSeek、OpenAI、通义千问，以及任何兼容 OpenAI API 的自定义端点。
+> 支持本地 Ollama 模型和云端 API 双模式，通过「AI 模型配置」页面动态切换，无需重启。
 
 ## 快速开始
 
-在 `.env.docker`（Docker 部署）或 `.env`（本地开发）中配置：
+### Docker 部署（推荐）
+
+Docker 一键部署包含 Ollama 本地模型服务，首次启动自动拉取 `qwen2.5:7b`：
 
 ```bash
-AI_PROVIDER=deepseek          # AI 提供商: deepseek / openai / qwen / custom
-AI_MODEL=deepseek-chat        # 模型名称
-OPENAI_API_KEY=你的API密钥     # 从 AI 平台获取
-AI_BASE_URL=                  # 可选，自定义 API 地址
+docker compose --env-file .env.docker up -d --build
 ```
 
-Docker 部署时 AI 服务默认随主服务一同启动（端口 7201）。本地开发时手动启动：
+登录后进入 **KOX-AI → AI 模型配置**，可配置云端 API 或本地模型。
+
+### 本地开发
 
 ```bash
 cd bls-ai-service
 npm install
 npm run dev     # http://localhost:7201
 ```
+
+本地默认通过环境变量连接 AI 服务。如需使用数据库中的模型配置，在 `.env` 中添加：
+
+```bash
+BLS_SERVER_URL=http://localhost:6001
+INTERNAL_SECRET=与bls-server一致的值
+```
+
+## AI 模型连接策略
+
+### 本地开发
+
+| 场景 | 配置 |
+|------|------|
+| 云端 API | 在「AI 模型配置」页面添加 API 模型，填入 Key 和地址 |
+| 本地 Ollama | `provider=custom`, `base_url=http://127.0.0.1:11434` |
+
+### Docker 部署
+
+| 场景 | 配置 |
+|------|------|
+| Docker 内置 Ollama | `provider=ollama`, `base_url=http://ollama:11434`（默认已配） |
+| 外部 API | 在「AI 模型配置」页面添加，填入 Key |
+
+> **注意**：Docker 内置 Ollama 首次启动会自动拉取 `qwen2.5:7b`（约 4GB），请确保磁盘空间充足。
+
+### 推荐的开源模型
+
+以下模型均可在 Docker 中通过 Ollama 一键部署，适合 BLS-KOX 代码生成场景：
+
+| 模型 | 大小 | 推荐理由 | 拉取命令 |
+|------|------|---------|---------|
+| **qwen2.5-coder:7b** ⭐ | 4GB | 阿里代码专用，TypeScript/React 生成质量最高 | `docker exec bls-ollama ollama pull qwen2.5-coder:7b` |
+| **qwen2.5:7b** | 4GB | 通用能力强，默认已配置 | `docker exec bls-ollama ollama pull qwen2.5:7b` |
+| **deepseek-coder-v2:16b** | 9GB | DeepSeek 代码专用，SQL 生成精准 | `docker exec bls-ollama ollama pull deepseek-coder-v2:16b` |
+| **codestral:22b** | 13GB | Mistral 代码模型，CRUD 生成质量好 | `docker exec bls-ollama ollama pull codestral:22b` |
+| **llama3.1:8b** | 5GB | Meta 最新，综合能力强 | `docker exec bls-ollama ollama pull llama3.1:8b` |
+
+> ⭐ **首推 `qwen2.5-coder:7b`**：阿里代码专用模型，对 React + TypeScript + SQL 生成质量最高，最适合 BLS-KOX。
+
+#### Docker 配置方法
+
+1. 拉取模型：
+```bash
+docker exec bls-ollama ollama pull qwen2.5-coder:7b
+```
+
+2. 登录系统，进入 **KOX-AI → AI 模型配置**，点击新增：
+   - 模型名称：`Qwen Coder 7B`
+   - 模型类型：本地模型
+   - 提供商：Ollama
+   - 模型标识：`qwen2.5-coder:7b`
+   - API 地址：`http://ollama:11434`
+   - 设为默认：是
+
+3. 如需同时保留多个模型，在 KOX-AI 对话页面的输入框上方可随时切换。
 
 ## 模块总览
 

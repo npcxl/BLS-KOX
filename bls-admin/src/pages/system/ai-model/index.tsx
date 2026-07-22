@@ -1,8 +1,8 @@
-import { request } from '@umijs/max';
 import type { ProFormColumnsType } from '@ant-design/pro-components';
 import CrudTablePage from '@/components/CrudTablePage';
 import { usePermission } from '@/hooks/usePermission';
-import { message } from 'antd';
+import { Tag } from 'antd';
+import { CloudOutlined, DesktopOutlined } from '@ant-design/icons';
 
 export interface AiModelRecord {
   configId: string;
@@ -41,13 +41,13 @@ export default function AiModelConfigPage() {
       title: '模型名称',
       dataIndex: 'modelName',
       formItemProps: { rules: [{ required: true, message: '请输入模型显示名称' }] },
-      fieldProps: { placeholder: '如: DeepSeek V4 通用对话' },
+      fieldProps: { placeholder: '如: Qwen Coder 7B' },
     },
     {
       title: '模型类型',
       dataIndex: 'modelType',
       valueType: 'select',
-      initialValue: 'api',
+      initialValue: 'local',
       valueEnum: modelTypeEnum,
       formItemProps: { rules: [{ required: true }] },
     },
@@ -55,16 +55,16 @@ export default function AiModelConfigPage() {
       title: '提供商',
       dataIndex: 'provider',
       valueType: 'select',
-      initialValue: 'deepseek',
+      initialValue: 'ollama',
       valueEnum: providerEnum,
       formItemProps: { rules: [{ required: true }] },
     },
     {
       title: '模型标识',
       dataIndex: 'modelId',
-      tooltip: 'API 模型填 deepseek-chat 等，本地模型填 llama3 等',
+      tooltip: 'API 模型填 deepseek-chat 等，本地模型填 qwen2.5:7b 等',
       formItemProps: { rules: [{ required: true, message: '请输入模型标识' }] },
-      fieldProps: { placeholder: '如: deepseek-chat' },
+      fieldProps: { placeholder: '如: qwen2.5-coder:7b' },
     },
     {
       title: 'API 密钥',
@@ -75,8 +75,8 @@ export default function AiModelConfigPage() {
     {
       title: 'API 地址',
       dataIndex: 'baseUrl',
-      tooltip: '默认地址可留空，自定义/Ollama 填完整地址',
-      fieldProps: { placeholder: '如: https://api.deepseek.com/v1 或 http://localhost:11434' },
+      tooltip: '本地模型填 Ollama 地址，API 模型填官方地址',
+      fieldProps: { placeholder: '如: http://ollama:11434/v1' },
     },
     {
       title: '温度',
@@ -132,26 +132,62 @@ export default function AiModelConfigPage() {
       rowKey="configId"
       resource={{ basePath: '/api/system/ai-model', status: false }}
       columns={[
-        { title: '模型名称', dataIndex: 'modelName', key: 'modelName' },
+        {
+          title: '模型名称',
+          dataIndex: 'modelName',
+          key: 'modelName',
+          width: 220,
+          render: (_: any, r: AiModelRecord) => (
+            <span>
+              {r.isDefault === '1' && (
+                <Tag color="blue" style={{ marginRight: 6, fontSize: 11 }}>默认</Tag>
+              )}
+              {r.modelName}
+            </span>
+          ),
+        },
         {
           title: '类型',
           dataIndex: 'modelType',
           key: 'modelType',
           width: 90,
           render: (_: any, r: AiModelRecord) => (
-            <span style={{ color: r.modelType === 'local' ? '#52c41a' : '#1677ff' }}>
-              {modelTypeEnum[r.modelType]}
-            </span>
+            <Tag
+              icon={r.modelType === 'local' ? <DesktopOutlined /> : <CloudOutlined />}
+              color={r.modelType === 'local' ? 'green' : 'blue'}
+            >
+              {r.modelType === 'local' ? '本地' : 'API'}
+            </Tag>
           ),
         },
-        { title: '提供商', dataIndex: 'provider', key: 'provider', width: 100, render: (_: any, r: AiModelRecord) => providerEnum[r.provider] ?? r.provider },
-        { title: '模型标识', dataIndex: 'modelId', key: 'modelId', ellipsis: true },
         {
-          title: '默认',
-          dataIndex: 'isDefault',
-          key: 'isDefault',
-          width: 70,
-          render: (_: any, r: AiModelRecord) => (r.isDefault === '1' ? <span style={{ color: '#1677ff' }}>默认</span> : '-'),
+          title: '模型标识',
+          dataIndex: 'modelId',
+          key: 'modelId',
+          ellipsis: true,
+          width: 200,
+          render: (_: any, r: AiModelRecord) => (
+            <code style={{ fontSize: 12, background: '#f5f5f5', padding: '1px 6px', borderRadius: 4 }}>
+              {r.modelId}
+            </code>
+          ),
+        },
+        {
+          title: '提供商',
+          dataIndex: 'provider',
+          key: 'provider',
+          width: 90,
+          render: (_: any, r: AiModelRecord) => providerEnum[r.provider] ?? r.provider,
+        },
+        {
+          title: '地址',
+          dataIndex: 'baseUrl',
+          key: 'baseUrl',
+          ellipsis: true,
+          width: 200,
+          render: (_: any, r: AiModelRecord) => (
+            <span style={{ fontSize: 12, color: '#888' }}>{r.baseUrl || '-'}</span>
+          ),
         },
         {
           title: '状态',
@@ -159,12 +195,12 @@ export default function AiModelConfigPage() {
           key: 'status',
           width: 70,
           render: (_: any, r: AiModelRecord) => (
-            <span style={{ color: r.status === '0' ? '#52c41a' : '#999' }}>
+            <Tag color={r.status === '0' ? 'success' : 'default'}>
               {statusEnum[r.status]}
-            </span>
+            </Tag>
           ),
         },
-        { title: '备注', dataIndex: 'remark', key: 'remark', ellipsis: true },
+        { title: '备注', dataIndex: 'remark', key: 'remark', ellipsis: true, width: 150 },
       ] as any}
       formColumns={formColumns}
       modalWidth={720}

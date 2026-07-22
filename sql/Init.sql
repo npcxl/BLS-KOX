@@ -453,7 +453,7 @@ CREATE TABLE `ai_model_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI模型配置';
 
 INSERT INTO `ai_model_config` VALUES
-('ai_cfg_001','000000','Ollama 本地 qwen2.5','local','ollama','qwen2.5:7b',NULL,'http://host.docker.internal:11434',0.30,4096,120000,'1','0',1,'默认本地模型',0,NULL,NOW(),NULL,NOW()),
+('ai_cfg_001','000000','Ollama 本地 qwen2.5','local','ollama','qwen2.5:7b',NULL,'http://ollama:11434/v1',0.30,4096,120000,'1','0',1,'Docker内部默认本地模型',0,NULL,NOW(),NULL,NOW()),
 ('ai_cfg_002','000000','DeepSeek V4','api','deepseek','deepseek-chat','CHANGE_TO_YOUR_API_KEY','https://api.deepseek.com/v1',0.30,4096,60000,'0','0',2,'填入API Key后可用',0,NULL,NOW(),NULL,NOW());
 
 -- -------------------------------------------------------

@@ -92,7 +92,7 @@
 
 | 模块 | 说明 |
 |------|------|
-| **AI 智能助手** | 自然语言一键生成 CRUD 模块、SQL 查询、安全审计、配置审查 |
+| **AI 智能助手** | 自然语言一键生成 CRUD 模块、SQL 查询、安全审计、配置审查。支持本地 Ollama 和云端 API 双模式 |
 | 多租户隔离 | 自动 tenant_id 注入，跨租户访问告警，Ownership Guard |
 | RBAC 权限 | 角色 → 菜单 → 按钮三级权限 |
 | JWT 会话体系 | Access/Refresh Token，Rotation，Reuse Detection，Session Center |
