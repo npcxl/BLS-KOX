@@ -167,6 +167,8 @@ router.post('/completions', async (ctx: Context) => {
     const allMessages: AiMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }, ...messages];
     const startTime = Date.now();
     let totalChars = 0;
+    let promptTokens = 0;
+    let completionTokens = 0;
 
     if (ai.completeStream) {
       const stream = ai.completeStream({ messages: allMessages, temperature: 0.3 });
@@ -177,10 +179,29 @@ router.post('/completions', async (ctx: Context) => {
     } else {
       const result = await ai.complete({ messages: allMessages, temperature: 0.3 });
       totalChars = result.content.length;
+      promptTokens = result.usage?.promptTokens || 0;
+      completionTokens = result.usage?.completionTokens || 0;
       ctx.res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: result.content } }] })}\n\n`);
     }
+
+    // 流式模式下估算 token（中文约 1.5 字符/token，英文约 4 字符/token）
+    if (!completionTokens && totalChars > 0) {
+      const chineseChars = (totalChars.toString().match(/[\u4e00-\u9fff]/g) || []).length;
+      const otherChars = totalChars - chineseChars;
+      completionTokens = Math.ceil(chineseChars / 1.5 + otherChars / 4);
+      promptTokens = allMessages.reduce((sum, m) => sum + Math.ceil(m.content.length / 4), 0);
+    }
+
     const elapsed = Date.now() - startTime;
-    logger.info(`[Chat] 成本统计: ${totalChars} 字符, ${elapsed}ms, 模型=${model || 'default'}`);
+    const costInfo = {
+      model: model || 'default',
+      elapsedMs: elapsed,
+      totalChars,
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens,
+    };
+    logger.info('[Chat] 成本统计', costInfo);
     ctx.res.write('data: [DONE]\n\n');
   } catch (err: any) {
     logger.error('[Chat] stream error: %s', err.message);
