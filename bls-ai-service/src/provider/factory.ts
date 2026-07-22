@@ -144,7 +144,7 @@ function getDefaultBaseUrl(providerName: string): string {
   switch (providerName) {
     case 'deepseek': return 'https://api.deepseek.com/v1';
     case 'qwen': return 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-    case 'ollama': return 'http://ollama:11434';
+    case 'ollama': return 'http://ollama:11434/v1';
     default: return 'https://api.openai.com/v1';
   }
 }

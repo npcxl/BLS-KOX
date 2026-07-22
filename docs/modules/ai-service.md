@@ -44,7 +44,7 @@ INTERNAL_SECRET=与bls-server一致的值
 
 | 场景 | 配置 |
 |------|------|
-| Docker 内置 Ollama | `provider=ollama`, `base_url=http://ollama:11434`（默认已配） |
+| Docker 内置 Ollama | `provider=ollama`, `base_url=http://ollama:11434/v1`（默认已配） |
 | 外部 API | 在「AI 模型配置」页面添加，填入 Key |
 
 > **注意**：Docker 内置 Ollama 首次启动会自动拉取 `qwen2.5:7b`（约 4GB），请确保磁盘空间充足。
@@ -75,7 +75,7 @@ docker exec bls-ollama ollama pull qwen2.5-coder:7b
    - 模型类型：本地模型
    - 提供商：Ollama
    - 模型标识：`qwen2.5-coder:7b`
-   - API 地址：`http://ollama:11434`
+   - API 地址：`http://ollama:11434/v1`
    - 设为默认：是
 
 3. 如需同时保留多个模型，在 KOX-AI 对话页面的输入框上方可随时切换。

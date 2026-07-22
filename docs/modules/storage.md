@@ -60,8 +60,8 @@ upload → StorageFactory → Provider (Minio / AliyunOss / TencentCos / ...) �
   "endpoint": "127.0.0.1",
   "port": 9000,
   "use_ssl": false,
-  "access_key": "minioadmin",
-  "secret_key": "minioadmin123",
+  "access_key": "YOUR_MINIO_ACCESS_KEY",
+  "secret_key": "YOUR_MINIO_SECRET_KEY",
   "public_bucket": "bls-files",
   "private_bucket": "bls-files",
   "path_style": true

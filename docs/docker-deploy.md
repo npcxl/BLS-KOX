@@ -59,7 +59,7 @@ bls-server       Up (healthy)
 |------|--------|------|
 | 超级管理员 | `superadmin` | `123456` |
 | 租户管理员 | `admin` | `123456` |
-| MinIO 管理 | `minioadmin` | `minioadmin` |
+| MinIO 管理 | 见 `.env.docker` 中 `MINIO_USER` | 见 `.env.docker` 中 `MINIO_PASSWORD` |
 
 ---
 

@@ -988,7 +988,7 @@ CREATE TABLE `sys_storage_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='存储配置表';
 
 INSERT INTO `sys_storage_config` (`storage_id`, `tenant_id`, `storage_name`, `storage_type`, `endpoint`, `region`, `port`, `use_ssl`, `access_key`, `secret_key`, `public_bucket`, `private_bucket`, `public_base_url`, `private_base_url`, `path_style`, `config_json`, `policy_json`, `is_default`, `status`, `remark`, `create_by`, `create_time`, `update_by`, `update_time`, `deleted`) VALUES
-('000001','000000','MinIO 对象存储','minio','minio',NULL,9000,0,'minioadmin','minioadmin','public-assets','private-assets','/files',NULL,1,'{"apiUrl":"http://minio:9000","consoleUrl":"http://minio:9001","clusterMode":false,"forcePathStyle":true}','{"maxSizeMB":100,"allowedExt":["jpg","jpeg","png","gif","webp","pdf","doc","docx","xls","xlsx","ppt","pptx","zip"],"blockedExt":["exe","bat","cmd","sh","js","msi"],"privateExpireSeconds":300}',1,0,'Docker内置MinIO，默认minioadmin/minioadmin，生产请修改',NULL,'2026-07-17 02:00:00',NULL,'2026-07-17 02:00:00',0);
+('000001','000000','MinIO 对象存储','minio','minio',NULL,9000,0,'CHANGE_TO_YOUR_MINIO_ACCESS_KEY','CHANGE_TO_YOUR_MINIO_SECRET_KEY','public-assets','private-assets','/files',NULL,1,'{"apiUrl":"http://minio:9000","consoleUrl":"http://minio:9001","clusterMode":false,"forcePathStyle":true}','{"maxSizeMB":100,"allowedExt":["jpg","jpeg","png","gif","webp","pdf","doc","docx","xls","xlsx","ppt","pptx","zip"],"blockedExt":["exe","bat","cmd","sh","js","msi"],"privateExpireSeconds":300}',1,0,'Docker内置MinIO，access_key/secret_key 需与 .env.docker 中 MINIO_USER/MINIO_PASSWORD 保持一致，生产请修改',NULL,'2026-07-17 02:00:00',NULL,'2026-07-17 02:00:00',0);
 
 -- -------------------------------------------------------
 -- sys_tenant
