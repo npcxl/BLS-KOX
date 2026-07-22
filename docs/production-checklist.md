@@ -51,7 +51,7 @@
 - [ ] 配置 Prometheus + Grafana 监控面板
 - [ ] 配置告警规则（5xx 错误率、P95 延迟、DB/Redis 错误等，见 `deploy/prometheus/rules/`）
 - [ ] 检查安全日志写入是否正常（`sys_security_log` 表）
-- [ ] **AI token/成本监控**：确认 AI 调用日志正常输出（当前仅打日志，建议接入日志平台做用量统计和费用核算）
+- [ ] **AI token/成本监控**：确认 AI 调用日志正常输出。生产环境建议将 AI token 用量接入可查询的日志平台、Prometheus 指标或数据库报表（当前仅打日志，需自行扩展）
 
 ## 🚀 部署配置
 
