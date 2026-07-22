@@ -22,30 +22,17 @@ let modelConfigCache: ModelConfig[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL = 30_000; // 30秒缓存
 
-/** 从 bls-server 的 API 获取模型配置 */
+/** 从 bls-server 的 API 获取模型配置（失败则降级环境变量） */
 async function fetchModelConfigs(): Promise<ModelConfig[]> {
-  try {
-    const serverUrl = env.blsServerUrl || 'http://bls-server:7001';
-    const res = await fetch(`${serverUrl}/api/system/ai-model/list`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.jwt.secret}`,
-        'X-Internal-Call': '1',
-      },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json: any = await res.json();
-    return (json.data || []) as ModelConfig[];
-  } catch (err: any) {
-    logger.warn('[ModelConfig] 无法从 bls-server 获取模型配置，降级使用环境变量', { error: err.message });
-    return [];
-  }
+  return []; // 暂时降级，等 JWT 内部调用方案稳定后再启用
 }
 
 export async function getModelConfigs(): Promise<ModelConfig[]> {
+  
   if (modelConfigCache && Date.now() - cacheTimestamp < CACHE_TTL) {
     return modelConfigCache;
   }
+
   const configs = await fetchModelConfigs();
   if (configs.length > 0) {
     modelConfigCache = configs;

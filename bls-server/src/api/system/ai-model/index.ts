@@ -6,12 +6,12 @@ import { getCurrentTenantId } from '../../../middleware/tenant';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { logger } from '../../../core/logger';
 
-const router = new Router({ prefix: '/ai-model' });
+const router = new Router();
 
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
 
-function isInternalCall(ctx: Context): boolean {
-  return ctx.get('X-Internal-Call') === '1' && ctx.get('Authorization') === `Bearer ${INTERNAL_SECRET}`;
+function checkInternal(ctx: Context): boolean {
+  return ctx.get('X-Internal-Secret') === INTERNAL_SECRET;
 }
 
 function getTenantId(ctx: Context): string {
@@ -22,14 +22,9 @@ function getUserId(ctx: Context): string {
   return (ctx.state as any).user?.userId ?? '';
 }
 
-/** GET /api/system/ai-model/list (支持内部调用和 JWT 认证) */
-router.get('/list', async (ctx: Context, next) => {
-  if (!isInternalCall(ctx)) {
-    return jwtAuth()(ctx, next);
-  }
-  return next();
-}, async (ctx: Context) => {
-  const tid = isInternalCall(ctx) ? '000000' : getTenantId(ctx);
+/** GET /api/system/ai-model/list */
+router.get('/list', jwtAuth(), async (ctx: Context) => {
+  const tid = getTenantId(ctx);
   try {
     const db = (await getDb()) as any;
     const rows = await db.selectFrom('ai_model_config')
