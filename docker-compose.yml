@@ -103,8 +103,10 @@ services:
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
       - AI_PROVIDER=${AI_PROVIDER:-openai}
       - AI_MODEL=${AI_MODEL:-gpt-4o-mini}
+      - AI_MODEL_OPTIONS=${AI_MODEL_OPTIONS:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:?OPENAI_API_KEY is required}
       - AI_BASE_URL=${AI_BASE_URL:-}
+      - BLS_SERVER_URL=http://bls-server:7001
       - REDIS_HOST=${REDIS_HOST:-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -258,9 +260,28 @@ services:
     networks:
       - bls-net
 
+  # ========== Ollama 本地大模型 ==========
+  ollama:
+    image: ollama/ollama:latest
+    container_name: bls-ollama
+    restart: unless-stopped
+    expose:
+      - "11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - bls-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
 volumes:
   mysql-data:
   redis-data:
+  ollama-data:
   minio-data:
 
 networks:

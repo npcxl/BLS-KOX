@@ -1,3 +1,11 @@
+/* ====== 输入框：去掉 Sender 内部双重聚焦框 ====== */
+.ai-chat-input-box .ant-sender .ant-input,
+.ai-chat-input-box .ant-sender .ant-input:focus {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
 /* ====== 流式文本 + 闪烁光标 ====== */
 .ai-streaming-text {
   white-space: pre-wrap;
