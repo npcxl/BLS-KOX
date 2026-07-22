@@ -64,7 +64,7 @@ export function trackUsage(record: UsageRecord): void {
     }),
   })
     .then((res) => {
-      if (!res.ok) logger.warn('[UsageTracker] report failed HTTP %d', res.status);
+      if (!res.ok) logger.warn('[UsageTracker] report failed', { status: res.status });
     })
     .catch((err) => {
       logger.warn('[UsageTracker] report error: %s', err.message);
