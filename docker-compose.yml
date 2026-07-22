@@ -272,11 +272,24 @@ services:
     networks:
       - bls-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:11434/api/tags || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 20s
+      retries: 5
+      start_period: 30s
+
+  # Ollama 模型拉取（首次启动自动下载 qwen2.5:7b）
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: bls-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: sh -c "ollama pull qwen2.5:7b"
+    environment:
+      - OLLAMA_HOST=ollama:11434
+    networks:
+      - bls-net
 
 volumes:
   mysql-data:

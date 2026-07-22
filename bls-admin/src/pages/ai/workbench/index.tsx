@@ -1,7 +1,7 @@
 import { Conversations, Sender, Welcome, XProvider } from '@ant-design/x';
 import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
 import { RobotOutlined, CopyOutlined, DownOutlined } from '@ant-design/icons';
-import { Button, Flex, message, Select, Space, theme } from 'antd';
+import { Button, Flex, message, Select, Space, Tag, theme } from 'antd';
 import { createStyles } from 'antd-style';
 import React, { memo, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import hljs from 'highlight.js/lib/core';
@@ -306,7 +306,7 @@ export default function AiWorkbench() {
   const [isRequesting, setIsRequesting] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>('');
-  const [modelOptions, setModelOptions] = useState<Array<{ label: string; value: string }>>([]);
+  const [modelOptions, setModelOptions] = useState<Array<{ label: string; value: string; modelType: string; provider: string }>>([]);
   const [modelLoading, setModelLoading] = useState(false);
   const activeKeyRef = useRef('');
   const abortRef = useRef<AbortController | null>(null);
@@ -539,13 +539,27 @@ export default function AiWorkbench() {
                       size="small"
                       variant="borderless"
                       value={selectedModel}
-                      options={modelOptions}
                       loading={modelLoading}
                       onChange={handleModelChange}
                       suffixIcon={<DownOutlined />}
-                      style={{ minWidth: 140, color: '#6b7280', fontSize: 12 }}
+                      style={{ minWidth: 180, color: '#6b7280', fontSize: 12 }}
                       popupMatchSelectWidth={false}
-                    />
+                      optionLabelProp="label"
+                    >
+                      {modelOptions.map(opt => (
+                        <Select.Option key={opt.value} value={opt.value} label={opt.label}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Tag
+                              color={opt.modelType === 'local' ? 'green' : 'blue'}
+                              style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}
+                            >
+                              {opt.modelType === 'local' ? '本地' : 'API'}
+                            </Tag>
+                            <span>{opt.label}</span>
+                          </span>
+                        </Select.Option>
+                      ))}
+                    </Select>
                   )}
                 </div>
               </div>

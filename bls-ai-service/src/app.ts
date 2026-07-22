@@ -99,7 +99,12 @@ export function createApp(): Koa {
       if (configs.length > 0) {
         const enabled = configs.filter((c: any) => c.status === '0');
         const defaultCfg = enabled.find((c: any) => c.isDefault === '1') || enabled[0];
-        const models = enabled.map((c: any) => ({ value: c.modelId, label: c.modelName }));
+        const models = enabled.map((c: any) => ({
+          value: c.modelId,
+          label: c.modelName,
+          modelType: c.modelType || 'api',
+          provider: c.provider || '',
+        }));
         ctx.body = {
           code: 0,
           data: {
