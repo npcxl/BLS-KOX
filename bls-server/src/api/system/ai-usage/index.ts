@@ -11,43 +11,43 @@ const router = new Router({ prefix: '/system/ai-usage' });
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
 
 function getTenantId(ctx: Context): string {
-  return getCurrentTenantId() ?? '000000';
+  const tid = getCurrentTenantId();
+  if (!tid) {
+    ctx.status = 400;
+    ctx.body = { code: 400, message: '无法获取租户信息' };
+    throw new Error('tenant_id missing');
+  }
+  return tid;
 }
 
-function getUserId(ctx: Context): string {
-  return (ctx.state as any).user?.userId ?? '';
-}
-
-/** POST /api/system/ai-usage/report — 内部调用：AI 服务上报用量 */
+/** POST /report — 内部调用：AI 服务上报用量 */
 router.post('/report', async (ctx: Context) => {
   if (ctx.get('X-Internal-Secret') !== INTERNAL_SECRET || !INTERNAL_SECRET) {
     ctx.status = 403;
     ctx.body = { code: 403, message: 'Forbidden' };
     return;
   }
-
-  const body = ctx.request.body as Record<string, any>;
+  const b = ctx.request.body as Record<string, any>;
   try {
     const db = (await getDb()) as any;
-    const usageId = generateSnowflakeId();
     await db.insertInto('sys_ai_usage').values({
-      usage_id: usageId,
-      tenant_id: body.tenantId || '000000',
-      user_id: body.userId || null,
-      username: body.username || null,
-      model_name: body.modelName || 'unknown',
-      provider: body.provider || 'unknown',
-      endpoint: body.endpoint || 'chat',
-      prompt_tokens: body.promptTokens || 0,
-      completion_tokens: body.completionTokens || 0,
-      total_tokens: body.totalTokens || 0,
-      estimated_cost: body.estimatedCost ?? 0,
-      elapsed_ms: body.elapsedMs || 0,
-      success: body.success !== false ? 1 : 0,
-      error_msg: body.errorMsg || null,
-      stream_mode: body.streamMode ? 1 : 0,
+      usage_id: generateSnowflakeId(),
+      tenant_id: b.tenantId,
+      user_id: b.userId || null,
+      username: b.username || null,
+      model_name: b.modelName || 'unknown',
+      provider: b.provider || 'unknown',
+      endpoint: b.endpoint || 'chat',
+      prompt_tokens: b.promptTokens || 0,
+      completion_tokens: b.completionTokens || 0,
+      total_tokens: b.totalTokens || 0,
+      estimated_cost: b.estimatedCost ?? 0,
+      elapsed_ms: b.elapsedMs || 0,
+      success: b.success !== false ? 1 : 0,
+      error_msg: b.errorMsg || null,
+      stream_mode: b.streamMode ? 1 : 0,
     }).execute();
-    ctx.body = { code: 200, data: { usageId }, message: '操作成功' };
+    ctx.body = { code: 200, data: {}, message: 'ok' };
   } catch (err: any) {
     logger.error('[AI-Usage] report error: %s', err.message);
     ctx.status = 500;
@@ -55,27 +55,26 @@ router.post('/report', async (ctx: Context) => {
   }
 });
 
-/** GET /api/system/ai-usage/list — 用量明细分页 */
+/** GET /list — 用量明细分页 */
 router.get('/list', jwtAuth(), async (ctx: Context) => {
   const tid = getTenantId(ctx);
   const pageNum = Math.max(1, Number(ctx.query.pageNum) || 1);
   const pageSize = Math.min(100, Math.max(1, Number(ctx.query.pageSize) || 10));
   const offset = (pageNum - 1) * pageSize;
-  const { modelName, endpoint, username, startDate, endDate } = ctx.query as Record<string, string>;
   try {
     const db = (await getDb()) as any;
-    let query = db.selectFrom('sys_ai_usage').where('tenant_id', '=', tid);
-    if (modelName) query = query.where('model_name', '=', modelName);
-    if (endpoint) query = query.where('endpoint', '=', endpoint);
-    if (username) query = query.where('username', 'like', `%${username}%`);
-    if (startDate) query = query.where('created_at', '>=', startDate);
-    if (endDate) query = query.where('created_at', '<=', endDate + ' 23:59:59');
+    const base = db.selectFrom('sys_ai_usage')
+      .selectAll()
+      .where('tenant_id', '=', tid)
+      .orderBy('created_at', 'desc')
+      .limit(pageSize).offset(offset);
 
-    const [rows, countResult] = await Promise.all([
-      query.selectAll().orderBy('created_at', 'desc').limit(pageSize).offset(offset).execute(),
-      query.select(db.fn.count('usage_id').as('total')).executeTakeFirst(),
-    ]);
-    ctx.body = { code: 200, data: rows, total: Number(countResult?.total ?? 0), message: '操作成功' };
+    const countQ = db.selectFrom('sys_ai_usage')
+      .select((eb: any) => eb.fn.countAll().as('total'))
+      .where('tenant_id', '=', tid);
+
+    const [rows, cr] = await Promise.all([base.execute(), countQ.executeTakeFirst()]);
+    ctx.body = { code: 200, data: rows, total: Number((cr as any)?.total ?? 0), message: '操作成功' };
   } catch (err: any) {
     logger.error('[AI-Usage] list error: %s', err.message);
     ctx.status = 500;
@@ -83,126 +82,90 @@ router.get('/list', jwtAuth(), async (ctx: Context) => {
   }
 });
 
-/** GET /api/system/ai-usage/stats — 统计概览 */
+/** GET /stats — 统计概览 */
 router.get('/stats', jwtAuth(), async (ctx: Context) => {
   const tid = getTenantId(ctx);
-  const { days } = ctx.query as Record<string, string>;
-  const dayRange = Math.min(90, Math.max(1, Number(days) || 7));
-  const startDate = new Date(Date.now() - dayRange * 86400000).toISOString().slice(0, 10);
+  const days = Math.min(90, Math.max(1, Number(ctx.query.days) || 7));
+  const start = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+
   try {
     const db = (await getDb()) as any;
 
     // 今日概览
-    const today = new Date().toISOString().slice(0, 10);
-    const todayStats = await db.selectFrom('sys_ai_usage')
-      .select([
-        db.fn.count('usage_id').as('count'),
-        db.fn.sum('total_tokens').as('totalTokens'),
-        db.fn.sum('estimated_cost').as('totalCost'),
-        db.fn.avg('elapsed_ms').as('avgElapsedMs'),
-      ])
+    const t = await db.selectFrom('sys_ai_usage')
+      .select((eb: any) => eb.fn.countAll().as('cnt'))
+      .select((eb: any) => eb.fn.sum('total_tokens').as('tk'))
+      .select((eb: any) => eb.fn.sum('estimated_cost').as('cost'))
+      .select((eb: any) => eb.fn.avg('elapsed_ms').as('avgMs'))
       .where('tenant_id', '=', tid)
       .where('created_at', '>=', today)
       .where('success', '=', 1)
-      .executeTakeFirst();
+      .executeTakeFirst() as any;
 
-    // 按天趋势
-    const dailyTrend = await db.selectFrom('sys_ai_usage')
-      .select([
-        db.fn.date('created_at').as('date'),
-        db.fn.count('usage_id').as('count'),
-        db.fn.sum('total_tokens').as('totalTokens'),
-        db.fn.sum('estimated_cost').as('totalCost'),
-      ])
-      .where('tenant_id', '=', tid)
-      .where('created_at', '>=', startDate)
-      .groupBy(db.fn.date('created_at'))
-      .orderBy('date', 'asc')
-      .execute();
+    // 每日趋势（用 LEFT(created_at,10) 截取日期部分）
+    const { pool } = require('../../../core/database');
+    const daily = await pool.query(
+      `SELECT LEFT(created_at,10) AS dt, COUNT(*) AS cnt, COALESCE(SUM(total_tokens),0) AS tk, COALESCE(SUM(estimated_cost),0) AS cost
+       FROM sys_ai_usage WHERE tenant_id = ? AND created_at >= ? GROUP BY LEFT(created_at,10) ORDER BY dt ASC`,
+      [tid, start],
+    ).then(([rows]: any) => rows) as any[];
 
-    // 按模型统计
-    const modelStats = await db.selectFrom('sys_ai_usage')
-      .select([
-        'model_name',
-        db.fn.count('usage_id').as('count'),
-        db.fn.sum('total_tokens').as('totalTokens'),
-        db.fn.sum('estimated_cost').as('totalCost'),
-        db.fn.avg('elapsed_ms').as('avgElapsedMs'),
-      ])
+    // 按模型
+    const models = await db.selectFrom('sys_ai_usage')
+      .select('model_name')
+      .select((eb: any) => eb.fn.countAll().as('cnt'))
+      .select((eb: any) => eb.fn.sum('total_tokens').as('tk'))
+      .select((eb: any) => eb.fn.sum('estimated_cost').as('cost'))
+      .select((eb: any) => eb.fn.avg('elapsed_ms').as('avgMs'))
       .where('tenant_id', '=', tid)
-      .where('created_at', '>=', startDate)
+      .where('created_at', '>=', start)
       .where('success', '=', 1)
       .groupBy('model_name')
-      .orderBy('totalTokens', 'desc')
-      .execute();
+      .orderBy((eb: any) => eb.fn.sum('total_tokens'), 'desc')
+      .execute() as any[];
 
-    // 按端点统计
-    const endpointStats = await db.selectFrom('sys_ai_usage')
-      .select([
-        'endpoint',
-        db.fn.count('usage_id').as('count'),
-        db.fn.sum('total_tokens').as('totalTokens'),
-        db.fn.sum('estimated_cost').as('totalCost'),
-      ])
+    // 按端点
+    const eps = await db.selectFrom('sys_ai_usage')
+      .select('endpoint')
+      .select((eb: any) => eb.fn.countAll().as('cnt'))
+      .select((eb: any) => eb.fn.sum('total_tokens').as('tk'))
+      .select((eb: any) => eb.fn.sum('estimated_cost').as('cost'))
       .where('tenant_id', '=', tid)
-      .where('created_at', '>=', startDate)
+      .where('created_at', '>=', start)
       .where('success', '=', 1)
       .groupBy('endpoint')
-      .orderBy('totalTokens', 'desc')
-      .execute();
+      .orderBy((eb: any) => eb.fn.sum('total_tokens'), 'desc')
+      .execute() as any[];
 
-    // 按用户统计 Top 10
-    const userStats = await db.selectFrom('sys_ai_usage')
-      .select([
-        'username',
-        'user_id',
-        db.fn.count('usage_id').as('count'),
-        db.fn.sum('total_tokens').as('totalTokens'),
-        db.fn.sum('estimated_cost').as('totalCost'),
-      ])
+    // 按用户 Top 10
+    const users = await db.selectFrom('sys_ai_usage')
+      .select('username')
+      .select('user_id')
+      .select((eb: any) => eb.fn.countAll().as('cnt'))
+      .select((eb: any) => eb.fn.sum('total_tokens').as('tk'))
+      .select((eb: any) => eb.fn.sum('estimated_cost').as('cost'))
       .where('tenant_id', '=', tid)
-      .where('created_at', '>=', startDate)
+      .where('created_at', '>=', start)
       .where('success', '=', 1)
       .groupBy(['username', 'user_id'])
-      .orderBy('totalTokens', 'desc')
+      .orderBy((eb: any) => eb.fn.sum('total_tokens'), 'desc')
       .limit(10)
-      .execute();
+      .execute() as any[];
 
     ctx.body = {
       code: 200,
       data: {
-        today: todayStats ? {
-          count: Number(todayStats.count ?? 0),
-          totalTokens: Number(todayStats.totalTokens ?? 0),
-          totalCost: Number(todayStats.totalCost ?? 0),
-          avgElapsedMs: Math.round(Number(todayStats.avgElapsedMs ?? 0)),
-        } : { count: 0, totalTokens: 0, totalCost: 0, avgElapsedMs: 0 },
-        dailyTrend: (dailyTrend as any[]).map(d => ({
-          date: d.date,
-          count: Number(d.count ?? 0),
-          totalTokens: Number(d.totalTokens ?? 0),
-          totalCost: Number(d.totalCost ?? 0),
-        })),
-        modelStats: (modelStats as any[]).map(m => ({
-          modelName: m.model_name,
-          count: Number(m.count ?? 0),
-          totalTokens: Number(m.totalTokens ?? 0),
-          totalCost: Number(m.totalCost ?? 0),
-          avgElapsedMs: Math.round(Number(m.avgElapsedMs ?? 0)),
-        })),
-        endpointStats: (endpointStats as any[]).map(e => ({
-          endpoint: e.endpoint,
-          count: Number(e.count ?? 0),
-          totalTokens: Number(e.totalTokens ?? 0),
-          totalCost: Number(e.totalCost ?? 0),
-        })),
-        userStats: (userStats as any[]).map(u => ({
-          username: u.username || '未知',
-          userId: u.user_id,
-          count: Number(u.count ?? 0),
-          totalTokens: Number(u.totalTokens ?? 0),
-          totalCost: Number(u.totalCost ?? 0),
-        })),
+        today: {
+          count: Number(t?.cnt ?? 0),
+          totalTokens: Number(t?.tk ?? 0),
+          totalCost: Number(t?.cost ?? 0),
+          avgElapsedMs: Math.round(Number(t?.avgMs ?? 0)),
+        },
+        dailyTrend: daily.map(d => ({ date: d.dt, count: Number(d.cnt), totalTokens: Number(d.tk), totalCost: Number(d.cost) })),
+        modelStats: models.map(m => ({ modelName: m.model_name, count: Number(m.cnt), totalTokens: Number(m.tk), totalCost: Number(m.cost), avgElapsedMs: Math.round(Number(m.avgMs ?? 0)) })),
+        endpointStats: eps.map(e => ({ endpoint: e.endpoint, count: Number(e.cnt), totalTokens: Number(e.tk), totalCost: Number(e.cost) })),
+        userStats: users.map(u => ({ username: u.username || '未知', userId: u.user_id, count: Number(u.cnt), totalTokens: Number(u.tk), totalCost: Number(u.cost) })),
       },
       message: '操作成功',
     };

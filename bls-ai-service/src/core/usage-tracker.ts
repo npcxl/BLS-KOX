@@ -45,6 +45,10 @@ export interface UsageRecord {
  * 异步上报 AI 用量到 bls-server（不阻塞主流程）
  */
 export function trackUsage(record: UsageRecord): void {
+  if (!record.tenantId) {
+    logger.warn('[UsageTracker] skip: tenantId missing');
+    return;
+  }
   const serverUrl = env.blsServerUrl || 'http://bls-server:7001';
   const url = `${serverUrl}/api/system/ai-usage/report`;
 
