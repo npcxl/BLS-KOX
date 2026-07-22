@@ -246,12 +246,36 @@ const CodeBlock = memo(function CodeBlock({ language, children }: { language?: s
   );
 });
 
-// ==================== 流式文本 + 闪烁光标 ====================
-const StreamingText = memo(function StreamingText({ content }: { content: string }) {
+// ==================== 段落级流式渲染 ====================
+const StreamBlock = memo(function StreamBlock({ text, isLast }: { text: string; isLast: boolean }) {
+  return (
+    <div className={`ai-stream-block ${isLast ? '' : 'ai-stream-block-done'}`}>
+      {text}
+      {isLast && <span className="ai-stream-cursor" />}
+    </div>
+  );
+});
+
+/** 按双换行切割成段落，最后一段为未完成段落 */
+function splitParagraphs(content: string): { done: string[]; current: string } {
+  if (!content) return { done: [], current: '' };
+  const parts = content.split(/\n\n/);
+  if (parts.length === 1) return { done: [], current: parts[0] };
+  const done = parts.slice(0, -1);
+  const current = parts[parts.length - 1];
+  return { done, current };
+}
+
+const StreamingParagraphs = memo(function StreamingParagraphs({ content }: { content: string }) {
+  const { done, current } = useMemo(() => splitParagraphs(content), [content]);
   return (
     <div className="ai-streaming-text">
-      {content}
-      <span className="ai-streaming-cursor" />
+      {done.map((para, i) => (
+        <div key={i} className="ai-stream-block ai-stream-block-done">
+          {para}
+        </div>
+      ))}
+      {current && <StreamBlock text={current} isLast />}
     </div>
   );
 });
@@ -265,7 +289,7 @@ const ThinkComponent = memo((props: ComponentProps) => {
 // ==================== 消息内容渲染 ====================
 function MessageContent({ content, status }: { content: string; status?: 'updating' | 'done' | 'error' }) {
   if (status === 'updating') {
-    return <StreamingText content={content} />;
+    return <StreamingParagraphs content={content} />;
   }
   if (status === 'error') {
     return <div className="ai-message-error">{content}</div>;
