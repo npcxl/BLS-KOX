@@ -290,10 +290,10 @@ AI 会生成完整的 8 项交付物，包含可直接执行的 SQL 和前后端
 bls-admin (前端) ── POST /api/ai/chat/completions ──→ bls-ai-service (:7201)
     │                                                     │
     │  GET/POST/DELETE                                    │ AI Provider 工厂
-    │  /api/ai/chat/conversations                         │ ├── DeepSeek
+    │  /api/ai/chat/conversations                         │ ├── Ollama (Docker 默认)
+    │                                                     │ ├── DeepSeek
     │                                                     │ ├── OpenAI
-    └──────────────────→ bls-server (:7001)               │ ├── 通义千问
-                              │                           │ └── 自定义
+    └──────────────────→ bls-server (:7001)               │ └── 通义千问 / 自定义
                          MySQL (ai_conversation           │
                                 ai_conversation_message)  │
 ```
