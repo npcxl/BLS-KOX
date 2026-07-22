@@ -280,14 +280,14 @@ services:
       retries: 5
       start_period: 30s
 
-  # Ollama 模型拉取（首次启动自动下载 qwen2.5:7b）
+  # Ollama 模型拉取（根据 AI_MODEL 环境变量下载对应模型）
   ollama-pull:
     image: ollama/ollama:latest
     container_name: bls-ollama-pull
     depends_on:
       ollama:
         condition: service_healthy
-    entrypoint: sh -c "ollama pull qwen2.5:7b"
+    entrypoint: sh -c "ollama pull ${AI_MODEL:-qwen2.5:7b}"
     environment:
       - OLLAMA_HOST=ollama:11434
     networks:
