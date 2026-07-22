@@ -24,7 +24,58 @@
         <hutool.version>5.8.32</hutool.version>
         <easyexcel.version>3.3.4</easyexcel.version>
         <jjwt.version>0.12.6</jjwt.version>
+        <argon2.version>2.11</argon2.version>
+        <minio.version>8.5.12</minio.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- MyBatis-Plus BOM (统一管理 mybatis-plus 系列依赖) -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-bom</artifactId>
+                <version>${mybatis-plus.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- JJWT BOM (统一管理 jjwt 系列依赖) -->
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-bom</artifactId>
+                <version>${jjwt.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- 第三方依赖版本集中管理 -->
+            <dependency>
+                <groupId>com.github.xiaoymin</groupId>
+                <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
+                <version>${knife4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>cn.hutool</groupId>
+                <artifactId>hutool-all</artifactId>
+                <version>${hutool.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>easyexcel</artifactId>
+                <version>${easyexcel.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.mkammerer</groupId>
+                <artifactId>argon2-jvm</artifactId>
+                <version>${argon2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.minio</groupId>
+                <artifactId>minio</artifactId>
+                <version>${minio.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <!-- Spring Boot Starters -->
@@ -61,12 +112,10 @@
         <dependency>
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
-            <version>${mybatis-plus.version}</version>
         </dependency>
         <dependency>
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-jsqlparser</artifactId>
-            <version>${mybatis-plus.version}</version>
         </dependency>
 
         <!-- MySQL -->
@@ -80,18 +129,15 @@
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
-            <version>${jjwt.version}</version>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-impl</artifactId>
-            <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-jackson</artifactId>
-            <version>${jjwt.version}</version>
             <scope>runtime</scope>
         </dependency>
 
@@ -99,35 +145,30 @@
         <dependency>
             <groupId>com.github.xiaoymin</groupId>
             <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
-            <version>${knife4j.version}</version>
         </dependency>
 
         <!-- Hutool -->
         <dependency>
             <groupId>cn.hutool</groupId>
             <artifactId>hutool-all</artifactId>
-            <version>${hutool.version}</version>
         </dependency>
 
         <!-- EasyExcel -->
         <dependency>
             <groupId>com.alibaba</groupId>
             <artifactId>easyexcel</artifactId>
-            <version>${easyexcel.version}</version>
         </dependency>
 
         <!-- Argon2 -->
         <dependency>
             <groupId>de.mkammerer</groupId>
             <artifactId>argon2-jvm</artifactId>
-            <version>2.11</version>
         </dependency>
 
         <!-- MinIO -->
         <dependency>
             <groupId>io.minio</groupId>
             <artifactId>minio</artifactId>
-            <version>8.5.12</version>
         </dependency>
 
         <!-- Micrometer Prometheus -->

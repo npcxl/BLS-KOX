@@ -101,11 +101,11 @@ services:
       - NODE_ENV=production
       - APP_PORT=7201
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
-      - AI_PROVIDER=${AI_PROVIDER:-openai}
-      - AI_MODEL=${AI_MODEL:-gpt-4o-mini}
+      - AI_PROVIDER=${AI_PROVIDER:-ollama}
+      - AI_MODEL=${AI_MODEL:-qwen2.5:7b}
       - AI_MODEL_OPTIONS=${AI_MODEL_OPTIONS:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:?OPENAI_API_KEY is required}
-      - AI_BASE_URL=${AI_BASE_URL:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-ollama}
+      - AI_BASE_URL=${AI_BASE_URL:-http://ollama:11434/v1}
       - BLS_SERVER_URL=http://bls-server:7001
       - REDIS_HOST=${REDIS_HOST:-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
@@ -225,7 +225,7 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      - MINIO_ROOT_USER=${MINIO_USER:-minioadmin}
+      - MINIO_ROOT_USER=${MINIO_USER:?MINIO_USER is required}
       - MINIO_ROOT_PASSWORD=${MINIO_PASSWORD:?MINIO_PASSWORD is required}
       - TZ=Asia/Shanghai
     volumes:
@@ -250,7 +250,7 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 ${MINIO_USER:-minioadmin} ${MINIO_PASSWORD};
+      mc alias set local http://minio:9000 ${MINIO_USER:?MINIO_USER is required} ${MINIO_PASSWORD:?MINIO_PASSWORD is required};
       mc mb --ignore-existing local/public-assets;
       mc mb --ignore-existing local/private-assets;
       mc anonymous set public local/public-assets;
