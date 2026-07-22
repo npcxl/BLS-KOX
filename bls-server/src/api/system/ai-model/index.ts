@@ -41,7 +41,12 @@ router.get('/list', async (ctx: Context, next) => {
     const rows = await base.selectAll().orderBy('sort_num', 'asc').orderBy('create_time', 'desc').limit(pageSize).offset(offset).execute();
     const allRows = await base.select('config_id').execute();
     const total = allRows.length;
-    ctx.body = { code: 200, data: rows, total, message: '操作成功' };
+    // 脱敏 api_key
+    const safeRows = rows.map((r: any) => ({
+      ...r,
+      api_key: r.api_key ? r.api_key.slice(0, 4) + '****' + r.api_key.slice(-4) : null,
+    }));
+    ctx.body = { code: 200, data: safeRows, total, message: '操作成功' };
   } catch (err: any) {
     logger.error('[AI-Model] list error: %s', err.message);
     ctx.status = 500;
