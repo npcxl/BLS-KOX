@@ -8,6 +8,8 @@
 
 - [ ] 修改 `superadmin` 默认密码（`123456`）
 - [ ] 修改 `admin`（租户 `100000`）默认密码
+- [ ] 修改 **MinIO 默认账号密码**（`.env.docker` 中 `MINIO_USER` / `MINIO_PASSWORD`）
+- [ ] 同步修改 `sql/Init.sql` 中 `sys_storage_config` 的 `access_key` / `secret_key` 种子数据
 - [ ] 生产环境删除或停用所有演示账号
 
 ### 修改密钥
@@ -49,6 +51,7 @@
 - [ ] 配置 Prometheus + Grafana 监控面板
 - [ ] 配置告警规则（5xx 错误率、P95 延迟、DB/Redis 错误等，见 `deploy/prometheus/rules/`）
 - [ ] 检查安全日志写入是否正常（`sys_security_log` 表）
+- [ ] **AI token/成本监控**：确认 AI 调用日志正常输出（当前仅打日志，建议接入日志平台做用量统计和费用核算）
 
 ## 🚀 部署配置
 
@@ -136,6 +139,17 @@ docker compose logs -f bls-server
 
 - [ ] 配置 MinIO / OSS / S3 实际存储（默认使用本地存储仅用于开发）
 - [ ] 设置文件上传大小限制（`sys.upload.maxSize`）
+
+### AI 服务
+
+- [ ] **Ollama 模型拉取**：确认 `ollama-pull` 容器成功拉取 `qwen2.5:7b`（约 4GB），检查磁盘空间 ≥ 20GB
+- [ ] 如需启用更多模型，手动执行 `docker exec bls-ollama ollama pull <model>`
+- [ ] 确认 `/api/ai/chat/completions` 流式响应正常（SSE 无缓冲中断）
+
+### 前端
+
+- [ ] 运行 `npm run test` 确保 Vitest 单元测试全部通过
+- [ ] **E2E 测试**（建议）：当前项目未内置 Playwright/Cypress，建议生产部署前至少手动验证核心流程（登录 → CRUD → AI 对话）
 
 ## ✅ 最终检查
 

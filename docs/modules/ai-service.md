@@ -38,7 +38,7 @@ INTERNAL_SECRET=与bls-server一致的值
 | 场景 | 配置 |
 |------|------|
 | 云端 API | 在「AI 模型配置」页面添加 API 模型，填入 Key 和地址 |
-| 本地 Ollama | `provider=custom`, `base_url=http://127.0.0.1:11434` |
+| 本地 Ollama | `provider=ollama`, `base_url=http://127.0.0.1:11434/v1` |
 
 ### Docker 部署
 

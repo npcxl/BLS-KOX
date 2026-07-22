@@ -30,7 +30,7 @@ curl -f http://localhost/api/health
 | `DB_PASSWORD` | MySQL root 密码 | ✅ |
 | `REDIS_PASSWORD` | Redis 密码 | ✅ |
 | `JWT_SECRET` | JWT 签名密钥（≥32字符） | ✅ |
-| `OPENAI_API_KEY` | AI API 密钥 | 使用 AI 必填 |
+| `OPENAI_API_KEY` | AI API 密钥 | Ollama 模式可留空，云端 API 必填 |
 | `API_SIGN_SECRET` | API 签名密钥（HMAC模式必填） | 按需 |
 | `CORS_ORIGINS` | 允许的跨域来源 | 生产必填 |
 | `DB_HOST` | MySQL 地址 | 默认 mysql |
