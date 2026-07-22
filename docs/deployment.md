@@ -36,8 +36,8 @@ curl -f http://localhost/api/health
 | `DB_HOST` | MySQL 地址 | 默认 mysql |
 | `REDIS_HOST` | Redis 地址 | 默认 redis |
 | `DB_NAME` | 数据库名 | 默认 bls |
-| `AI_PROVIDER` | AI 提供商（deepseek/openai） | 默认 deepseek |
-| `AI_MODEL` | AI 模型名称 | 默认 deepseek-chat |
+| `AI_PROVIDER` | AI 提供商（ollama/deepseek/openai） | Docker 默认 ollama |
+| `AI_MODEL` | AI 模型名称 | Docker 默认 qwen2.5:7b |
 
 ## 数据库初始化
 

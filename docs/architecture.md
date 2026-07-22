@@ -56,7 +56,7 @@ Prometheus Metrics
 ```
 bls-admin (前端) ── POST /api/ai/chat/completions ──→ bls-ai-service (:7201)
     │                                                     │
-    │  GET/POST/DELETE                                    │ DeepSeek / OpenAI
+    │  GET/POST/DELETE                                    │ Ollama / DeepSeek / OpenAI
     │  /api/ai/chat/conversations                         │ SSE Streaming
     │                                                     │
     └──────────────────→ bls-server (:6001)               │
@@ -65,7 +65,7 @@ bls-admin (前端) ── POST /api/ai/chat/completions ──→ bls-ai-service
                                 ai_conversation_message)  │
 ```
 
-- **bls-ai-service**：独立微服务，负责调用 AI 大模型（DeepSeek/OpenAI）并流式返回 SSE
+- **bls-ai-service**：独立微服务，负责调用 AI 大模型（Docker 默认 Ollama，支持 DeepSeek/OpenAI 等）并流式返回 SSE
 - **bls-server**：负责 AI 对话的 CRUD 存储（会话列表、消息历史）
 - **SSE 流式**：Nginx 对 `/api/ai/` 路径关闭 proxy_buffering，确保流式响应实时推送
 

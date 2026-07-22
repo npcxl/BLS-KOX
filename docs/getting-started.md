@@ -173,9 +173,9 @@ proxy_pass http://bls-java-server:8080;
 | `DB_NAME` | 数据库名 | `bls` |
 | `JWT_SECRET` | JWT 密钥 | 生产务必改 |
 | `REDIS_PASSWORD` | Redis 密码 | 必填 |
-| `OPENAI_API_KEY` | AI API 密钥 | 使用 AI 功能必填 |
-| `AI_PROVIDER` | AI 提供商 | `deepseek` |
-| `AI_MODEL` | AI 模型名称 | `deepseek-chat` |
+| `OPENAI_API_KEY` | AI API 密钥 | Ollama 本地可留空，云端 API 必填 |
+| `AI_PROVIDER` | AI 提供商 | Docker 默认 `ollama` |
+| `AI_MODEL` | AI 模型名称 | Docker 默认 `qwen2.5:7b` |
 
 ---
 
