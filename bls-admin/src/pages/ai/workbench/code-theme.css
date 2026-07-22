@@ -6,24 +6,44 @@
   outline: none !important;
 }
 
-/* ====== 流式文本 + 闪烁光标 ====== */
+/* ====== 段落级流式渲染动画 ====== */
 .ai-streaming-text {
-  white-space: pre-wrap;
-  word-break: break-word;
-  line-height: 1.75;
-  font-size: 14px;
+  line-height: 1.8;
+  font-size: 15px;
   color: #1f2937;
 }
 
-.ai-streaming-cursor {
+.ai-stream-block {
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 已完成段落：淡入上移动画 */
+.ai-stream-block-done {
+  animation: streamFadeIn 220ms ease-out both;
+}
+
+@keyframes streamFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 最后一段末尾的细光标 */
+.ai-stream-cursor {
   display: inline-block;
-  width: 7px;
-  height: 16px;
-  margin-left: 3px;
-  vertical-align: -2px;
-  border-radius: 2px;
+  width: 2px;
+  height: 17px;
+  margin-left: 2px;
+  vertical-align: -3px;
   background: #1677ff;
-  animation: aiCursorBlink 0.9s infinite;
+  animation: aiCursorBlink 0.8s infinite;
 }
 
 @keyframes aiCursorBlink {
