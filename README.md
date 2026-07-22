@@ -329,7 +329,7 @@ BLS-KOX/
 │       │   ├── sql/         # SQL 助手 + 安全守卫
 │       │   ├── audit/       # 审计日志分析器
 │       │   └── config/      # 配置文件安全审查器
-│       ├── provider/        # AI Provider 抽象层（OpenAI/DeepSeek/通义千问）
+│       ├── provider/        # AI Provider 抽象层（Ollama/OpenAI/DeepSeek/通义千问）
 │       ├── middleware/      # JWT 认证/限流/审计日志
 │       └── ws/              # WebSocket 流式传输
 ├── bls-java-server/         # Spring Boot 3 + Java 21 后端（并存后端，API 兼容）

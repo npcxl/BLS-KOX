@@ -46,7 +46,7 @@ docker compose up -d --build
 
 默认账号：`superadmin` / `123456`
 
-> **KOX-AI 对话**：登录后左侧菜单点击「KOX-AI」即可使用 AI 智能助手，需要在 `.env` 中配置 `OPENAI_API_KEY`。
+> **KOX-AI 对话**：Docker 默认可直接使用本地 Ollama，无需额外配置。接入 DeepSeek/OpenAI 等云端 API 时需在 `.env.docker` 中配置 `OPENAI_API_KEY`。
 
 > 想用 **Java 后端**？加上 profile：
 > ```bash
