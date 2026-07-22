@@ -171,6 +171,19 @@ const useStyle = createStyles(({ token, css }) => ({
     color: #1f2937;
     word-break: break-word;
   `,
+  msgBubbleUser: css`
+    display: inline-block;
+    max-width: 75%;
+    padding: 10px 16px;
+    border-radius: 18px;
+    border-bottom-right-radius: 6px;
+    background: ${token.colorPrimary};
+    color: #fff;
+    font-size: 15px;
+    line-height: 1.75;
+    word-break: break-word;
+    white-space: pre-wrap;
+  `,
 }));
 
 // ==================== 复制 ====================
@@ -277,19 +290,19 @@ function MessageContent({ content, status }: { content: string; status?: 'updati
 // ==================== 消息类型 ====================
 interface UiMsg { id: string; role: 'user' | 'assistant'; content: string; status?: 'updating' | 'done' | 'error'; }
 
-// ==================== 单条消息 (GPT 风格: 无头像、无气泡框) ====================
+// ==================== 单条消息 ====================
 const ChatMessage = memo(function ChatMessage({ msg }: { msg: UiMsg }) {
   const { styles } = useStyle();
   const isUser = msg.role === 'user';
   return (
     <div className={`${styles.msgRow} ${isUser ? styles.msgUser : styles.msgAi}`}>
-      <div className={styles.msgText}>
-        {isUser ? (
-          msg.content
-        ) : (
+      {isUser ? (
+        <div className={styles.msgBubbleUser}>{msg.content}</div>
+      ) : (
+        <div className={styles.msgText}>
           <MessageContent content={msg.content} status={msg.status} />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 });
