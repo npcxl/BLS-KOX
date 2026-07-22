@@ -193,6 +193,11 @@ export default [
         name: "KOX-AI",
         component: "./ai/workbench",
       },
+      {
+        path: "/ai/models",
+        name: "AI 模型配置",
+        component: "./system/ai-model",
+      },
     ],
   },
   {

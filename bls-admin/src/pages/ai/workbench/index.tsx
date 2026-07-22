@@ -1,7 +1,7 @@
 import { Conversations, Sender, Welcome, XProvider } from '@ant-design/x';
 import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
-import { RobotOutlined, UserOutlined, CopyOutlined } from '@ant-design/icons';
-import { Avatar, Button, Flex, message, Select, Space, theme } from 'antd';
+import { RobotOutlined, CopyOutlined, DownOutlined } from '@ant-design/icons';
+import { Button, Flex, message, Select, Space, theme } from 'antd';
 import { createStyles } from 'antd-style';
 import React, { memo, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import hljs from 'highlight.js/lib/core';
@@ -66,12 +66,22 @@ const useStyle = createStyles(({ token, css }) => ({
     background: ${token.colorBgLayout}80;
   `,
   logo: css`
-    display: flex;
-    align-items: center;
-    gap: 8px;
     padding: 0 24px;
     margin: 24px 0;
-    span { font-weight: bold; color: ${token.colorText}; font-size: 16px; }
+  `,
+  logoText: css`
+    font-weight: 800;
+    font-size: 32px;
+    background: linear-gradient(90deg, #1677ff, #52c41a, #faad14, #f5222d, #1677ff);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: logoShimmer 3s linear infinite;
+    @keyframes logoShimmer {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 300% 50%; }
+    }
   `,
   conversations: css`
     overflow-y: auto;
@@ -106,21 +116,39 @@ const useStyle = createStyles(({ token, css }) => ({
   chatInputBox: css`
     max-width: 880px;
     margin: 0 auto;
-    border: 1px solid #e5eaf3;
-    border-radius: 18px;
+    border: 1px solid #d6dde6;
+    border-radius: 28px;
     background: #fff;
-    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
-    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    padding: 8px 8px 8px 16px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
     &:focus-within {
       border-color: #1677ff;
-      box-shadow: 0 12px 32px rgba(22, 119, 255, 0.14);
+      box-shadow: 0 8px 28px rgba(22, 119, 255, 0.18);
     }
+  `,
+  inputMain: css`
+    flex: 1;
+    min-width: 0;
   `,
   inputToolbar: css`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 12px 0;
+    padding: 0 0 4px;
+    gap: 8px;
+  `,
+  modelSelect: css`
+    color: #6b7280;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: background 0.15s;
+    &:hover { background: #f3f4f6; }
   `,
   placeholder: css`
     padding-top: 100px;
@@ -128,39 +156,20 @@ const useStyle = createStyles(({ token, css }) => ({
     margin: 0 auto;
   `,
   msgRow: css`
-    display: flex;
-    margin-bottom: 20px;
+    margin-bottom: 28px;
     &:last-child { margin-bottom: 0; }
   `,
-  msgUser: css`justify-content: flex-end;`,
-  msgAi: css`justify-content: flex-start;`,
-  msgBubble: css`
-    max-width: 85%;
-    padding: 12px 16px;
-    border-radius: 12px;
-    font-size: 14px;
-    line-height: 1.75;
+  msgUser: css`
+    text-align: right;
+  `,
+  msgAi: css`
+    text-align: left;
+  `,
+  msgText: css`
+    font-size: 15px;
+    line-height: 1.8;
+    color: #1f2937;
     word-break: break-word;
-  `,
-  msgBubbleUser: css`
-    background: ${token.colorPrimary};
-    color: #fff;
-    border-bottom-right-radius: 4px;
-  `,
-  msgBubbleAi: css`
-    background: ${token.colorBgElevated};
-    border: 1px solid ${token.colorBorderSecondary};
-    border-bottom-left-radius: 4px;
-  `,
-  msgBubbleError: css`
-    background: #fff2f0;
-    border: 1px solid #ffccc7;
-    color: #d93026;
-  `,
-  msgAvatar: css`
-    flex-shrink: 0;
-    margin-right: 10px;
-    margin-top: 2px;
   `,
 }));
 
@@ -268,29 +277,19 @@ function MessageContent({ content, status }: { content: string; status?: 'updati
 // ==================== 消息类型 ====================
 interface UiMsg { id: string; role: 'user' | 'assistant'; content: string; status?: 'updating' | 'done' | 'error'; }
 
-// ==================== 单条消息 ====================
+// ==================== 单条消息 (GPT 风格: 无头像、无气泡框) ====================
 const ChatMessage = memo(function ChatMessage({ msg }: { msg: UiMsg }) {
   const { styles } = useStyle();
   const isUser = msg.role === 'user';
   return (
     <div className={`${styles.msgRow} ${isUser ? styles.msgUser : styles.msgAi}`}>
-      {!isUser && (
-        <div className={styles.msgAvatar}>
-          <Avatar icon={<RobotOutlined />} style={{ background: '#1677ff' }} size={32} />
-        </div>
-      )}
-      <div className={`${styles.msgBubble} ${isUser ? styles.msgBubbleUser : msg.status === 'error' ? styles.msgBubbleError : styles.msgBubbleAi}`}>
+      <div className={styles.msgText}>
         {isUser ? (
-          <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75 }}>{msg.content}</div>
+          msg.content
         ) : (
           <MessageContent content={msg.content} status={msg.status} />
         )}
       </div>
-      {isUser && (
-        <div style={{ flexShrink: 0, marginLeft: 10, marginTop: 2 }}>
-          <Avatar icon={<UserOutlined />} style={{ background: '#52c41a' }} size={32} />
-        </div>
-      )}
     </div>
   );
 });
@@ -487,8 +486,7 @@ export default function AiWorkbench() {
         {/* 左侧会话列表 */}
         <aside className={styles.sidebar}>
           <div className={styles.logo}>
-            <img src={require('../img/kox-ai.png')} alt="KOX-AI" style={{ width: 28, height: 28 }} />
-            <span>KOX-AI</span>
+            <span className={styles.logoText}>KOX-AI</span>
           </div>
           <Conversations
             creation={{ onClick: handleNewConversation }}
@@ -524,30 +522,33 @@ export default function AiWorkbench() {
             )}
           </div>
           <div className={styles.inputDock}>
-            <div className={styles.chatInputBox}>
-              {modelOptions.length > 1 && (
+            <div className={`${styles.chatInputBox} ai-chat-input-box`}>
+              <div className={styles.inputMain}>
+                <Sender
+                  value={inputValue}
+                  onChange={setInputValue}
+                  onSubmit={() => sendMessage(inputValue)}
+                  onCancel={() => { abortRef.current?.abort(); setIsRequesting(false); }}
+                  loading={isRequesting}
+                  placeholder={t.askOrInputUseSkills}
+                  style={{ border: 'none', boxShadow: 'none', background: 'transparent' }}
+                />
                 <div className={styles.inputToolbar}>
-                  <Select
-                    size="small"
-                    variant="borderless"
-                    value={selectedModel || modelOptions[0]?.value}
-                    options={modelOptions}
-                    loading={modelLoading}
-                    onChange={handleModelChange}
-                    style={{ minWidth: 120 }}
-                    popupMatchSelectWidth={false}
-                  />
+                  {selectedModel && modelOptions.length > 0 && (
+                    <Select
+                      size="small"
+                      variant="borderless"
+                      value={selectedModel}
+                      options={modelOptions}
+                      loading={modelLoading}
+                      onChange={handleModelChange}
+                      suffixIcon={<DownOutlined />}
+                      style={{ minWidth: 140, color: '#6b7280', fontSize: 12 }}
+                      popupMatchSelectWidth={false}
+                    />
+                  )}
                 </div>
-              )}
-              <Sender
-                value={inputValue}
-                onChange={setInputValue}
-                onSubmit={() => sendMessage(inputValue)}
-                onCancel={() => { abortRef.current?.abort(); setIsRequesting(false); }}
-                loading={isRequesting}
-                placeholder={t.askOrInputUseSkills}
-                style={{ border: 'none', boxShadow: 'none' }}
-              />
+              </div>
             </div>
           </div>
         </main>

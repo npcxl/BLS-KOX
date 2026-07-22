@@ -134,7 +134,7 @@ router.post('/completions', async (ctx: Context) => {
 
   if (!useStream) {
     try {
-      const ai = model ? getAiProviderForModel(model) : getAiProvider();
+      const ai = model ? await getAiProviderForModel(model) : await getAiProvider();
       const result = await ai.complete({
         messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
         temperature: 0.3,
@@ -163,7 +163,7 @@ router.post('/completions', async (ctx: Context) => {
   });
 
   try {
-    const ai = model ? getAiProviderForModel(model) : getAiProvider();
+    const ai = model ? await getAiProviderForModel(model) : await getAiProvider();
     const allMessages: AiMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }, ...messages];
 
     if (ai.completeStream) {

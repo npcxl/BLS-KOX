@@ -43,6 +43,7 @@ export const env = {
   host: process.env.APP_HOST ?? '0.0.0.0',
   port: numberEnv('APP_PORT', 7201),
   appName: process.env.APP_NAME ?? 'bls-ai-service',
+  blsServerUrl: process.env.BLS_SERVER_URL ?? 'http://bls-server:7001',
 
   jwt: {
     secret: jwtSecret,
