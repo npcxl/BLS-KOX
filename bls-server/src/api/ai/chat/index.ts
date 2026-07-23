@@ -118,4 +118,26 @@ router.delete('/conversations/:id', jwtAuth(), async (ctx: Context) => {
   }
 });
 
+/** PUT /api/ai/chat/conversations/:id — 重命名 */
+router.put('/conversations/:id', jwtAuth(), async (ctx: Context) => {
+  const { id } = ctx.params;
+  const userId = getUserId(ctx);
+  const body = ctx.request.body as { title?: string };
+  if (!userId) { ctx.status = 401; ctx.body = { code: 401, message: '未登录' }; return; }
+  if (!body.title?.trim()) { ctx.status = 400; ctx.body = { code: 400, message: '标题不能为空' }; return; }
+  try {
+    const db = (await getDb()) as any;
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.updateTable('ai_conversation')
+      .set({ title: body.title.trim(), updated_at: now })
+      .where('id', '=', id)
+      .where('user_id', '=', userId)
+      .execute();
+    ctx.body = { code: 200, data: { id, title: body.title.trim() }, message: '重命名成功' };
+  } catch (err: any) {
+    ctx.status = 500;
+    ctx.body = { code: 500, message: err.message };
+  }
+});
+
 export default router;
