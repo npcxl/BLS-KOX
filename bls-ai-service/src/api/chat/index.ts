@@ -85,13 +85,15 @@ Key rules for formColumns:
 
 ## Page Config SQL — CRITICAL (frontend table columns depend on this)
 sys_page_config:
-  INSERT INTO sys_page_config (config_id, tenant_id, page_code, page_name, route_path, deleted) VALUES ('cfg_business_{module}','000000','business_{module}','{ModuleName}管理','/business/{module}',0);
+  INSERT INTO sys_page_config (page_config_id, page_code, page_name, enabled, sort, tenant_id, remark, deleted)
+  VALUES ('P_business_{module}','business_{module}','{ModuleName}管理',1,100,'000000',NULL,0);
 
-sys_page_column_config (column_id, page_code, data_index, title, order_num, visible, searchable, editable, copyable, ellipsis, value_type, value_enum_code, placeholder, required, tenant_id, deleted):
-  INSERT INTO sys_page_column_config VALUES
-  ('C_001','business_{module}','{fieldName}','{中文标题}',1,1,1,0,0,0,'text',NULL,NULL,0,'000000',0),
-  ('C_002','business_{module}','{fieldName}','{中文标题}',2,1,0,0,0,0,'text',NULL,NULL,0,'000000',0);
-  - column_id: 'C_' + 3-digit sequential
+sys_page_column_config:
+  INSERT INTO sys_page_column_config (column_id, page_code, data_index, title, order_num, visible, searchable, editable, copyable, ellipsis, value_type, value_enum_code, placeholder, required, tenant_id, deleted)
+  VALUES
+  ('C_biz_{module}_01','business_{module}','{fieldName}','{中文标题}',1,1,1,0,0,0,'text',NULL,NULL,0,'000000',0),
+  ('C_biz_{module}_02','business_{module}','{fieldName}','{中文标题}',2,1,0,0,0,0,'text',NULL,NULL,0,'000000',0);
+  - column_id: 'C_biz_' + moduleName + '_' + 2-digit sequential
   - data_index: camelCase (e.g. customerName, phone, followUpBy)
   - searchable: 1 for name/title/code/phone/email, 0 otherwise
   - value_type: text/select/date/digit/textarea/image
