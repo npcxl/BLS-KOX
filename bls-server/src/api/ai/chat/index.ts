@@ -74,7 +74,11 @@ router.post('/conversations', jwtAuth(), async (ctx: Context) => {
       .select('id').where('id', '=', convId).executeTakeFirst();
 
     if (existing) {
-      await db.updateTable('ai_conversation').set({ title, updated_at: now }).where('id', '=', convId).execute();
+      const updateData: any = { updated_at: now };
+      if (body.title && body.title.trim()) {
+        updateData.title = body.title.trim();
+      }
+      await db.updateTable('ai_conversation').set(updateData).where('id', '=', convId).execute();
     } else {
       await db.insertInto('ai_conversation').values({
         id: convId, user_id: userId, tenant_id: tenantId,
@@ -108,6 +112,28 @@ router.delete('/conversations/:id', jwtAuth(), async (ctx: Context) => {
     const db = (await getDb()) as any;
     await db.updateTable('ai_conversation').set({ deleted: 1 }).where('id', '=', id).where('user_id', '=', userId).execute();
     ctx.body = { code: 200, message: '已删除' };
+  } catch (err: any) {
+    ctx.status = 500;
+    ctx.body = { code: 500, message: err.message };
+  }
+});
+
+/** PUT /api/ai/chat/conversations/:id — 重命名 */
+router.put('/conversations/:id', jwtAuth(), async (ctx: Context) => {
+  const { id } = ctx.params;
+  const userId = getUserId(ctx);
+  const body = ctx.request.body as { title?: string };
+  if (!userId) { ctx.status = 401; ctx.body = { code: 401, message: '未登录' }; return; }
+  if (!body.title?.trim()) { ctx.status = 400; ctx.body = { code: 400, message: '标题不能为空' }; return; }
+  try {
+    const db = (await getDb()) as any;
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.updateTable('ai_conversation')
+      .set({ title: body.title.trim(), updated_at: now })
+      .where('id', '=', id)
+      .where('user_id', '=', userId)
+      .execute();
+    ctx.body = { code: 200, data: { id, title: body.title.trim() }, message: '重命名成功' };
   } catch (err: any) {
     ctx.status = 500;
     ctx.body = { code: 500, message: err.message };

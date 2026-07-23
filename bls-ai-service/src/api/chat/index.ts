@@ -1,9 +1,11 @@
 ﻿import Router from 'koa-router';
 import type { Context } from 'koa';
 import { success } from '../../core/response';
-import { getAiProvider } from '../../provider/factory';
+import { getAiProvider, getAiProviderForModel } from '../../provider/factory';
 import type { AiMessage } from '../../provider/types';
 import { logger } from '../../core/logger';
+import { trackUsage } from '../../core/usage-tracker';
+import { getCurrentTenantId, getCurrentUserId } from '../../core/request-context';
 
 const router = new Router();
 
@@ -35,9 +37,47 @@ const SYSTEM_PROMPT = `You are KOX-AI, an AI assistant for the BLS-KOX platform.
 - Props: title, rowKey, resource, columns, formColumns, permissions, excelMetaKey
 - resource format: { basePath: '/api/business/{module}' }
 - **DYNAMIC COLUMNS**: Use usePageConfig('page_code') hook to get columns, NOT hardcoded columns. Example: import { usePageConfig } from '@/hooks/usePageConfig'; const { proColumns } = usePageConfig('business_{module}');
-- Form columns: ProFormColumnsType from @ant-design/pro-components
+- **columns={proColumns}** — always use dynamic columns from usePageConfig
 - Service: import { request } from '@umijs/max'
-- The columns come from sys_page_column_config database table — NEVER hardcode them in the component
+- The columns come from sys_page_column_config database table — NEVER hardcode columns in the component
+
+## formColumns — MUST write manually as ProFormColumnsType array
+
+formColumns is a ProFormColumnsType array for the add/edit form dialog. It is NOT the same as table columns. You MUST write it by hand based on the business fields. DO NOT use proColumns for formColumns.
+
+Reference format (from system/user page):
+\`\`\`tsx
+import type { ProFormColumnsType } from '@ant-design/pro-components';
+
+const formColumns: ProFormColumnsType<RecordType>[] = [
+  {
+    title: '字段中文名',
+    dataIndex: 'fieldName',
+    formItemProps: { rules: [{ required: true, message: '请输入字段中文名' }] },
+  },
+  {
+    title: '下拉选择',
+    dataIndex: 'statusField',
+    valueType: 'select',
+    initialValue: '0',
+    valueEnum: { '0': '启用', '1': '停用' },
+  },
+  {
+    title: '备注',
+    dataIndex: 'remark',
+    valueType: 'textarea',
+  },
+];
+\`\`\`
+
+Key rules for formColumns:
+- Each field = one object with: title (中文), dataIndex (camelCase field name), optional valueType
+- valueType types: 'text' (default), 'select', 'textarea', 'digit', 'date', 'password', 'treeSelect'
+- For required fields: formItemProps: { rules: [{ required: true, message: '请输入...' }] }
+- For select/enum fields: valueEnum object like { '0': '启用', '1': '停用' } + initialValue
+- For dropdown selects from database: fieldProps with options array + valueType 'select'
+- DO NOT put valueEnum or fieldProps on plain text fields
+- DO NOT use formColumns={proColumns} — proColumns is for TABLE display, formColumns is for FORM input
 
 ## Menu SQL
 - INSERT INTO sys_menu (menu_id,parent_id,menu_name,path,component,perms,icon,menu_type,sort_num,status)
@@ -45,13 +85,15 @@ const SYSTEM_PROMPT = `You are KOX-AI, an AI assistant for the BLS-KOX platform.
 
 ## Page Config SQL — CRITICAL (frontend table columns depend on this)
 sys_page_config:
-  INSERT INTO sys_page_config (config_id, tenant_id, page_code, page_name, route_path, deleted) VALUES ('cfg_business_{module}','000000','business_{module}','{ModuleName}管理','/business/{module}',0);
+  INSERT INTO sys_page_config (page_config_id, page_code, page_name, enabled, sort, tenant_id, remark, deleted)
+  VALUES ('P_business_{module}','business_{module}','{ModuleName}管理',1,100,'000000',NULL,0);
 
-sys_page_column_config (column_id, page_code, data_index, title, order_num, visible, searchable, editable, copyable, ellipsis, value_type, value_enum_code, placeholder, required, tenant_id, deleted):
-  INSERT INTO sys_page_column_config VALUES
-  ('C_001','business_{module}','{fieldName}','{中文标题}',1,1,1,0,0,0,'text',NULL,NULL,0,'000000',0),
-  ('C_002','business_{module}','{fieldName}','{中文标题}',2,1,0,0,0,0,'text',NULL,NULL,0,'000000',0);
-  - column_id: 'C_' + 3-digit sequential
+sys_page_column_config:
+  INSERT INTO sys_page_column_config (column_id, page_code, data_index, title, order_num, visible, searchable, editable, copyable, ellipsis, value_type, value_enum_code, placeholder, required, tenant_id, deleted)
+  VALUES
+  ('C_biz_{module}_01','business_{module}','{fieldName}','{中文标题}',1,1,1,0,0,0,'text',NULL,NULL,0,'000000',0),
+  ('C_biz_{module}_02','business_{module}','{fieldName}','{中文标题}',2,1,0,0,0,0,'text',NULL,NULL,0,'000000',0);
+  - column_id: 'C_biz_' + moduleName + '_' + 2-digit sequential
   - data_index: camelCase (e.g. customerName, phone, followUpBy)
   - searchable: 1 for name/title/code/phone/email, 0 otherwise
   - value_type: text/select/date/digit/textarea/image
@@ -63,10 +105,11 @@ When generating a module, ALWAYS include:
 4. sys_page_config SQL
 5. sys_page_column_config SQL (one row per field — THIS IS REQUIRED)
 6. Backend code: ONE file bls-server/src/business/{module}/index.ts using defineCrudModule()
-7. Frontend code (page.tsx + service.ts)
+7. Frontend code: page.tsx using CrudTablePage with columns={proColumns} from usePageConfig AND hand-written formColumns array
 8. Copy guide
 
 CRITICAL: Step 5 (page column config) is MANDATORY. The frontend uses sys_page_column_config to render dynamic table columns. Without it, pages show empty tables.
+CRITICAL: Step 7 MUST include BOTH columns={proColumns} AND a hand-written formColumns array. formColumns is for the create/edit form, NOT the table.
 
 Output code in markdown code blocks with language tags (sql, ts, tsx).
 Be concise.`;
@@ -75,6 +118,7 @@ Be concise.`;
 router.post('/completions', async (ctx: Context) => {
   const body = ctx.request.body as {
     messages?: Array<{ role: string; content: string }>;
+    model?: string;
     stream?: boolean;
   };
 
@@ -89,11 +133,12 @@ router.post('/completions', async (ctx: Context) => {
     content: m.content,
   }));
 
+  const model = body.model || undefined;
   const useStream = body.stream !== false;
 
   if (!useStream) {
     try {
-      const ai = getAiProvider();
+      const ai = model ? await getAiProviderForModel(model) : await getAiProvider();
       const result = await ai.complete({
         messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
         temperature: 0.3,
@@ -121,22 +166,84 @@ router.post('/completions', async (ctx: Context) => {
     'Connection': 'keep-alive',
   });
 
+  const startTime = Date.now();
   try {
-    const ai = getAiProvider();
+    const ai = model ? await getAiProviderForModel(model) : await getAiProvider();
     const allMessages: AiMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }, ...messages];
+    let totalChars = 0;
+    let promptTokens = 0;
+    let completionTokens = 0;
 
     if (ai.completeStream) {
       const stream = ai.completeStream({ messages: allMessages, temperature: 0.3 });
       for await (const chunk of stream) {
+        totalChars += chunk.length;
         ctx.res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: chunk } }] })}\n\n`);
       }
     } else {
       const result = await ai.complete({ messages: allMessages, temperature: 0.3 });
+      totalChars = result.content.length;
+      promptTokens = result.usage?.promptTokens || 0;
+      completionTokens = result.usage?.completionTokens || 0;
       ctx.res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: result.content } }] })}\n\n`);
     }
+
+    // 流式模式下估算 token（中文约 1.5 字符/token，英文约 4 字符/token）
+    if (!completionTokens && totalChars > 0) {
+      const chineseChars = (totalChars.toString().match(/[\u4e00-\u9fff]/g) || []).length;
+      const otherChars = totalChars - chineseChars;
+      completionTokens = Math.ceil(chineseChars / 1.5 + otherChars / 4);
+      promptTokens = allMessages.reduce((sum, m) => sum + Math.ceil(m.content.length / 4), 0);
+    }
+
+    const elapsed = Date.now() - startTime;
+    const costInfo = {
+      model: model || 'default',
+      elapsedMs: elapsed,
+      totalChars,
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens,
+    };
+    logger.info('[Chat] 成本统计', costInfo);
+
+    // 异步上报 AI 用量（不阻塞响应）
+    trackUsage({
+      tenantId: getCurrentTenantId() ?? undefined,
+      userId: getCurrentUserId() ?? undefined,
+      username: undefined,
+      modelName: costInfo.model,
+      provider: 'deepseek',
+      endpoint: 'chat',
+      promptTokens: costInfo.promptTokens,
+      completionTokens: costInfo.completionTokens,
+      totalTokens: costInfo.totalTokens,
+      estimatedCost: 0,
+      elapsedMs: costInfo.elapsedMs,
+      success: true,
+      streamMode: !completionTokens || (ai.completeStream ? true : false),
+    });
+
     ctx.res.write('data: [DONE]\n\n');
   } catch (err: any) {
     logger.error('[Chat] stream error: %s', err.message);
+    // 记录失败的调用
+    trackUsage({
+      tenantId: getCurrentTenantId() ?? undefined,
+      userId: getCurrentUserId() ?? undefined,
+      username: undefined,
+      modelName: model || 'default',
+      provider: 'deepseek',
+      endpoint: 'chat',
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      estimatedCost: 0,
+      elapsedMs: Date.now() - startTime,
+      success: false,
+      errorMsg: err.message,
+      streamMode: useStream,
+    });
     ctx.res.write(`data: ${JSON.stringify({ error: { message: err.message || 'AI 服务异常' } })}\n\n`);
   }
   ctx.res.end();

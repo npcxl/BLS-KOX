@@ -43,6 +43,7 @@ export const env = {
   host: process.env.APP_HOST ?? '0.0.0.0',
   port: numberEnv('APP_PORT', 7201),
   appName: process.env.APP_NAME ?? 'bls-ai-service',
+  blsServerUrl: process.env.BLS_SERVER_URL ?? 'http://bls-server:7001',
 
   jwt: {
     secret: jwtSecret,
@@ -55,6 +56,7 @@ export const env = {
     baseUrl: process.env.AI_BASE_URL ?? '',
     timeoutMs: numberEnv('AI_TIMEOUT_MS', 60000),
     temperature: numberEnv('AI_TEMPERATURE', 0.3),
+    modelOptions: (process.env.AI_MODEL_OPTIONS ?? '').split(',').map(s => s.trim()).filter(Boolean),
   },
 
   redis: {

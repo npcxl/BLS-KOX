@@ -196,7 +196,7 @@ async function streamToWsAndCollect(
   systemPrompt: string,
   userPrompt: string,
 ): Promise<string> {
-  const ai = getAiProvider();
+  const ai = await getAiProvider();
 
   if (!ai.completeStream) {
     send(ws, { type: 'start' });
@@ -251,7 +251,7 @@ async function streamToWs(
   userPrompt: string,
   jsonMode = false,
 ) {
-  const ai = getAiProvider();
+  const ai = await getAiProvider();
 
   if (!ai.completeStream) {
     // 降级到非流式

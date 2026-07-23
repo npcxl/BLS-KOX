@@ -59,6 +59,9 @@ export class OpenAIProvider implements AiProvider {
         const errorText = await response.text();
         logger.error('AI API 返回错误', {
           status: response.status,
+          url: url,
+          model: this.config.model,
+          keyPrefix: this.config.apiKey?.slice(0, 7),
           error: errorText,
         });
         throw new AIProviderError(`AI 服务返回错误 (${response.status})`);
@@ -117,7 +120,17 @@ export class OpenAIProvider implements AiProvider {
       body: JSON.stringify(body),
     });
 
+    logger.info('AI Stream 请求已发送', { url, model: body.model, keyLen: this.config.apiKey.length, msgCount: body.messages.length });
+
     if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('AI Stream API 返回错误', {
+        status: response.status,
+        url: url,
+        model: this.config.model,
+        keyPrefix: this.config.apiKey?.slice(0, 7),
+        error: errorText,
+      });
       throw new AIProviderError(`AI 服务返回错误 (${response.status})`);
     }
 

@@ -92,7 +92,7 @@
 
 | 模块 | 说明 |
 |------|------|
-| **AI 智能助手** | 自然语言一键生成 CRUD 模块、SQL 查询、安全审计、配置审查 |
+| **AI 智能助手** | 自然语言一键生成 CRUD 模块、SQL 查询、安全审计、配置审查。支持本地 Ollama 和云端 API 双模式 |
 | 多租户隔离 | 自动 tenant_id 注入，跨租户访问告警，Ownership Guard |
 | RBAC 权限 | 角色 → 菜单 → 按钮三级权限 |
 | JWT 会话体系 | Access/Refresh Token，Rotation，Reuse Detection，Session Center |
@@ -329,7 +329,7 @@ BLS-KOX/
 │       │   ├── sql/         # SQL 助手 + 安全守卫
 │       │   ├── audit/       # 审计日志分析器
 │       │   └── config/      # 配置文件安全审查器
-│       ├── provider/        # AI Provider 抽象层（OpenAI/DeepSeek/通义千问）
+│       ├── provider/        # AI Provider 抽象层（Ollama/OpenAI/DeepSeek/通义千问）
 │       ├── middleware/      # JWT 认证/限流/审计日志
 │       └── ws/              # WebSocket 流式传输
 ├── bls-java-server/         # Spring Boot 3 + Java 21 后端（并存后端，API 兼容）

@@ -30,14 +30,14 @@ curl -f http://localhost/api/health
 | `DB_PASSWORD` | MySQL root 密码 | ✅ |
 | `REDIS_PASSWORD` | Redis 密码 | ✅ |
 | `JWT_SECRET` | JWT 签名密钥（≥32字符） | ✅ |
-| `OPENAI_API_KEY` | AI API 密钥 | 使用 AI 必填 |
+| `OPENAI_API_KEY` | AI API 密钥 | Ollama 模式可留空，云端 API 必填 |
 | `API_SIGN_SECRET` | API 签名密钥（HMAC模式必填） | 按需 |
 | `CORS_ORIGINS` | 允许的跨域来源 | 生产必填 |
 | `DB_HOST` | MySQL 地址 | 默认 mysql |
 | `REDIS_HOST` | Redis 地址 | 默认 redis |
 | `DB_NAME` | 数据库名 | 默认 bls |
-| `AI_PROVIDER` | AI 提供商（deepseek/openai） | 默认 deepseek |
-| `AI_MODEL` | AI 模型名称 | 默认 deepseek-chat |
+| `AI_PROVIDER` | AI 提供商（ollama/deepseek/openai） | Docker 默认 ollama |
+| `AI_MODEL` | AI 模型名称 | Docker 默认 qwen2.5:7b |
 
 ## 数据库初始化
 

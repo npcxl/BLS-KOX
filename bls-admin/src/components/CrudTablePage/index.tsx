@@ -323,6 +323,8 @@ export default function CrudTablePage<T extends Record<string, any>>({
 
   const actionColumn: ProColumns<T> = {
     title: "操作",
+    dataIndex: "actions",
+    key: "actions",
     valueType: "option",
     width: 160,
     fixed: "right",

@@ -421,7 +421,69 @@ INSERT INTO `sys_menu` VALUES
 ('storage_config_0001','file_center_0001','存储配置','/file-config/storage','system/file-config/storage','system:storage:list','DatabaseOutlined','1',1,'0','2026-06-15 08:41:06','2026-06-16 01:57:24'),
 ('storage_config_add_0001','storage_config_0001','新增',NULL,NULL,'system:storage:add',NULL,'2',1,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),
 ('storage_config_edit_0001','storage_config_0001','修改',NULL,NULL,'system:storage:edit',NULL,'2',2,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),
-('storage_config_remove_0001','storage_config_0001','删除',NULL,NULL,'system:storage:remove',NULL,'2',3,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),('ai_workbench_0001','000000','KOX-AI','/ai',NULL,NULL,'RobotOutlined','0',50,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_workbench_0002','ai_workbench_0001','KOX-AI','/ai/workbench','ai/workbench','ai:workbench:view','RobotOutlined','1',1,'0','2026-07-19 00:00:00','2026-07-19 00:00:00');
+('ai_usage_0001','ai_workbench_0001','AI 用量中心','/ai/usage','ai/usage','ai:usage:view','DashboardOutlined','1',3,'0','2026-07-22 00:00:00','2026-07-22 00:00:00'),
+('storage_config_remove_0001','storage_config_0001','删除',NULL,NULL,'system:storage:remove',NULL,'2',3,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),('ai_workbench_0001','000000','KOX-AI','/ai',NULL,NULL,'RobotOutlined','0',50,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_workbench_0002','ai_workbench_0001','KOX-AI','/ai/workbench','ai/workbench','ai:workbench:view','RobotOutlined','1',1,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_model_0001','ai_workbench_0001','AI 模型配置','/ai/models','system/ai-model','ai:models:view','SettingOutlined','1',2,'0','2026-07-22 00:00:00','2026-07-22 00:00:00');
+
+-- -------------------------------------------------------
+-- ai_model_config (AI 模型配置)
+-- -------------------------------------------------------
+DROP TABLE IF EXISTS `ai_model_config`;
+CREATE TABLE `ai_model_config` (
+  `config_id`   VARCHAR(32)  NOT NULL COMMENT '配置ID',
+  `tenant_id`   VARCHAR(32)  NOT NULL DEFAULT '000000',
+  `model_name`  VARCHAR(100) NOT NULL COMMENT '模型显示名称',
+  `model_type`  VARCHAR(20)  NOT NULL DEFAULT 'api' COMMENT 'api=API模型 local=本地模型',
+  `provider`    VARCHAR(50)  NOT NULL COMMENT '提供商',
+  `model_id`    VARCHAR(100) NOT NULL COMMENT '模型标识',
+  `api_key`     VARCHAR(500) DEFAULT NULL,
+  `base_url`    VARCHAR(500) DEFAULT NULL,
+  `temperature` DECIMAL(3,2) NOT NULL DEFAULT 0.30,
+  `max_tokens`  INT          NOT NULL DEFAULT 4096,
+  `timeout_ms`  INT          NOT NULL DEFAULT 60000,
+  `is_default`  CHAR(1)      NOT NULL DEFAULT '0',
+  `status`      CHAR(1)      NOT NULL DEFAULT '0',
+  `sort_num`    INT          NOT NULL DEFAULT 0,
+  `remark`      VARCHAR(500) DEFAULT NULL,
+  `deleted`     TINYINT      NOT NULL DEFAULT 0,
+  `create_by`   VARCHAR(32)  DEFAULT NULL,
+  `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_by`   VARCHAR(32)  DEFAULT NULL,
+  `update_time` DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`config_id`),
+  INDEX `idx_tenant_status` (`tenant_id`, `status`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI模型配置';
+
+INSERT INTO `ai_model_config` VALUES
+('ai_cfg_001','000000','Ollama 本地 qwen2.5','local','ollama','qwen2.5:7b',NULL,'http://ollama:11434/v1',0.30,4096,120000,'1','0',1,'Docker内部默认本地模型',0,NULL,NOW(),NULL,NOW()),
+('ai_cfg_002','000000','DeepSeek V4','api','deepseek','deepseek-chat','CHANGE_TO_YOUR_API_KEY','https://api.deepseek.com/v1',0.30,4096,60000,'0','0',2,'填入API Key后可用',0,NULL,NOW(),NULL,NOW());
+
+-- -------------------------------------------------------
+-- sys_ai_usage (AI 用量统计)
+-- -------------------------------------------------------
+DROP TABLE IF EXISTS `sys_ai_usage`;
+CREATE TABLE `sys_ai_usage` (
+  `usage_id`    VARCHAR(32)  NOT NULL COMMENT '用量ID',
+  `tenant_id`   VARCHAR(32)  NOT NULL DEFAULT '000000',
+  `user_id`     VARCHAR(32)  DEFAULT NULL,
+  `username`    VARCHAR(50)  DEFAULT NULL,
+  `model_name`  VARCHAR(100) NOT NULL COMMENT '模型名称',
+  `provider`    VARCHAR(50)  NOT NULL COMMENT '提供商',
+  `endpoint`    VARCHAR(64)  NOT NULL DEFAULT 'chat' COMMENT '接口: chat/crud/sql/audit/config',
+  `prompt_tokens`      INT NOT NULL DEFAULT 0,
+  `completion_tokens`  INT NOT NULL DEFAULT 0,
+  `total_tokens`       INT NOT NULL DEFAULT 0,
+  `estimated_cost`     DECIMAL(10,6) NOT NULL DEFAULT 0 COMMENT '估算费用(USD)',
+  `elapsed_ms`  INT NOT NULL DEFAULT 0,
+  `success`     TINYINT NOT NULL DEFAULT 1,
+  `error_msg`   VARCHAR(500) DEFAULT NULL,
+  `stream_mode` TINYINT NOT NULL DEFAULT 0 COMMENT '0=非流式 1=流式(估算)',
+  `created_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`usage_id`),
+  INDEX `idx_usage_tenant_time` (`tenant_id`, `created_at`),
+  INDEX `idx_usage_user_time` (`user_id`, `created_at`),
+  INDEX `idx_usage_model` (`model_name`),
+  INDEX `idx_usage_endpoint` (`endpoint`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 用量统计表';
 
 -- -------------------------------------------------------
 -- -------------------------------------------------------
@@ -571,7 +633,9 @@ INSERT INTO `sys_package_menu` VALUES
 ('P100','storage_config_remove_0001'),('P001','ai_workbench_0001'),('P001','ai_workbench_0002'),
 ('P001','ai_crud_0001'),('P001','ai_sql_0001'),('P001','ai_audit_0001'),('P001','ai_config_0001'),
 ('P100','ai_workbench_0001'),('P100','ai_workbench_0002'),('P100','ai_crud_0001'),('P100','ai_sql_0001'),
-('P100','ai_audit_0001'),('P100','ai_config_0001');
+('P100','ai_audit_0001'),('P100','ai_config_0001'),
+('P001','ai_model_0001'),('P001','ai_usage_0001'),
+('P100','ai_model_0001'),('P100','ai_usage_0001');
 
 -- -------------------------------------------------------
 -- sys_page_column_config
@@ -835,9 +899,9 @@ INSERT INTO `sys_role_menu` VALUES
 ('100001','file_manage_upload_0001'),
 ('100002','000100'),('100002','000120'),('100002','000121'),('100002','000130'),('100002','000131'),
 ('100002','000160'),('100002','000161'),('000001','ai_workbench_0001'),('000001','ai_workbench_0002'),
-('000001','ai_crud_0001'),('000001','ai_sql_0001'),('000001','ai_audit_0001'),('000001','ai_config_0001'),
+('000001','ai_crud_0001'),('000001','ai_sql_0001'),('000001','ai_audit_0001'),('000001','ai_config_0001'),('000001','ai_model_0001'),('000001','ai_usage_0001'),
 ('100001','ai_workbench_0001'),('100001','ai_workbench_0002'),('100001','ai_crud_0001'),('100001','ai_sql_0001'),
-('100001','ai_audit_0001'),('100001','ai_config_0001');
+('100001','ai_audit_0001'),('100001','ai_config_0001'),('100001','ai_model_0001'),('100001','ai_usage_0001');
 
 -- -------------------------------------------------------
 -- sys_search_index
@@ -955,7 +1019,7 @@ CREATE TABLE `sys_storage_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='存储配置表';
 
 INSERT INTO `sys_storage_config` (`storage_id`, `tenant_id`, `storage_name`, `storage_type`, `endpoint`, `region`, `port`, `use_ssl`, `access_key`, `secret_key`, `public_bucket`, `private_bucket`, `public_base_url`, `private_base_url`, `path_style`, `config_json`, `policy_json`, `is_default`, `status`, `remark`, `create_by`, `create_time`, `update_by`, `update_time`, `deleted`) VALUES
-('000001','000000','MinIO 对象存储','minio','minio',NULL,9000,0,'minioadmin','minioadmin','public-assets','private-assets','/files',NULL,1,'{"apiUrl":"http://minio:9000","consoleUrl":"http://minio:9001","clusterMode":false,"forcePathStyle":true}','{"maxSizeMB":100,"allowedExt":["jpg","jpeg","png","gif","webp","pdf","doc","docx","xls","xlsx","ppt","pptx","zip"],"blockedExt":["exe","bat","cmd","sh","js","msi"],"privateExpireSeconds":300}',1,0,'Docker内置MinIO，默认minioadmin/minioadmin，生产请修改',NULL,'2026-07-17 02:00:00',NULL,'2026-07-17 02:00:00',0);
+('000001','000000','MinIO 对象存储','minio','minio',NULL,9000,0,'CHANGE_TO_YOUR_MINIO_ACCESS_KEY','CHANGE_TO_YOUR_MINIO_SECRET_KEY','public-assets','private-assets','/files',NULL,1,'{"apiUrl":"http://minio:9000","consoleUrl":"http://minio:9001","clusterMode":false,"forcePathStyle":true}','{"maxSizeMB":100,"allowedExt":["jpg","jpeg","png","gif","webp","pdf","doc","docx","xls","xlsx","ppt","pptx","zip"],"blockedExt":["exe","bat","cmd","sh","js","msi"],"privateExpireSeconds":300}',1,0,'Docker内置MinIO，access_key/secret_key 需与 .env.docker 中 MINIO_USER/MINIO_PASSWORD 保持一致，生产请修改',NULL,'2026-07-17 02:00:00',NULL,'2026-07-17 02:00:00',0);
 
 -- -------------------------------------------------------
 -- sys_tenant

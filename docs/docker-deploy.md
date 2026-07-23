@@ -59,7 +59,7 @@ bls-server       Up (healthy)
 |------|--------|------|
 | 超级管理员 | `superadmin` | `123456` |
 | 租户管理员 | `admin` | `123456` |
-| MinIO 管理 | `minioadmin` | `minioadmin` |
+| MinIO 管理 | 见 `.env.docker` 中 `MINIO_USER` | 见 `.env.docker` 中 `MINIO_PASSWORD` |
 
 ---
 
@@ -224,10 +224,10 @@ docker compose --env-file .env.docker down
 | CORS_ORIGINS | 允许的跨域域名 | http://localhost |
 | API_SIGN_SECRET | 防重放签名密钥 | 自定义 |
 | **AI 服务** | | |
-| AI_PROVIDER | AI 提供商 | deepseek / openai |
-| AI_MODEL | AI 模型名称 | deepseek-chat / gpt-4o-mini |
-| OPENAI_API_KEY | AI API 密钥 | 从平台获取 |
-| AI_BASE_URL | AI API 自定义地址 | 可选，默认用官方地址 |
+| AI_PROVIDER | AI 提供商 | ollama / deepseek / openai |
+| AI_MODEL | AI 模型名称 | qwen2.5:7b / deepseek-chat / gpt-4o-mini |
+| OPENAI_API_KEY | AI API 密钥 | Ollama 本地可留空，云端 API 必填 |
+| AI_BASE_URL | AI API 自定义地址 | Ollama 默认 `http://ollama:11434/v1` |
 
 ---
 

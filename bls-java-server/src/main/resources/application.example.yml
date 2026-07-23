@@ -64,8 +64,8 @@ file:
 minio:
   enabled: false
   endpoint: http://localhost:9000
-  access-key: minioadmin
-  secret-key: minioadmin
+  access-key: CHANGE_TO_YOUR_MINIO_ACCESS_KEY
+  secret-key: CHANGE_TO_YOUR_MINIO_SECRET_KEY
   bucket: bls-kox
 
 logging:

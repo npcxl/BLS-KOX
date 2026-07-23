@@ -25,13 +25,13 @@ export interface UseWebSocketOptions<TMessage> {
 /** 构造 WebSocket URL */
 function buildWsUrl(path: string): string {
   if (typeof window === 'undefined') return '';
-  const { protocol, hostname } = window.location;
+  const { protocol, host } = window.location;
   if (process.env.NODE_ENV === 'development') {
     const port = process.env.WS_PORT ?? '6001';
     return `ws://localhost:${port}${path}`;
   }
   const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${wsProtocol}//${hostname}${path}`;
+  return `${wsProtocol}//${host}${path}`;
 }
 
 export function useWebSocket<TMessage = unknown>({

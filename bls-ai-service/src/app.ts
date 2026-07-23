@@ -88,6 +88,43 @@ export function createApp(): Koa {
   aiRouter.use(chatR.routes());
   aiRouter.use(chatR.allowedMethods());
 
+  // ====== Models ======
+  // GET /api/ai/models
+  // ====== Models ======
+  // GET /api/ai/models (优先从配置表读取，fallback 环境变量)
+  aiRouter.get('/models', async (ctx: Koa.Context) => {
+    try {
+      const { getModelConfigs } = require('./provider/factory');
+      const configs = await getModelConfigs();
+      if (configs.length > 0) {
+        const enabled = configs.filter((c: any) => c.status === '0');
+        const defaultCfg = enabled.find((c: any) => c.isDefault === '1') || enabled[0];
+        const models = enabled.map((c: any) => ({
+          value: c.modelId,
+          label: c.modelName,
+          modelType: c.modelType || 'api',
+          provider: c.provider || '',
+        }));
+        ctx.body = {
+          code: 0,
+          data: {
+            provider: defaultCfg?.provider || env.ai.provider,
+            currentModel: defaultCfg?.modelId || env.ai.model,
+            models,
+          },
+        };
+        return;
+      }
+    } catch (err: any) {
+      logger.warn('[Models] 配置表读取失败，降级环境变量: %s', err.message);
+    }
+
+    // fallback 环境变量
+    const sourceList = env.ai.modelOptions.length > 0 ? env.ai.modelOptions : [env.ai.model];
+    const models = sourceList.map(m => ({ value: m, label: `${env.ai.provider.toUpperCase()} ${m}` }));
+    ctx.body = { code: 0, data: { provider: env.ai.provider, currentModel: env.ai.model, models } };
+  });
+
   app.use(aiRouter.routes());
   app.use(aiRouter.allowedMethods());
 
