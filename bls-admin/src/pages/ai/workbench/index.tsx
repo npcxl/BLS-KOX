@@ -324,7 +324,16 @@ const ChatMessage = memo(function ChatMessage({ msg }: { msg: UiMsg }) {
         <div className={styles.msgBubbleUser}>{msg.content}</div>
       ) : (
         <div className={styles.msgText}>
-          <MessageContent content={msg.content} status={msg.status} />
+          {msg.status === 'updating' && !msg.content ? (
+            <div className="ai-thinking">
+              <span className="ai-thinking-dot" />
+              <span className="ai-thinking-dot" />
+              <span className="ai-thinking-dot" />
+              <span className="ai-thinking-text">思考中...</span>
+            </div>
+          ) : (
+            <MessageContent content={msg.content} status={msg.status} />
+          )}
         </div>
       )}
     </div>

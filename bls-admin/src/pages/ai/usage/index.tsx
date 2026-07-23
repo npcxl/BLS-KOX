@@ -33,7 +33,7 @@ const formatTokens = (v: number) => {
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
   return String(v);
 };
-const formatCost = (v: number) => `$${v.toFixed(4)}`;
+const formatCost = (v: number | string) => `$${Number(v).toFixed(4)}`;
 
 export default function AiUsagePage() {
   const [stats, setStats] = useState<UsageStats | null>(null);

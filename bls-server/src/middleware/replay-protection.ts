@@ -21,6 +21,10 @@ export function replayProtectionMiddleware() {
   return async (ctx: Context, next: Next): Promise<void> => {
     if (!env.replay.enabled) { await next(); return; }
 
+    // 内部服务调用（携带 X-Internal-Secret）跳过重放保护
+    const internalSecret = ctx.get('X-Internal-Secret');
+    if (internalSecret) { await next(); return; }
+
     const svc = getReplayService();
     const rule = svc.findRule(ctx.path, ctx.method);
     if (!rule || rule.mode === 'off') { await next(); return; }

@@ -74,7 +74,15 @@ router.get('/list', jwtAuth(), async (ctx: Context) => {
       .where('tenant_id', '=', tid);
 
     const [rows, cr] = await Promise.all([base.execute(), countQ.executeTakeFirst()]);
-    ctx.body = { code: 200, data: rows, total: Number((cr as any)?.total ?? 0), message: '操作成功' };
+    const data = rows.map((r: any) => ({
+      ...r,
+      estimatedCost: Number(r.estimated_cost ?? 0),
+      promptTokens: Number(r.prompt_tokens ?? 0),
+      completionTokens: Number(r.completion_tokens ?? 0),
+      totalTokens: Number(r.total_tokens ?? 0),
+      elapsedMs: Number(r.elapsed_ms ?? 0),
+    }));
+    ctx.body = { code: 200, data, total: Number((cr as any)?.total ?? 0), message: '操作成功' };
   } catch (err: any) {
     logger.error('[AI-Usage] list error: %s', err.message);
     ctx.status = 500;
