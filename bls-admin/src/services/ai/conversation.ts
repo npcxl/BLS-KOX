@@ -57,6 +57,14 @@ export async function deleteAiConversation(conversationId: string) {
   });
 }
 
+export async function renameAiConversation(conversationId: string, title: string) {
+  const res = await request<{ code: number; data: { id: string; title: string } }>(
+    `/api/ai/chat/conversations/${conversationId}`,
+    { method: 'PUT', data: { title } },
+  );
+  return res.data;
+}
+
 export interface AiModelsResult {
   provider: string;
   currentModel: string;

@@ -87,48 +87,8 @@
 
 .x-markdown hr { border: none; border-top: 1px solid #e8e8e8; margin: 16px 0; }
 
-/* ====== AI 思考中动画 ====== */
-.ai-thinking {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 12px 16px;
-  background: #f6f8fa;
-  border-radius: 12px;
-  border: 1px solid #e8ecf1;
-}
-
-.ai-thinking-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #1677ff;
-  animation: thinkingBounce 1.4s infinite ease-in-out both;
-}
-
-.ai-thinking-dot:nth-child(1) { animation-delay: -0.32s; }
-.ai-thinking-dot:nth-child(2) { animation-delay: -0.16s; }
-.ai-thinking-dot:nth-child(3) { animation-delay: 0s; }
-
-@keyframes thinkingBounce {
-  0%, 80%, 100% {
-    transform: scale(0.6);
-    opacity: 0.4;
-  }
-  40% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-.ai-thinking-text {
-  margin-left: 4px;
-  font-size: 14px;
-  color: #8c8c8c;
-  animation: thinkingPulse 1.5s ease-in-out infinite;
-}
-
-@keyframes thinkingPulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+/* ====== Think 组件旋转动画 ====== */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }

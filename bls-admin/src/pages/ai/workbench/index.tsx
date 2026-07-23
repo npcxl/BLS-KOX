@@ -1,7 +1,7 @@
-import { Conversations, Sender, Welcome, XProvider } from '@ant-design/x';
+import { Conversations, Prompts, Sender, Think, Welcome, XProvider } from '@ant-design/x';
 import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
-import { RobotOutlined, CopyOutlined, DownOutlined } from '@ant-design/icons';
-import { Button, Flex, message, Select, Space, Tag, theme } from 'antd';
+import { CopyOutlined, DownOutlined, DeleteOutlined, EditOutlined, FireOutlined, ReadOutlined, RocketOutlined, SyncOutlined } from '@ant-design/icons';
+import { Button, Flex, Input, message, Modal, Select, Space, Tag } from 'antd';
 import { createStyles } from 'antd-style';
 import React, { memo, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import hljs from 'highlight.js/lib/core';
@@ -18,6 +18,8 @@ import {
   getAiConversationMessages,
   createAiConversation,
   saveConversationMessages,
+  deleteAiConversation,
+  renameAiConversation,
   getAiModels,
 } from '@/services/ai/conversation';
 
@@ -325,12 +327,14 @@ const ChatMessage = memo(function ChatMessage({ msg }: { msg: UiMsg }) {
       ) : (
         <div className={styles.msgText}>
           {msg.status === 'updating' && !msg.content ? (
-            <div className="ai-thinking">
-              <span className="ai-thinking-dot" />
-              <span className="ai-thinking-dot" />
-              <span className="ai-thinking-dot" />
-              <span className="ai-thinking-text">思考中...</span>
-            </div>
+            <Think
+              title="思考中..."
+              blink
+              loading
+              icon={<SyncOutlined style={{ fontSize: 14, animation: 'spin 1s linear infinite' }} />}
+            >
+              AI 正在分析你的需求...
+            </Think>
           ) : (
             <MessageContent content={msg.content} status={msg.status} />
           )}
@@ -343,7 +347,6 @@ const ChatMessage = memo(function ChatMessage({ msg }: { msg: UiMsg }) {
 // ============================================================
 export default function AiWorkbench() {
   const { styles } = useStyle();
-  const { token: tk } = theme.useToken();
 
   const [conversations, setConversations] = useState<Array<{ key: string; label: string; group: string }>>([]);
   const [activeKey, setActiveKey] = useState<string>('');
@@ -358,6 +361,9 @@ export default function AiWorkbench() {
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const selectedModelRef = useRef('');
+  const [renameModalOpen, setRenameModalOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{ key: string; label: string } | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   // ---- 自动滚底 ----
   useEffect(() => {
@@ -431,6 +437,60 @@ export default function AiWorkbench() {
     setActiveKey(key);
     setMessages([]);
   }, []);
+
+  // ---- 删除对话 ----
+  const handleDelete = useCallback(async (key: string) => {
+    Modal.confirm({
+      title: '确认删除',
+      content: '删除后对话记录将无法恢复，确定删除？',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await deleteAiConversation(key);
+          setConversations(prev => prev.filter(c => c.key !== key));
+          if (activeKeyRef.current === key) {
+            activeKeyRef.current = '';
+            setActiveKey('');
+            setMessages([]);
+          }
+          message.success('已删除');
+        } catch { message.error('删除失败'); }
+      },
+    });
+  }, []);
+
+  // ---- 重命名对话 ----
+  const handleRename = useCallback((key: string, label: string) => {
+    setRenameTarget({ key, label });
+    setRenameValue(label);
+    setRenameModalOpen(true);
+  }, []);
+
+  const handleRenameConfirm = useCallback(async () => {
+    if (!renameTarget || !renameValue.trim()) return;
+    try {
+      await renameAiConversation(renameTarget.key, renameValue.trim());
+      setConversations(prev => prev.map(c => c.key === renameTarget.key ? { ...c, label: renameValue.trim() } : c));
+      message.success('重命名成功');
+    } catch { message.error('重命名失败'); }
+    setRenameModalOpen(false);
+    setRenameTarget(null);
+  }, [renameTarget, renameValue]);
+
+  // ---- 菜单配置 ----
+  const conversationMenu = useCallback((conversation: any) => ({
+    items: [
+      { label: '重命名', key: 'rename', icon: <EditOutlined /> },
+      { label: '删除', key: 'delete', icon: <DeleteOutlined />, danger: true },
+    ],
+    onClick: (itemInfo: any) => {
+      itemInfo.domEvent.stopPropagation();
+      if (itemInfo.key === 'delete') handleDelete(conversation.key);
+      if (itemInfo.key === 'rename') handleRename(conversation.key, conversation.label);
+    },
+  }), [handleDelete, handleRename]);
 
   // ---- 发送消息 (SSE 流式) ----
   const sendMessage = useCallback(async (content: string) => {
@@ -537,11 +597,29 @@ export default function AiWorkbench() {
           <Conversations
             creation={{ onClick: handleNewConversation }}
             items={conversations}
+            menu={conversationMenu}
             className={styles.conversations}
             activeKey={activeKey}
             onActiveChange={handleActiveChange}
           />
         </aside>
+
+        {/* 重命名弹窗 */}
+        <Modal
+          title="重命名对话"
+          open={renameModalOpen}
+          onOk={handleRenameConfirm}
+          onCancel={() => { setRenameModalOpen(false); setRenameTarget(null); }}
+          destroyOnClose
+        >
+          <Input
+            value={renameValue}
+            onChange={e => setRenameValue(e.target.value)}
+            onPressEnter={handleRenameConfirm}
+            placeholder="输入新名称"
+            maxLength={50}
+          />
+        </Modal>
 
         {/* 右侧聊天区 */}
         <main className={styles.chatMain}>
@@ -557,13 +635,63 @@ export default function AiWorkbench() {
                 ))}
               </div>
             ) : (
-              <Flex vertical gap={16} align="center" className={styles.placeholder}>
-                <Welcome variant="borderless" icon={<RobotOutlined style={{ fontSize: 48, color: tk.colorPrimary }} />} title={t.welcome} description={t.welcomeDescription} />
-                <Space size={8}>
-                  {['CRUD 模块', 'SQL 助手', '审计分析', '配置审查'].map(label => (
-                    <Button key={label} onClick={() => sendMessage(label)}>{label}</Button>
-                  ))}
-                </Space>
+              <Flex vertical gap={24} align="center" className={styles.placeholder}>
+                <Welcome
+                  variant="borderless"
+                  icon="https://mdn.alipayobjects.com/huamei_iwk9zp/afts/img/A*s5sNRo5LjfQAAAAAAAAAAAAADgCCAQ/fmt.webp"
+                  title={t.welcome}
+                  description={t.welcomeDescription}
+                />
+                <Prompts
+                  title="试试这些："
+                  items={[
+                    {
+                      key: '1',
+                      label: <Space><FireOutlined style={{ color: '#FF4D4F' }} /><span>开发辅助</span></Space>,
+                      description: '快速生成业务模块代码',
+                      children: [
+                        { key: '1-1', description: '生成 CRUD 模块' },
+                        { key: '1-2', description: '生成 SQL 查询' },
+                        { key: '1-3', description: '审查配置文件' },
+                      ],
+                    },
+                    {
+                      key: '2',
+                      label: <Space><ReadOutlined style={{ color: '#1890FF' }} /><span>系统管理</span></Space>,
+                      description: '平台配置与管理操作',
+                      children: [
+                        { key: '2-1', description: '添加新菜单' },
+                        { key: '2-2', description: '配置角色权限' },
+                        { key: '2-3', description: '审计日志分析' },
+                      ],
+                    },
+                    {
+                      key: '3',
+                      label: <Space><RocketOutlined style={{ color: '#722ED1' }} /><span>快速入门</span></Space>,
+                      description: '了解 BLS-KOX 平台',
+                      children: [
+                        { key: '3-1', description: 'BLS-KOX 是什么？' },
+                        { key: '3-2', description: '如何创建新业务模块？' },
+                      ],
+                    },
+                  ]}
+                  wrap
+                  styles={{
+                    item: {
+                      flex: 'none',
+                      width: 'calc(30% - 6px)',
+                      backgroundImage: `linear-gradient(137deg, #e5f4ff 0%, #efe7ff 100%)`,
+                      border: 0,
+                    },
+                    subItem: {
+                      background: 'rgba(255,255,255,0.45)',
+                      border: '1px solid #FFF',
+                    },
+                  }}
+                  onItemClick={(info) => {
+                    sendMessage(info.data.description as string);
+                  }}
+                />
               </Flex>
             )}
           </div>
