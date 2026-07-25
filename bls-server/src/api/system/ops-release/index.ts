@@ -1,14 +1,13 @@
 import Router from 'koa-router';
 import type { Context } from 'koa';
-import { jwtAuth } from '../../../../middleware/auth';
-import { success, pageSuccess } from '../../../../core/response';
-import { logger } from '../../../../core/logger';
+import { jwtAuth } from '../../../middleware/auth';
+import { success, pageSuccess } from '../../../core/response';
+import { logger } from '../../../core/logger';
 import { releaseService } from './release.service';
 import { releaseRepository } from './release.repository';
 import { createReleaseSchema, releaseCallbackSchema } from './release.schema';
 import { releasePermission } from './release-permission';
 import { validateCallback } from './release-callback.service';
-import { VALID_TRANSITIONS } from './release.constants';
 
 const router = new Router({ prefix: '/ops' });
 
@@ -23,9 +22,9 @@ router.post('/releases/callback', async (ctx: Context) => {
   const result = await validateCallback(ctx.headers as Record<string, string>, JSON.stringify(body));
   if (!result.valid) { ctx.status = 403; ctx.body = { code: 403, message: result.error || '回调验证失败' }; return; }
   const parsed = releaseCallbackSchema.safeParse(body);
-  if (!parsed.success) { ctx.status = 400; ctx.body = { code: 400, message: parsed.error.errors[0]?.message || '参数错误' }; return; }
+  if (!parsed.success) { ctx.status = 400; ctx.body = { code: 400, message: parsed.error.issues[0]?.message || '参数错误' }; return; }
   try {
-    const r = await releaseService.handleCallback(parsed.data);
+    const r = await releaseService.handleCallback(parsed.data as any);
     if (r.error) { ctx.status = 400; ctx.body = { code: 400, message: r.error }; return; }
     success(ctx, r);
   } catch (err: any) { logger.error('[OpsRelease] callback error: %s', err.message); ctx.status = 500; ctx.body = { code: 500, message: err.message }; }
@@ -142,7 +141,7 @@ authRouter.get('/releases/:taskId/logs', releasePermission('logs'), async (ctx: 
 // POST /releases — 创建
 authRouter.post('/releases', releasePermission('create'), async (ctx: Context) => {
   const parsed = createReleaseSchema.safeParse((ctx.request as any).body);
-  if (!parsed.success) { ctx.status = 400; ctx.body = { code: 400, message: parsed.error.errors[0]?.message || '参数错误' }; return; }
+  if (!parsed.success) { ctx.status = 400; ctx.body = { code: 400, message: parsed.error.issues[0]?.message || '参数错误' }; return; }
   try {
     const result = await releaseService.createRelease(parsed.data, getTenantId(ctx), getUserId(ctx), getUserName(ctx));
     if (result.error) { ctx.status = 409; ctx.body = { code: 409, message: result.error }; return; }

@@ -4,7 +4,7 @@
  * 频道: ops:release:{taskId}
  * 每个客户端连接时声明订阅的频道，推送时按频道精确匹配
  */
-import { logger } from '../../../../core/logger';
+import { logger } from '../../../core/logger';
 import type { ReleaseProgressMessage } from './release.types';
 
 interface WsClient {

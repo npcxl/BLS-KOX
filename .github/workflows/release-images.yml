@@ -107,3 +107,24 @@ jobs:
             COMMIT_HASH=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  register:
+    name: Register Build
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    if: vars.RELEASE_CALLBACK_URL
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Callback - register version
+        run: |
+          TIMESTAMP=$(date +%s%3N)
+          NONCE=$(openssl rand -hex 16)
+          BODY='{"version":"${{ needs.validate.outputs.version }}","status":"built","commitHash":"${{ github.sha }}","services":["admin","server","ai-service","event-service","java-server"]}'
+          SIGNATURE=$(echo -n "${TIMESTAMP}\n${NONCE}\n${BODY}" | openssl dgst -sha256 -hmac "${{ secrets.RELEASE_CALLBACK_SECRET }}" | awk '{print $2}')
+          curl -sf -X POST "${{ vars.RELEASE_CALLBACK_URL }}/api/ops/releases/build-callback" \
+            -H "Content-Type: application/json" \
+            -H "X-Release-Timestamp: ${TIMESTAMP}" \
+            -H "X-Release-Nonce: ${NONCE}" \
+            -H "X-Release-Signature: ${SIGNATURE}" \
+            -d "${BODY}" || echo "Build callback failed (ignored)"

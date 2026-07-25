@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { getRedisClient } from '../../../../shared/utils/redis';
-import { logger } from '../../../../core/logger';
+import { getRedisClient } from '../../../shared/utils/redis';
+import { logger } from '../../../core/logger';
 import { CALLBACK_TIME_WINDOW_MS, RELEASE_NONCE_PREFIX } from './release.constants';
 
 const CALLBACK_SECRET = process.env.RELEASE_CALLBACK_SECRET || '';
@@ -91,7 +91,7 @@ export async function validateCallback(
   const nonceResult = await checkAndSaveNonce(nonce);
   if (!nonceResult.ok) {
     logger.warn('[ReleaseCallback] Nonce 重放', { nonce });
-    return nonceResult;
+    return { valid: false, error: nonceResult.error || 'Nonce 已使用' };
   }
 
   return { valid: true };

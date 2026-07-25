@@ -27,7 +27,7 @@ LABEL org.opencontainers.image.revision="${COMMIT_HASH}"
 
 WORKDIR /app
 
-RUN addgroup -g 1000 bls && adduser -u 1000 -G bls -D bls
+RUN addgroup -g 2000 bls && adduser -u 2000 -G bls -D bls
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist

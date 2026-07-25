@@ -1,5 +1,5 @@
-import { getDb } from '../../../../core/database';
-import { generateSnowflakeId } from '../../../../shared/utils/snowflake';
+import { getDb } from '../../../core/database';
+import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import type { ReleaseTask, ReleaseStep, TaskStatus, StepKey, StepStatus, DeployableVersion } from './release.types';
 
 const TASK_TABLE = 'ops_release_task';
