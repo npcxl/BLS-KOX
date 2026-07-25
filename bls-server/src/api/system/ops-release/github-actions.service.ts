@@ -1,4 +1,4 @@
-import { logger } from '../../../../core/logger';
+import { logger } from '../../../core/logger';
 
 const GITHUB_API = 'https://api.github.com';
 
@@ -20,7 +20,7 @@ function getConfig(): GitHubConfig {
       owner: process.env.GITHUB_OWNER || 'npcxl',
       repo: process.env.GITHUB_REPO || 'BLS-KOX',
       deployWorkflow: process.env.GITHUB_DEPLOY_WORKFLOW || 'deploy-production.yml',
-      deployRef: process.env.GITHUB_DEPLOY_REF || 'main',
+      deployRef: process.env.GITHUB_DEPLOY_REF || 'master',
       token: process.env.GITHUB_DEPLOY_TOKEN || '',
       callbackUrl: process.env.RELEASE_CALLBACK_URL || '',
       callbackSecret: process.env.RELEASE_CALLBACK_SECRET || '',
@@ -31,6 +31,7 @@ function getConfig(): GitHubConfig {
 
 /** 调用 GitHub Actions workflow_dispatch */
 export async function triggerDeployWorkflow(params: {
+  action: string;
   version: string;
   environment: string;
   taskId: string;
@@ -47,7 +48,7 @@ export async function triggerDeployWorkflow(params: {
   const body = {
     ref: cfg.deployRef,
     inputs: {
-      action: 'deploy',
+      action: params.action,
       version: params.version,
       environment: params.environment,
       taskId: params.taskId,

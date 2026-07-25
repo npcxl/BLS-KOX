@@ -61,8 +61,8 @@ check "bls-minio"       "docker inspect bls-minio --format='{{.State.Running}}' 
 check "nginx root"      "curl -sf -o /dev/null --max-time 5 http://localhost:$HTTP_PORT/"
 check "koa health"      "curl -sf --max-time 5 http://localhost:$HTTP_PORT/api/health | grep -q ok"
 
-# AI 服务健康（直接访问容器内端口）
-check "ai health"       "curl -sf --max-time 5 http://localhost:7201/health" true
+# AI 服务健康（通过 docker exec 在容器内检查）
+check "ai health"       "docker exec bls-ai-service wget -q --spider http://localhost:7201/health 2>/dev/null" true
 
 # MySQL ping（使用 source 加载的 DB_PASSWORD）
 if [ -n "${DB_PASSWORD:-}" ]; then

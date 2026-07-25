@@ -35,7 +35,7 @@ ENV APP_PORT=7001
 
 RUN apk add --no-cache python3 make g++ wget
 
-RUN addgroup -g 1000 bls && adduser -u 1000 -G bls -D bls
+RUN addgroup -g 2000 bls && adduser -u 2000 -G bls -D bls
 
 RUN npm config set registry https://registry.npmmirror.com
 

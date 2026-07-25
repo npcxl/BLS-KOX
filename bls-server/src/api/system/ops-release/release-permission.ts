@@ -1,5 +1,5 @@
 import type { Context, Next } from 'koa';
-import { logger } from '../../../../core/logger';
+import { logger } from '../../../core/logger';
 
 const PERMISSIONS: Record<string, string> = {
   'list': 'ops:release:view',
