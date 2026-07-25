@@ -66,15 +66,6 @@ export const releaseRepository = {
     await db.updateTable(TASK_TABLE).set(d).where('task_id', '=', taskId).execute();
   },
 
-  /** 按 action+target_version+environment 查找关联任务（回滚同步用） */
-  async findTasksByActionTarget(action: string, targetVersion: string, environment: string): Promise<ReleaseTask[]> {
-    const db = (await getDb()) as any;
-    return db.selectFrom(TASK_TABLE).selectAll()
-      .where('action', '=', action).where('target_version', '=', targetVersion)
-      .where('environment', '=', environment).where('deleted', '=', 0)
-      .orderBy('create_time', 'desc').execute() as Promise<ReleaseTask[]>;
-  },
-
   async findRunningTask(environment: string, tenantId: string): Promise<ReleaseTask | null> {
     const db = (await getDb()) as any;
     return db.selectFrom(TASK_TABLE).selectAll()
