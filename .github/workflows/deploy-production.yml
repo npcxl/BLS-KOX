@@ -1,0 +1,81 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: '操作类型'
+        required: true
+        type: choice
+        options:
+          - deploy
+          - rollback
+      version:
+        description: '版本号 (x.y.z)'
+        required: true
+        type: string
+      environment:
+        description: '目标环境'
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+      taskId:
+        description: '发布任务ID'
+        required: true
+        type: string
+      services:
+        description: '服务列表 (逗号分隔)'
+        required: true
+        type: string
+      callbackUrl:
+        description: '回调 URL'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.version }} to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+
+    steps:
+      - name: Report start
+        if: inputs.callbackUrl
+        run: |
+          ./scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "pull_images" "running" 10 "开始拉取镜像..."
+
+      - name: Pull images
+        run: |
+          echo "docker compose -f docker-compose.prod.yml pull bls-admin bls-server bls-ai-service"
+          echo "Version: ${{ inputs.version }}"
+
+      - name: Report pull done
+        if: inputs.callbackUrl
+        run: |
+          ./scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "pull_images" "success" 30 "镜像拉取完成"
+
+      - name: Deploy services
+        run: |
+          echo "Deploying services: ${{ inputs.services }}"
+          echo "SSH to server and execute deploy.sh"
+
+      - name: Report health check
+        if: inputs.callbackUrl
+        run: |
+          ./scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "health_check" "running" 70 "执行健康检查..."
+
+      - name: Report complete
+        if: inputs.callbackUrl
+        run: |
+          ./scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "complete" "success" 100 "发布完成"

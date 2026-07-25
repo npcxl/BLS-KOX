@@ -1,0 +1,257 @@
+name: bls-kox
+
+services:
+  # ========== Nginx 反向代理 ==========
+  bls-nginx:
+    image: nginx:alpine
+    container_name: bls-nginx
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8088}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      bls-server:
+        condition: service_healthy
+      bls-admin:
+        condition: service_started
+      bls-ai-service:
+        condition: service_healthy
+    networks:
+      - bls-net
+
+  # ========== Koa 主后端 ==========
+  bls-server:
+    image: ghcr.io/npcxl/bls-kox-server:${APP_VERSION:?APP_VERSION is required}
+    container_name: bls-server
+    restart: unless-stopped
+    expose:
+      - "7001"
+    environment:
+      NODE_ENV: production
+      APP_PORT: 7001
+      TRUST_PROXY: "true"
+
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      DB_NAME: ${DB_NAME:-bls}
+
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      REDIS_ENABLED: "true"
+
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required}
+      API_SIGN_SECRET: ${API_SIGN_SECRET:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      EVENT_SERVICE_URL: ${EVENT_SERVICE_URL:-}
+      REPLAY_ENABLED: "true"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bls-net
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --spider
+        - http://localhost:7001/api/health
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ========== 前端 ==========
+  bls-admin:
+    image: ghcr.io/npcxl/bls-kox-admin:${APP_VERSION:?APP_VERSION is required}
+    container_name: bls-admin
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - bls-net
+
+  # ========== AI 服务 ==========
+  bls-ai-service:
+    image: ghcr.io/npcxl/bls-kox-ai-service:${APP_VERSION:?APP_VERSION is required}
+    container_name: bls-ai-service
+    restart: unless-stopped
+    expose:
+      - "7201"
+    environment:
+      NODE_ENV: production
+      APP_PORT: 7201
+
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required}
+
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - bls-net
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          require('http')
+          .get('http://localhost:7201/health',
+          r=>process.exit(r.statusCode===200?0:1))
+          .on('error',()=>process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ========== 事件微服务（可选） ==========
+  bls-event-service:
+    image: ghcr.io/npcxl/bls-kox-event-service:${APP_VERSION:?APP_VERSION is required}
+    container_name: bls-event-service
+    restart: unless-stopped
+    profiles:
+      - event
+    expose:
+      - "7101"
+    environment:
+      NODE_ENV: production
+      APP_PORT: 7101
+
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      DB_NAME: ${DB_NAME:-bls}
+
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?INTERNAL_SECRET is required}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - bls-net
+
+  # ========== Java 后端（可选） ==========
+  bls-java-server:
+    image: ghcr.io/npcxl/bls-kox-java-server:${APP_VERSION:?APP_VERSION is required}
+    container_name: bls-java-server
+    restart: unless-stopped
+    profiles:
+      - java
+    expose:
+      - "8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+
+      MYSQL_HOST: ${DB_HOST:-mysql}
+      MYSQL_PORT: ${DB_PORT:-3306}
+      MYSQL_USER: ${DB_USER:-root}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      MYSQL_DATABASE: ${DB_NAME:-bls}
+
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      API_SIGN_SECRET: ${API_SIGN_SECRET:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bls-net
+
+  # ========== MySQL ==========
+  mysql:
+    image: mysql:8.0
+    container_name: bls-mysql
+    restart: unless-stopped
+    command: >-
+      --default-time-zone=+08:00
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      MYSQL_DATABASE: ${DB_NAME:-bls}
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql-data:/var/lib/mysql
+    expose:
+      - "3306"
+    networks:
+      - bls-net
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h localhost -uroot -p${DB_PASSWORD} --silent
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ========== Redis ==========
+  redis:
+    image: redis:7-alpine
+    container_name: bls-redis
+    restart: unless-stopped
+    command: >
+      sh -c 'redis-server
+      --appendonly yes
+      --requirepass "$$REDIS_PASSWORD"'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    volumes:
+      - redis-data:/data
+    expose:
+      - "6379"
+    networks:
+      - bls-net
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$$REDIS_PASSWORD" ping | grep PONG
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # ========== MinIO ==========
+  minio:
+    image: minio/minio:latest
+    container_name: bls-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      TZ: Asia/Shanghai
+    volumes:
+      - minio-data:/data
+    expose:
+      - "9000"
+      - "9001"
+    networks:
+      - bls-net
+
+volumes:
+  mysql-data:
+  redis-data:
+  minio-data:
+
+networks:
+  bls-net:
+    driver: bridge

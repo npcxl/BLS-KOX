@@ -1,6 +1,10 @@
-node_modules
-dist
-coverage
+node_modules/
+dist/
+coverage/
 .env
-.git
+.env.*
+.git/
 *.log
+.DS_Store
+.vscode/
+.idea/
