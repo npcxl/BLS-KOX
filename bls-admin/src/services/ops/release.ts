@@ -39,10 +39,20 @@ export interface DeployableVersion {
   available: boolean;
 }
 
-export interface ServiceStatus {
-  currentVersion: string | null;
-  runningTask: { taskId: string; status: string; progress: number } | null;
+export interface CurrentVersion {
   environment: string;
+  version: string | null;
+  deployedAt: string | null;
+  deployedBy: string | null;
+  previousVersion: string | null;
+  status: string;
+}
+
+export interface ServiceStatus {
+  environment: string;
+  currentVersion: string | null;
+  checkedAt: string;
+  runningTask: { taskId: string; status: string; progress: number } | null;
 }
 
 export async function getReleaseVersions() {
@@ -51,8 +61,7 @@ export async function getReleaseVersions() {
 }
 
 export async function getReleaseList(params: { pageNum?: number; pageSize?: number }) {
-  const res = await request<{ code: number; data: ReleaseTask[]; total: number }>('/api/ops/releases', { params });
-  return res;
+  return request<{ code: number; data: ReleaseTask[]; total: number }>('/api/ops/releases', { params });
 }
 
 export async function getReleaseDetail(taskId: string) {
@@ -72,31 +81,25 @@ export async function getReleaseLogs(taskId: string, limit = 100) {
   return res.data || [];
 }
 
-export async function createRelease(data: {
-  environment: string;
-  version: string;
-  services: string[];
-  reason: string;
-}) {
-  return request<{ code: number; data: ReleaseTask; message: string }>('/api/ops/releases', {
-    method: 'POST', data,
-  });
+export async function createRelease(data: { environment: string; version: string; services: string[]; reason: string }) {
+  return request<{ code: number; data: ReleaseTask; message: string }>('/api/ops/releases', { method: 'POST', data });
 }
 
 export async function rollbackRelease(taskId: string) {
   return request<{ code: number; data: any }>(`/api/ops/releases/${taskId}/rollback`, { method: 'POST' });
 }
 
-export async function getServiceStatus(environment = 'production') {
-  const res = await request<{ code: number; data: ServiceStatus }>('/api/ops/releases/services/status', {
-    params: { environment },
-  });
+export async function getCurrentVersion(environment = 'production') {
+  const res = await request<{ code: number; data: CurrentVersion }>('/api/ops/releases/current', { params: { environment } });
   return res.data;
 }
 
-export async function getCurrentRelease(environment = 'production') {
-  const res = await request<{ code: number; data: ReleaseTask | null }>('/api/ops/releases/current', {
-    params: { environment },
-  });
+export async function getRunningTask(environment = 'production') {
+  const res = await request<{ code: number; data: ReleaseTask | null }>('/api/ops/releases/running', { params: { environment } });
+  return res.data;
+}
+
+export async function getServiceStatus(environment = 'production') {
+  const res = await request<{ code: number; data: ServiceStatus }>('/api/ops/releases/services/status', { params: { environment } });
   return res.data;
 }
