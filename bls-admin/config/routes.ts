@@ -208,7 +208,7 @@ export default [
   {
     path: "/ops",
     name: "运维管理",
-    icon: "SettingOutlined",
+    icon: "setting",
     routes: [
       {
         path: "/ops",
@@ -217,7 +217,7 @@ export default [
       {
         path: "/ops/release",
         name: "发布中心",
-        icon: "CloudUploadOutlined",
+        icon: "cloudUpload",
         component: "./ops/release",
       },
     ],

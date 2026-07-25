@@ -50,4 +50,8 @@ export default {
   'menu.editor.mind': '脑图编辑器',
   'menu.editor.koni': '拓扑编辑器',
   'menu.chatbot': 'AI 助手',
+  'menu.ops': '运维管理',
+  'menu.ops-release': '发布中心',
+  'menu.settingOutlined': '设置',
+  'menu.cloudUploadOutlined': '云上传',
 };
