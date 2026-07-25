@@ -52,12 +52,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Report pull_images start
+      - name: Callback - pull_images start
         if: inputs.callbackUrl
         run: |
           bash scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "pull_images" "running" 20 "开始拉取镜像..."
 
-      - name: SSH deploy
+      - name: Deploy to server
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -66,29 +66,41 @@ jobs:
           port: ${{ secrets.DEPLOY_PORT || 22 }}
           script: |
             set -e
-            cd ${{ secrets.DEPLOY_PATH || '/opt/bls-kox-deploy' }}
+            cd ${DEPLOY_PATH:-/opt/bls-kox-deploy}
             git pull origin production
             export APP_VERSION="${{ inputs.version }}"
-            docker compose -f docker-compose.prod.yml pull ${{ inputs.services // 'bls-admin bls-server bls-ai-service' }}
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans ${{ inputs.services // 'bls-admin bls-server bls-ai-service' }}
+            if [ "${{ inputs.action }}" = "rollback" ]; then
+              ./scripts/rollback.sh "${{ inputs.version }}"
+            else
+              docker compose -f docker-compose.prod.yml pull ${{ inputs.services }}
+              docker compose -f docker-compose.prod.yml up -d --remove-orphans ${{ inputs.services }}
+            fi
 
-      - name: Report health_check
+      - name: Callback - health_check running
         if: inputs.callbackUrl
         run: |
-          sleep 10
+          sleep 5
           bash scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "health_check" "running" 70 "正在执行健康检查..."
 
-      - name: Health check
+      - name: Health check on server
         if: inputs.callbackUrl
-        run: |
-          bash scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "health_check" "success" 85 "健康检查通过"
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -e
+            cd ${DEPLOY_PATH:-/opt/bls-kox-deploy}
+            ./scripts/health-check.sh
 
-      - name: Report complete
-        if: inputs.callbackUrl
+      - name: Callback - complete
+        if: success() && inputs.callbackUrl
         run: |
-          bash scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "complete" "success" 100 "发布完成 ✅"
+          bash scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "complete" "success" 100 "发布完成"
 
-      - name: Report failure
+      - name: Callback - failed
         if: failure() && inputs.callbackUrl
         run: |
-          bash scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "health_check" "failed" 50 "部署失败，请检查日志"
+          bash scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "health_check" "failed" 50 "部署失败，请检查服务器日志"

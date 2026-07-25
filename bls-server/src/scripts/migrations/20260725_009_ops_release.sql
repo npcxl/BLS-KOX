@@ -1,8 +1,10 @@
 -- ============================================================
--- BLS-KOX 发布中心 — 手动执行 SQL（与迁移 20260725_009 内容一致）
--- 执行: docker exec -i bls-mysql mysql -uroot -p kox < sql/ops_release.sql
+-- 迁移: 20260725_009_ops_release
+-- 描述: 发布中心 — 环境表、版本记录、任务、步骤、日志、菜单、权限、字典
+-- 幂等: CREATE TABLE IF NOT EXISTS + INSERT IGNORE
 -- ============================================================
 
+-- 发布环境表
 CREATE TABLE IF NOT EXISTS `ops_environment` (
   `env_id` varchar(32) NOT NULL,
   `env_key` varchar(50) NOT NULL,
@@ -19,6 +21,7 @@ CREATE TABLE IF NOT EXISTS `ops_environment` (
   UNIQUE KEY `uk_env_key_tenant` (`tenant_id`, `env_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 版本构建记录表
 CREATE TABLE IF NOT EXISTS `ops_release_version` (
   `version_id` varchar(32) NOT NULL,
   `version` varchar(20) NOT NULL,
@@ -34,6 +37,7 @@ CREATE TABLE IF NOT EXISTS `ops_release_version` (
   UNIQUE KEY `uk_version` (`version`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 发布任务表
 CREATE TABLE IF NOT EXISTS `ops_release_task` (
   `task_id` varchar(32) NOT NULL,
   `tenant_id` varchar(32) NOT NULL DEFAULT '000000',
@@ -61,6 +65,7 @@ CREATE TABLE IF NOT EXISTS `ops_release_task` (
   KEY `idx_task_env_status` (`environment`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 发布步骤表
 CREATE TABLE IF NOT EXISTS `ops_release_step` (
   `step_id` varchar(32) NOT NULL,
   `task_id` varchar(32) NOT NULL,
@@ -79,6 +84,7 @@ CREATE TABLE IF NOT EXISTS `ops_release_step` (
   KEY `idx_step_task` (`task_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 发布日志表
 CREATE TABLE IF NOT EXISTS `ops_release_log` (
   `log_id` varchar(32) NOT NULL,
   `task_id` varchar(32) NOT NULL,
@@ -96,6 +102,7 @@ INSERT IGNORE INTO `ops_environment` (`env_id`, `env_key`, `env_name`, `descript
 ('ops_env_001', 'production', '生产环境', '线上正式环境', 1, 1, '0', '000000', 0),
 ('ops_env_002', 'staging', '预发布环境', '测试验收环境', 0, 2, '0', '000000', 0);
 
+-- 菜单
 INSERT IGNORE INTO `sys_menu` (`menu_id`, `parent_id`, `menu_name`, `path`, `component`, `perms`, `icon`, `menu_type`, `sort_num`, `status`) VALUES
 ('000900', '000000', '运维管理', '/ops', NULL, NULL, 'SettingOutlined', '0', 90, '0'),
 ('000910', '000900', '发布中心', '/ops/release', 'ops/release/index', 'ops:release:view', 'CloudUploadOutlined', '1', 1, '0'),
@@ -106,14 +113,17 @@ INSERT IGNORE INTO `sys_menu` (`menu_id`, `parent_id`, `menu_name`, `path`, `com
 ('000915', '000910', '服务状态', NULL, NULL, 'ops:service:view', NULL, '2', 5, '0'),
 ('000916', '000910', '重启服务', NULL, NULL, 'ops:service:restart', NULL, '2', 6, '0');
 
+-- 管理员角色权限
 INSERT IGNORE INTO `sys_role_menu` (`role_id`, `menu_id`) VALUES
 ('000001', '000900'), ('000001', '000910'), ('000001', '000911'),
 ('000001', '000912'), ('000001', '000913'), ('000001', '000914'),
 ('000001', '000915'), ('000001', '000916');
 
+-- 字典类型
 INSERT IGNORE INTO `sys_dict_type` (`dict_type_id`, `dict_name`, `dict_type`, `status`, `remark`, `tenant_id`, `deleted`) VALUES
 ('dict_type_ops_rel_status', '发布任务状态', 'ops_release_status', '0', '发布中心任务状态', '000000', 0);
 
+-- 字典数据
 INSERT IGNORE INTO `sys_dict_data` (`dict_data_id`, `dict_type_id`, `dict_label`, `dict_value`, `dict_sort`, `tag`, `status`, `remark`, `tenant_id`, `deleted`) VALUES
 ('dict_ops_rel_01', 'dict_type_ops_rel_status', '待执行', 'pending', 1, 'default', '0', NULL, '000000', 0),
 ('dict_ops_rel_02', 'dict_type_ops_rel_status', '校验中', 'checking', 2, 'processing', '0', NULL, '000000', 0),
