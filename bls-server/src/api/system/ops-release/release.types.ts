@@ -67,6 +67,8 @@ export interface ReleaseTask {
   finished_at: string | null;
   error_message: string | null;
   rollback_version: string | null;
+  lock_token: string | null;
+  source_task_id: string | null;
   deleted: number;
   create_time: string;
   update_time: string;

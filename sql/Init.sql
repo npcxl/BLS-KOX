@@ -1268,6 +1268,8 @@ CREATE TABLE IF NOT EXISTS `ops_release_task` (
   `finished_at` datetime DEFAULT NULL,
   `error_message` text DEFAULT NULL,
   `rollback_version` varchar(20) DEFAULT NULL,
+  `lock_token` varchar(64) DEFAULT NULL COMMENT '环境锁 token',
+  `source_task_id` varchar(32) DEFAULT NULL COMMENT '关联源任务ID（回滚任务关联原发布任务）',
   `deleted` tinyint NOT NULL DEFAULT 0,
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
