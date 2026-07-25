@@ -13,6 +13,15 @@ RETRY_INTERVAL=6
 FAILED=0
 HTTP_PORT="${HTTP_PORT:-8088}"
 
+# 加载环境变量（获取 DB_PASSWORD / REDIS_PASSWORD 等凭证）
+ENV_FILE="${SCRIPT_DIR:-$(dirname "$0")}/../env/.env.production"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/../env/.env.production" ]; then
+  set -a
+  source "$SCRIPT_DIR/../env/.env.production"
+  set +a
+fi
+
 check() {
   local name="$1"
   local cmd="$2"
@@ -51,11 +60,23 @@ check "bls-minio"       "docker inspect bls-minio --format='{{.State.Running}}' 
 # HTTP 端点
 check "nginx root"      "curl -sf -o /dev/null --max-time 5 http://localhost:$HTTP_PORT/"
 check "koa health"      "curl -sf --max-time 5 http://localhost:$HTTP_PORT/api/health | grep -q ok"
-check "ai health"       "curl -sf --max-time 5 http://bls-ai-service:7201/health || curl -sf --max-time 5 http://localhost:$HTTP_PORT/api/ai/health || true"
 
-# 数据库
-check "mysql ping"      "docker exec bls-mysql mysqladmin ping -h localhost -uroot -p\"\${DB_PASSWORD}\" --silent 2>/dev/null" true
-check "redis ping"      "docker exec bls-redis redis-cli -a \"\${REDIS_PASSWORD}\" ping 2>/dev/null | grep -q PONG" true
+# AI 服务健康（直接访问容器内端口）
+check "ai health"       "curl -sf --max-time 5 http://localhost:7201/health" true
+
+# MySQL ping（使用 source 加载的 DB_PASSWORD）
+if [ -n "${DB_PASSWORD:-}" ]; then
+  check "mysql ping"    "docker exec bls-mysql mysqladmin ping -h localhost -uroot -p'${DB_PASSWORD}' --silent 2>/dev/null" true
+else
+  echo "  - mysql ping (跳过，DB_PASSWORD 未设置)"
+fi
+
+# Redis ping
+if [ -n "${REDIS_PASSWORD:-}" ]; then
+  check "redis ping"    "docker exec bls-redis redis-cli -a '${REDIS_PASSWORD}' ping 2>/dev/null | grep -q PONG" true
+else
+  echo "  - redis ping (跳过，REDIS_PASSWORD 未设置)"
+fi
 
 # 可选服务
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -q bls-event-service; then

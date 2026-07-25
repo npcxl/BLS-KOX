@@ -9,10 +9,6 @@ permissions:
   contents: read
   packages: write
 
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
-
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/npcxl
@@ -45,7 +41,7 @@ jobs:
             echo "VERSION file ($FILE_VERSION) does not match tag ($TAG_VERSION)"
             exit 1
           fi
-          echo "✅ Tag $TAG_VERSION matches VERSION file"
+          echo "Tag $TAG_VERSION matches VERSION file"
 
   build:
     name: Build ${{ matrix.service }}
@@ -111,25 +107,3 @@ jobs:
             COMMIT_HASH=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  deploy:
-    name: Deploy to Production
-    needs: [validate, build]
-    runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: ${{ vars.DEPLOY_URL || 'https://example.com' }}
-
-    steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
-          script: |
-            set -e
-            cd ${{ secrets.DEPLOY_PATH || '/opt/bls-kox-deploy' }}
-            git pull origin production
-            ./scripts/deploy.sh ${{ needs.validate.outputs.version }}

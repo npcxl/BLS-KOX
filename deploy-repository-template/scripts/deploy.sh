@@ -8,7 +8,7 @@ set -Eeuo pipefail
 # ============================================================
 
 VERSION="${1:-}"
-SERVICES="${2:-bls-admin bls-server bls-ai-service}"
+SERVICES_INPUT="${2:-bls-admin bls-server bls-ai-service}"
 
 if [ -z "$VERSION" ]; then
   echo "❌ 用法: $0 <version> [services]"
@@ -21,14 +21,25 @@ if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
   exit 1
 fi
 
-# 服务白名单 + 命令注入防护
+# 服务白名单 + 命令注入防护（逐字校验，不允许特殊字符）
 ALLOWED_SERVICES="bls-admin bls-server bls-ai-service bls-event-service bls-java-server"
-for svc in $SERVICES; do
-  if ! echo " $ALLOWED_SERVICES " | grep -q " $svc "; then
-    echo "❌ 非法服务名: $svc (白名单: $ALLOWED_SERVICES)"
+SERVICES=""
+for svc in $SERVICES_INPUT; do
+  if ! echo "$svc" | grep -qE '^[a-z][a-z0-9-]+$'; then
+    echo "❌ 非法服务名（含特殊字符）: $svc"
     exit 1
   fi
+  if ! echo " $ALLOWED_SERVICES " | grep -q " $svc "; then
+    echo "❌ 服务不在白名单: $svc (允许: $ALLOWED_SERVICES)"
+    exit 1
+  fi
+  SERVICES="$SERVICES $svc"
 done
+SERVICES="${SERVICES# }"
+if [ -z "$SERVICES" ]; then
+  echo "❌ 服务列表为空"
+  exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -42,8 +53,9 @@ COMPOSE_FILE="$ROOT_DIR/docker-compose.prod.yml"
 
 mkdir -p "$LOG_DIR"
 
-exec 200>"$LOCK_FILE"
-if ! flock -n 200; then
+# 文件锁（使用不同 fd 避免子进程继承锁）
+exec 201>"$LOCK_FILE"
+if ! flock -n 201; then
   echo "❌ 另一个部署进程正在运行，请稍后重试"
   exit 1
 fi
@@ -57,13 +69,14 @@ log "开始部署版本: $VERSION"
 log "服务列表: $SERVICES"
 log "============================================"
 
-# 1. 保存上一版本
+# 1. 保存上一版本和服务列表
 PREV_VERSION=""
 if [ -f "$VERSION_FILE" ]; then
   PREV_VERSION=$(cat "$VERSION_FILE" | tr -d '\n\r' | xargs)
   log "上一版本: $PREV_VERSION"
   echo "$PREV_VERSION" > "$PREV_VERSION_FILE"
 fi
+echo "$SERVICES" > "$ROOT_DIR/.last-services"
 
 # 2. 更新 APP_VERSION
 if [ -f "$ENV_FILE" ]; then
@@ -118,7 +131,9 @@ else
     if grep -q '^APP_VERSION=' "$ENV_FILE"; then
       sed -i "s/^APP_VERSION=.*/APP_VERSION=$PREV_VERSION/" "$ENV_FILE"
     fi
-    if "$SCRIPT_DIR/rollback.sh" "$PREV_VERSION"; then
+    # 释放当前锁，让 rollback 可以获取锁
+    exec 201>&-
+    if "$SCRIPT_DIR/rollback.sh" "$PREV_VERSION" "$SERVICES"; then
       log "✅ 已回滚到 $PREV_VERSION"
     else
       log "❌ 回滚失败，请手动处理"
