@@ -16,14 +16,18 @@ else
   return 0
 end`;
 
-async function acquireLock(lockKey: string): Promise<{ ok: boolean; token: string }> {
+async function acquireLock(lockKey: string, environment: string): Promise<{ ok: boolean; token: string; error?: string }> {
   const redis = await getRedisClient();
-  const token = generateSnowflakeId();
-  if (redis) {
-    const result = await redis.set(lockKey, token, 'PX', 600_000, 'NX');
-    return { ok: result === 'OK', token };
+  if (!redis) {
+    if (environment === 'production') {
+      return { ok: false, token: '', error: 'Redis 不可用，禁止生产环境发布' };
+    }
+    // staging 降级放行
+    return { ok: true, token: 'no-redis' };
   }
-  return { ok: true, token };
+  const token = generateSnowflakeId();
+  const result = await redis.set(lockKey, token, 'PX', 600_000, 'NX');
+  return { ok: result === 'OK', token };
 }
 
 async function releaseLock(lockKey: string, token: string): Promise<void> {
@@ -52,8 +56,8 @@ export const releaseService = {
     }
 
     const lockKey = `${RELEASE_LOCK_PREFIX}${input.environment}`;
-    const { ok: locked, token: lockToken } = await acquireLock(lockKey);
-    if (!locked) return { error: `${input.environment} 环境已有发布任务进行中` };
+    const { ok: locked, token: lockToken, error: lockError } = await acquireLock(lockKey, input.environment);
+    if (!locked) return { error: lockError || `${input.environment} 环境已有发布任务进行中` };
 
     const running = await releaseRepository.findRunningTask(input.environment, tenantId);
     if (running) { await releaseLock(lockKey, lockToken); return { error: `已有进行中任务 ${running.task_id}` }; }
@@ -193,8 +197,8 @@ export const releaseService = {
     if (!targetVersion) return { error: '无可用回滚版本' };
 
     const lockKey = `${RELEASE_LOCK_PREFIX}${task.environment}`;
-    const { ok: locked, token: lockToken } = await acquireLock(lockKey);
-    if (!locked) return { error: `${task.environment} 环境已有发布任务进行中` };
+    const { ok: locked, token: lockToken, error: lockError } = await acquireLock(lockKey, task.environment);
+    if (!locked) return { error: lockError || `${task.environment} 环境已有发布任务进行中` };
 
     try {
       // 创建回滚任务，记录 source_task_id 和 lock_token
