@@ -18,10 +18,9 @@ TIMESTAMP=$(date +%s%3N)
 NONCE=$(openssl rand -hex 16)
 BODY="{\"taskId\":\"${TASK_ID}\",\"stage\":\"${STAGE}\",\"status\":\"${STATUS}\",\"progress\":${PROGRESS},\"message\":\"${MESSAGE}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
 
-# 生成 HMAC-SHA256 签名
-SIGNATURE=$(echo -n "${TIMESTAMP}
-${NONCE}
-${BODY}" | openssl dgst -sha256 -hmac "${RELEASE_CALLBACK_SECRET:-}" | awk '{print $2}')
+# 生成 HMAC-SHA256 签名（与后端 createHmac 算法一致）
+PAYLOAD="${TIMESTAMP}\n${NONCE}\n${BODY}"
+SIGNATURE=$(printf "${PAYLOAD}" | openssl dgst -sha256 -hmac "${RELEASE_CALLBACK_SECRET:-}" | awk '{print $2}')
 
 curl -s -X POST "${CALLBACK_URL}" \
   -H "Content-Type: application/json" \

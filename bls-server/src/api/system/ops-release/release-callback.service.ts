@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getRedisClient } from '../../../shared/utils/redis';
 import { logger } from '../../../core/logger';
 import { CALLBACK_TIME_WINDOW_MS, RELEASE_NONCE_PREFIX } from './release.constants';
@@ -8,7 +8,7 @@ const CALLBACK_SECRET = process.env.RELEASE_CALLBACK_SECRET || '';
 /**
  * 验证回调请求签名
  *
- * 使用 HMAC-SHA256 签名：
+ * 使用 HMAC-SHA256：
  *   signature = HMAC-SHA256(RELEASE_CALLBACK_SECRET, timestamp + "\n" + nonce + "\n" + body)
  */
 export function verifyCallbackSignature(
@@ -28,15 +28,16 @@ export function verifyCallbackSignature(
     return { valid: false, error: `时间戳超出允许窗口 (${CALLBACK_TIME_WINDOW_MS / 1000}s)` };
   }
 
-  // 2. 计算期望签名
+  // 2. 计算期望签名 — 使用 createHmac（标准 HMAC-SHA256）
   const payload = `${timestamp}\n${nonce}\n${body}`;
-  const expected = createHash('sha256')
-    .update(CALLBACK_SECRET)
+  const expected = createHmac('sha256', CALLBACK_SECRET)
     .update(payload)
     .digest('hex');
 
   // 3. 恒定时间比较
-  if (expected !== signature) {
+  const sigBuf = Buffer.from(signature, 'hex');
+  const expBuf = Buffer.from(expected, 'hex');
+  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
     return { valid: false, error: '签名验证失败' };
   }
 
@@ -49,7 +50,6 @@ export function verifyCallbackSignature(
 export async function checkAndSaveNonce(nonce: string): Promise<{ ok: boolean; error?: string }> {
   const redis = await getRedisClient();
   if (!redis) {
-    // Redis 不可用时跳过 Nonce 检查
     logger.warn('[ReleaseCallback] Redis 不可用，跳过 Nonce 检查');
     return { ok: true };
   }
@@ -60,8 +60,7 @@ export async function checkAndSaveNonce(nonce: string): Promise<{ ok: boolean; e
     return { ok: false, error: 'Nonce 已使用（重放攻击）' };
   }
 
-  // 保存 Nonce，过期时间 = 时间窗口 + 1 分钟缓冲
-  await redis.set(key, '1', 'PX', CALLBACK_TIME_WINDOW_MS + 60_000);
+  await redis.set(key, '1', 'EX', Math.ceil((CALLBACK_TIME_WINDOW_MS + 60_000) / 1000));
   return { ok: true };
 }
 
@@ -80,14 +79,12 @@ export async function validateCallback(
     return { valid: false, error: '缺少 X-Release-Timestamp / X-Release-Nonce / X-Release-Signature 头' };
   }
 
-  // 1. 验证签名
   const sigResult = verifyCallbackSignature(timestamp, nonce, body, signature);
   if (!sigResult.valid) {
     logger.warn('[ReleaseCallback] 签名验证失败', { error: sigResult.error });
     return sigResult;
   }
 
-  // 2. 防重放
   const nonceResult = await checkAndSaveNonce(nonce);
   if (!nonceResult.ok) {
     logger.warn('[ReleaseCallback] Nonce 重放', { nonce });

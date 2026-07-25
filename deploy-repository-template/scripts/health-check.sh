@@ -64,18 +64,20 @@ check "koa health"      "curl -sf --max-time 5 http://localhost:$HTTP_PORT/api/h
 # AI 服务健康（通过 docker exec 在容器内检查）
 check "ai health"       "docker exec bls-ai-service wget -q --spider http://localhost:7201/health 2>/dev/null" true
 
-# MySQL ping（使用 source 加载的 DB_PASSWORD）
+# MySQL ping（凭证缺失时判定失败）
 if [ -n "${DB_PASSWORD:-}" ]; then
   check "mysql ping"    "docker exec bls-mysql mysqladmin ping -h localhost -uroot -p'${DB_PASSWORD}' --silent 2>/dev/null" true
 else
-  echo "  - mysql ping (跳过，DB_PASSWORD 未设置)"
+  echo "  ✗ mysql ping (失败，DB_PASSWORD 未设置)"
+  FAILED=1
 fi
 
-# Redis ping
+# Redis ping（凭证缺失时判定失败）
 if [ -n "${REDIS_PASSWORD:-}" ]; then
   check "redis ping"    "docker exec bls-redis redis-cli -a '${REDIS_PASSWORD}' ping 2>/dev/null | grep -q PONG" true
 else
-  echo "  - redis ping (跳过，REDIS_PASSWORD 未设置)"
+  echo "  ✗ redis ping (失败，REDIS_PASSWORD 未设置)"
+  FAILED=1
 fi
 
 # 可选服务

@@ -121,7 +121,8 @@ jobs:
           TIMESTAMP=$(date +%s%3N)
           NONCE=$(openssl rand -hex 16)
           BODY='{"version":"${{ needs.validate.outputs.version }}","status":"built","commitHash":"${{ github.sha }}","services":["admin","server","ai-service","event-service","java-server"]}'
-          SIGNATURE=$(echo -n "${TIMESTAMP}\n${NONCE}\n${BODY}" | openssl dgst -sha256 -hmac "${{ secrets.RELEASE_CALLBACK_SECRET }}" | awk '{print $2}')
+          PAYLOAD="${TIMESTAMP}\n${NONCE}\n${BODY}"
+          SIGNATURE=$(printf "${PAYLOAD}" | openssl dgst -sha256 -hmac "${{ secrets.RELEASE_CALLBACK_SECRET }}" | awk '{print $2}')
           curl -sf -X POST "${{ vars.RELEASE_CALLBACK_URL }}/api/ops/releases/build-callback" \
             -H "Content-Type: application/json" \
             -H "X-Release-Timestamp: ${TIMESTAMP}" \
