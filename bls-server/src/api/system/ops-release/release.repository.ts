@@ -36,6 +36,14 @@ export const releaseRepository = {
       .executeTakeFirst() as Promise<ReleaseTask | null>;
   },
 
+  /** 内部调用：不校验租户（回调/回滚内部使用） */
+  async getTaskByIdInternal(taskId: string): Promise<ReleaseTask | null> {
+    const db = (await getDb()) as any;
+    return db.selectFrom(TASK_TABLE).selectAll()
+      .where('task_id', '=', taskId).where('deleted', '=', 0)
+      .executeTakeFirst() as Promise<ReleaseTask | null>;
+  },
+
   async listTasks(tenantId: string, pageNum: number, pageSize: number) {
     const db = (await getDb()) as any;
     const offset = (pageNum - 1) * pageSize;

@@ -36,7 +36,7 @@ export const releaseService = {
     const lockValue = generateSnowflakeId();
     const redis = await getRedisClient();
     if (redis) {
-      const locked = await redis.set(lockKey, lockValue, 'NX', 'PX', 600_000);
+      const locked = await redis.set(lockKey, lockValue, 'PX', 600_000, 'NX');
       if (!locked) return { error: `${input.environment} 环境已有发布任务进行中` };
     }
 
@@ -103,7 +103,7 @@ export const releaseService = {
   },
 
   async handleCallback(body: { taskId: string; stage: StepKey; status: StepStatus; progress: number; message: string }) {
-    const task = await releaseRepository.getTaskById(body.taskId, '000000');
+    const task = await releaseRepository.getTaskByIdInternal(body.taskId);
     if (!task) return { error: `任务 ${body.taskId} 不存在` };
 
     // 状态校验：只有 running 状态的任务才能接受回调
@@ -134,7 +134,9 @@ export const releaseService = {
     }
 
     if (body.stage === 'complete' && body.status === 'success') {
-      await releaseRepository.updateTaskStatus(body.taskId, 'success', { progress: 100 });
+      // 回滚任务完成 → rolled_back，部署任务完成 → success
+      const finalStatus = task.action === 'rollback' ? 'rolled_back' : 'success';
+      await releaseRepository.updateTaskStatus(body.taskId, finalStatus, { progress: 100 });
       await writeLog(body.taskId, 'complete', 'info', '发布完成');
       const lockKey = `${RELEASE_LOCK_PREFIX}${task.environment}`;
       const redis = await getRedisClient();
@@ -188,7 +190,7 @@ export const releaseService = {
 
     const tags = await fetchGitHubTags();
     const versions = tags.map(v => ({ version: v, commitHash: '', builtAt: '', available: true }));
-    if (redis) await redis.set(VERSION_LIST_CACHE_KEY, JSON.stringify(versions), 'PX', VERSION_CACHE_TTL);
+    if (redis) await redis.set(VERSION_LIST_CACHE_KEY, JSON.stringify(versions), 'EX', Math.ceil(VERSION_CACHE_TTL / 1000));
     return versions;
   },
 };
