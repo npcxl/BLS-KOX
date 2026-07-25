@@ -14,9 +14,28 @@ target/
 *.swo
 .env
 .env.docker
+.env.production
 uploads/
 src/main/resources/application.yml
 dist/
 node_modules/
 AI模块生成指南.md
+生产发布.md
+生产发布2.md
 .gitignore
+
+# 生产密钥文件
+certs/
+*.pem
+*.key
+*-privkey.pem
+*-fullchain.pem
+
+# 部署锁和日志
+.deploy.lock
+.last-version
+logs/
+
+# IDE
+.DS_Store
+Thumbs.db

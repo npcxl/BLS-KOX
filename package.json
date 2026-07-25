@@ -1,0 +1,15 @@
+{
+  "name": "bls-kox",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BLS-KOX multi-tenant SaaS platform — monorepo root",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/npcxl/BLS-KOX.git"
+  },
+  "scripts": {
+    "release:patch": "node scripts/release-version.mjs patch",
+    "release:minor": "node scripts/release-version.mjs minor",
+    "release:major": "node scripts/release-version.mjs major"
+  }
+}
