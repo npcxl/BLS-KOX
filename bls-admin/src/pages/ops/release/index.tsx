@@ -37,6 +37,7 @@ export default function OpsReleasePage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingCreate, setPendingCreate] = useState<any>(null);
+  const [confirmText, setConfirmText] = useState('');
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailTask, setDetailTask] = useState<ReleaseTask | null>(null);
   const [detailSteps, setDetailSteps] = useState<ReleaseStep[]>([]);
@@ -85,11 +86,17 @@ export default function OpsReleasePage() {
   const handleCreateSubmit = async () => {
     const vals = await form.validateFields();
     setPendingCreate(vals);
+    setConfirmText('');
     setConfirmOpen(true);
   };
 
   const handleConfirmCreate = async () => {
     if (!pendingCreate) return;
+    // 生产环境必须输入确认文字
+    if (pendingCreate.environment === 'production' && confirmText !== '确认发布') {
+      message.warning('请输入"确认发布"以继续');
+      return;
+    }
     try {
       const res = await createRelease(pendingCreate);
       if (res.code === 200) {
@@ -97,6 +104,7 @@ export default function OpsReleasePage() {
         setCreateOpen(false);
         setConfirmOpen(false);
         setPendingCreate(null);
+        setConfirmText('');
         form.resetFields();
         actionRef.current?.reload();
         fetchStatus();
@@ -229,9 +237,12 @@ export default function OpsReleasePage() {
 
       {/* 二次确认 */}
       <Modal title="确认生产发布" open={confirmOpen}
-        onOk={handleConfirmCreate} onCancel={() => { setConfirmOpen(false); setPendingCreate(null); }}
+        onOk={handleConfirmCreate} onCancel={() => { setConfirmOpen(false); setPendingCreate(null); setConfirmText(''); }}
         okText={pendingCreate?.environment === 'production' ? '确认发布到生产' : '确认发布'}
-        okButtonProps={{ danger: pendingCreate?.environment === 'production' }}
+        okButtonProps={{
+          danger: pendingCreate?.environment === 'production',
+          disabled: pendingCreate?.environment === 'production' && confirmText !== '确认发布',
+        }}
         width={480}>
         {pendingCreate && (
           <div>
@@ -253,12 +264,12 @@ export default function OpsReleasePage() {
                 <p style={{ color: '#ff4d4f', marginTop: 16, fontWeight: 500 }}>
                   ⚠️ 这是生产环境发布，将影响线上用户。
                 </p>
-                <Form.Item label='输入 "确认发布" 以继续' style={{ marginTop: 12 }}>
-                  <Input placeholder='确认发布'
-                    onChange={(e) => {
-                      const btn = document.querySelector('.ant-modal-confirm-btns .ant-btn-dangerous') as HTMLButtonElement;
-                      if (btn) btn.disabled = e.target.value !== '确认发布';
-                    }} />
+                <Form.Item style={{ marginTop: 12 }}>
+                  <Input
+                    placeholder='输入 "确认发布" 以继续'
+                    value={confirmText}
+                    onChange={(e) => setConfirmText(e.target.value)}
+                  />
                 </Form.Item>
               </>
             )}
