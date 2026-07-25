@@ -206,6 +206,23 @@ export default [
     ],
   },
   {
+    path: "/ops",
+    name: "运维管理",
+    icon: "SettingOutlined",
+    routes: [
+      {
+        path: "/ops",
+        redirect: "/ops/release",
+      },
+      {
+        path: "/ops/release",
+        name: "发布中心",
+        icon: "CloudUploadOutlined",
+        component: "./ops/release",
+      },
+    ],
+  },
+  {
     path: "/",
     redirect: "/dashboard",
   },
