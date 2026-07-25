@@ -14,6 +14,7 @@ export const releaseRepository = {
     tenantId: string; environment: string; action: string;
     fromVersion: string | null; targetVersion: string; services: string;
     reason: string | null; triggeredBy: string; triggeredByName: string | null;
+    lockToken?: string | null; sourceTaskId?: string | null;
   }): Promise<ReleaseTask> {
     const db = (await getDb()) as any;
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -24,7 +25,9 @@ export const releaseRepository = {
       services: data.services, status: 'pending', current_stage: null, progress: 0,
       reason: data.reason, github_run_id: null, triggered_by: data.triggeredBy,
       triggered_by_name: data.triggeredByName, started_at: null, finished_at: null,
-      error_message: null, rollback_version: null, deleted: 0, create_time: now, update_time: now,
+      error_message: null, rollback_version: null,
+      lock_token: data.lockToken || null, source_task_id: data.sourceTaskId || null,
+      deleted: 0, create_time: now, update_time: now,
     }).execute();
     return this.getTaskById(taskId, data.tenantId) as Promise<ReleaseTask>;
   },

@@ -4,13 +4,10 @@ import { getRedisClient } from '../../../shared/utils/redis';
 import { logger } from '../../../core/logger';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { sendToChannel } from './release.ws';
-import {
-  RELEASE_STEPS, ROLLBACK_STEPS,
-  RELEASE_LOCK_PREFIX,
-} from './release.constants';
+import { RELEASE_STEPS, ROLLBACK_STEPS, RELEASE_LOCK_PREFIX } from './release.constants';
 import type { CreateReleaseRequest, StepStatus, StepKey } from './release.types';
 
-// ====== Redis 锁（Lua 原子释放，统一入口） ======
+// ====== Redis 锁（Lua 原子释放） ======
 
 const UNLOCK_SCRIPT = `
 if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -31,39 +28,13 @@ async function acquireLock(lockKey: string): Promise<{ ok: boolean; token: strin
 
 async function releaseLock(lockKey: string, token: string): Promise<void> {
   const redis = await getRedisClient();
-  try {
-    if (redis) await redis.eval(UNLOCK_SCRIPT, 1, lockKey, token);
-  } catch { /* ignore */ }
+  try { if (redis) await redis.eval(UNLOCK_SCRIPT, 1, lockKey, token); } catch { /* ignore */ }
 }
 
 // ====== 辅助 ======
 
 async function writeLog(taskId: string, stepKey: string | null, level: string, message: string): Promise<void> {
   try { await releaseRepository.appendLog(taskId, stepKey, level, message); } catch { /* ignore */ }
-}
-
-/** 任务失败并释放锁 */
-async function failTask(taskId: string, errorMessage: string, lockKey: string, lockToken: string) {
-  await releaseRepository.updateTaskStatus(taskId, 'failed', { error_message: errorMessage });
-  await releaseRepository.failAllRunningSteps(taskId);
-  await writeLog(taskId, null, 'error', errorMessage);
-  await releaseLock(lockKey, lockToken);
-}
-
-/** 回滚失败时同步恢复原任务 */
-async function failRollbackAndRestore(
-  rollbackTaskId: string, sourceTaskId: string,
-  errorMessage: string, lockKey: string, lockToken: string,
-) {
-  await releaseRepository.updateTaskStatus(rollbackTaskId, 'failed', { error_message: errorMessage });
-  await releaseRepository.failAllRunningSteps(rollbackTaskId);
-  await writeLog(rollbackTaskId, null, 'error', errorMessage);
-  // 恢复原任务
-  await releaseRepository.updateTaskStatus(sourceTaskId, 'failed', {
-    error_message: `回滚失败: ${errorMessage}`,
-  });
-  await writeLog(sourceTaskId, null, 'error', `回滚失败: ${errorMessage}`);
-  await releaseLock(lockKey, lockToken);
 }
 
 // ====== 发布服务 ======
@@ -96,10 +67,8 @@ export const releaseService = {
         tenantId, environment: input.environment, action: 'deploy',
         fromVersion, targetVersion: input.version, services: servicesStr,
         reason: input.reason, triggeredBy, triggeredByName,
+        lockToken,
       });
-
-      // 持久化 lock_token 到任务记录（通过 source_task_id 字段复用）
-      await releaseRepository.updateTaskStatus(task.task_id, 'pending', { rollback_version: lockToken });
 
       await writeLog(task.task_id, null, 'info', `发布任务创建: ${input.environment} → ${input.version}`);
       await releaseRepository.createSteps(task.task_id, RELEASE_STEPS);
@@ -123,10 +92,16 @@ export const releaseService = {
             message: 'GitHub Actions 已触发', timestamp: new Date().toISOString(),
           });
         } else {
-          await failTask(task.task_id, result.error || 'GitHub Actions 触发失败', lockKey, lockToken);
+          await releaseRepository.updateTaskStatus(task.task_id, 'failed', { error_message: result.error || '触发失败' });
+          await releaseRepository.failAllRunningSteps(task.task_id);
+          await writeLog(task.task_id, null, 'error', `触发失败: ${result.error}`);
+          await releaseLock(lockKey, lockToken);
         }
       }).catch(async (err: any) => {
-        await failTask(task.task_id, err.message, lockKey, lockToken);
+        await releaseRepository.updateTaskStatus(task.task_id, 'failed', { error_message: err.message });
+        await releaseRepository.failAllRunningSteps(task.task_id);
+        await writeLog(task.task_id, null, 'error', `异常: ${err.message}`);
+        await releaseLock(lockKey, lockToken);
       });
 
       return { task };
@@ -139,7 +114,6 @@ export const releaseService = {
   async handleCallback(body: { taskId: string; stage: StepKey; status: StepStatus; progress: number; message: string }) {
     const task = await releaseRepository.getTaskByIdInternal(body.taskId);
     if (!task) return { error: `任务 ${body.taskId} 不存在` };
-
     if (task.status !== 'running' && task.status !== 'checking' && task.status !== 'rolling_back') {
       return { error: `任务状态 ${task.status} 不接受回调` };
     }
@@ -159,18 +133,9 @@ export const releaseService = {
       timestamp: new Date().toISOString(),
     });
 
-    // 解析 lock_token：部署任务直接存 lockToken，回滚任务存 "sourceTaskId:lockToken"
     const envLockKey = `${RELEASE_LOCK_PREFIX}${task.environment}`;
-    let lockToken = '';
-    let sourceTaskId = '';
-    const rawRv = task.rollback_version || '';
-    if (task.action === 'rollback' && rawRv.includes(':')) {
-      const parts = rawRv.split(':');
-      sourceTaskId = parts[0];
-      lockToken = parts.slice(1).join(':');
-    } else {
-      lockToken = rawRv;
-    }
+    const lockToken = (task as any).lock_token || '';
+    const sourceTaskId = (task as any).source_task_id || '';
 
     if (body.status === 'failed') {
       await releaseRepository.updateTaskStatus(body.taskId, 'failed', {
@@ -178,6 +143,17 @@ export const releaseService = {
       });
       await writeLog(body.taskId, body.stage, 'error', `步骤失败: ${body.message}`);
       if (lockToken) await releaseLock(envLockKey, lockToken);
+
+      // 回滚任务失败 → 恢复原任务为 failed
+      if (sourceTaskId) {
+        const sourceTask = await releaseRepository.getTaskByIdInternal(sourceTaskId);
+        if (sourceTask && sourceTask.status === 'rolling_back') {
+          await releaseRepository.updateTaskStatus(sourceTaskId, 'failed', {
+            error_message: `回滚失败: ${body.message}`,
+          });
+          await writeLog(sourceTaskId, null, 'error', `回滚任务 ${body.taskId} 失败: ${body.message}`);
+        }
+      }
     }
 
     if (body.stage === 'complete' && body.status === 'success') {
@@ -186,7 +162,7 @@ export const releaseService = {
       await writeLog(body.taskId, 'complete', 'info', finalStatus === 'rolled_back' ? '回滚完成' : '发布完成');
       if (lockToken) await releaseLock(envLockKey, lockToken);
 
-      // 回滚完成 → 通过 sourceTaskId 更新原任务
+      // 回滚完成 → 更新原任务为 rolled_back
       if (sourceTaskId) {
         const sourceTask = await releaseRepository.getTaskByIdInternal(sourceTaskId);
         if (sourceTask && sourceTask.status === 'rolling_back') {
@@ -221,7 +197,7 @@ export const releaseService = {
     if (!locked) return { error: `${task.environment} 环境已有发布任务进行中` };
 
     try {
-      // 创建回滚任务，source_task_id 通过 rollback_version 字段存储
+      // 创建回滚任务，记录 source_task_id 和 lock_token
       const rollbackTask = await releaseRepository.createTask({
         tenantId,
         environment: task.environment,
@@ -232,47 +208,14 @@ export const releaseService = {
         reason: `回滚失败发布 ${task.task_id}`,
         triggeredBy: task.triggered_by,
         triggeredByName: task.triggered_by_name,
+        lockToken,
+        sourceTaskId: taskId,
       });
 
-      // 在回滚任务上存 source_task_id（复用 rollback_version 字段）
-      await releaseRepository.updateTaskStatus(rollbackTask.task_id, 'pending', {
-        rollback_version: taskId, // source_task_id
-      });
-
-      // 持久化 lock_token 到回滚任务
-      await releaseRepository.updateTaskStatus(rollbackTask.task_id, 'pending', {
-        rollback_version: taskId,
-      });
-      // 用 extra_data 存 lockToken：通过 rollback_version 的两个用途
-      // 改用两步 update
-      // 实际上我们已经用 rollback_version 存了 source_task_id，lockToken 需要另存
-      // 简化：用 rollback_version 同时存 sourceTaskId，lockToken 用单独的字段
-      // ops_release_task 没有 lock_token 字段，把 lockToken 存到 reason 的备注里或者直接不用持久化
-      // 最佳方案：rollback_version 存 source_task_id，lockToken 用 from_version 存
-      // 但 from_version 已经被用了。简化方案：lockToken 不持久化，回滚任务的回调从原任务取
-      // 原任务已存了 lockToken（在 createRelease 时存的）
-
-      // 重新整理：
-      // 1. rollback_version 在回滚任务中存 source_task_id
-      // 2. lockToken 在原任务中存（createRelease 时已存）
-      // 3. 回滚任务的回调时，通过 source_task_id 找到原任务，从中取 lockToken
-
-      // 但是回滚任务的 rollback_version 已经被设为 source_task_id 了，需要额外字段存 lockToken
-      // 用 from_version 存 lockToken（from_version 已经存了 task.target_version，冲突）
-      // 简化：回滚任务的 lockToken 就是 lockToken，回调时 lockToken 从 request body 中传过来不现实
-      // 最终方案：把 lockToken 用特殊的 rollback_version 编码，格式: sourceTaskId:lockToken
-      const encodedSource = `${taskId}:${lockToken}`;
-      await releaseRepository.updateTaskStatus(rollbackTask.task_id, 'pending', {
-        rollback_version: encodedSource,
-      });
-
-      // 原任务标记 rolling_back，存 lockToken
-      await releaseRepository.updateTaskStatus(taskId, 'rolling_back', {
-        rollback_version: lockToken,
-      });
+      // 原任务标记 rolling_back
+      await releaseRepository.updateTaskStatus(taskId, 'rolling_back');
       await writeLog(taskId, null, 'warn', `触发回滚任务 ${rollbackTask.task_id} → ${targetVersion}`);
 
-      // 回滚任务创建步骤
       await releaseRepository.createSteps(rollbackTask.task_id, ROLLBACK_STEPS);
       await releaseRepository.updateTaskStatus(rollbackTask.task_id, 'running');
 
@@ -283,21 +226,24 @@ export const releaseService = {
         taskId: rollbackTask.task_id,
         services: task.services,
       }).then(async (result) => {
-        if (result.runId) {
-          await releaseRepository.updateTaskStatus(rollbackTask.task_id, 'running', { github_run_id: result.runId });
-          await releaseRepository.updateStepStatus(rollbackTask.task_id, 'rollback', 'success');
-          await writeLog(rollbackTask.task_id, 'rollback', 'info', `runId=${result.runId}`);
-        } else {
-          await failRollbackAndRestore(
-            rollbackTask.task_id, taskId,
-            result.error || 'GitHub Actions 触发失败', lockKey, lockToken,
-          );
+        if (!result.runId) {
+          // 回滚触发失败 → 恢复原任务
+          await releaseRepository.updateTaskStatus(rollbackTask.task_id, 'failed', {
+            error_message: result.error || 'GitHub Actions 触发失败',
+          });
+          await releaseRepository.updateTaskStatus(taskId, 'failed', {
+            error_message: `回滚触发失败: ${result.error || '未知错误'}`,
+          });
+          await writeLog(rollbackTask.task_id, null, 'error', `触发失败: ${result.error}`);
+          await writeLog(taskId, null, 'error', `回滚触发失败: ${result.error}`);
+          await releaseLock(lockKey, lockToken);
         }
       }).catch(async (err: any) => {
-        await failRollbackAndRestore(
-          rollbackTask.task_id, taskId,
-          err.message, lockKey, lockToken,
-        );
+        await releaseRepository.updateTaskStatus(rollbackTask.task_id, 'failed', { error_message: err.message });
+        await releaseRepository.updateTaskStatus(taskId, 'failed', { error_message: `回滚触发失败: ${err.message}` });
+        await writeLog(rollbackTask.task_id, null, 'error', `异常: ${err.message}`);
+        await writeLog(taskId, null, 'error', `回滚异常: ${err.message}`);
+        await releaseLock(lockKey, lockToken);
       });
 
       return { taskId: rollbackTask.task_id, targetVersion };
