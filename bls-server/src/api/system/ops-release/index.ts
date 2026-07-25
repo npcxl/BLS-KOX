@@ -15,6 +15,48 @@ function getTenantId(ctx: Context) { return (ctx.state.user as any)?.tenantId ||
 function getUserId(ctx: Context) { return (ctx.state.user as any)?.userId || ''; }
 function getUserName(ctx: Context): string | null { const u = ctx.state.user as any; return u?.username || u?.nickName || null; }
 
+// 服务健康检查映射
+const SERVICE_HEALTH_MAP: Record<string, () => Promise<{ enabled: boolean; status: string; message: string }>> = {
+  'bls-admin': async () => {
+    try { const r = await fetch('http://bls-admin:80', { signal: AbortSignal.timeout(3000) }); return { enabled: true, status: r.ok ? 'healthy' : 'unhealthy', message: r.ok ? 'OK' : `HTTP ${r.status}` }; }
+    catch { return { enabled: true, status: 'unhealthy', message: '连接失败' }; }
+  },
+  'bls-server': async () => {
+    try { const r = await fetch('http://bls-server:7001/api/health', { signal: AbortSignal.timeout(3000) }); const j: any = await r.json(); return { enabled: true, status: j.status === 'ok' ? 'healthy' : 'unhealthy', message: j.status || `HTTP ${r.status}` }; }
+    catch { return { enabled: true, status: 'unhealthy', message: '连接失败' }; }
+  },
+  'bls-ai-service': async () => {
+    try { const r = await fetch('http://bls-ai-service:7201/health', { signal: AbortSignal.timeout(3000) }); return { enabled: true, status: r.ok ? 'healthy' : 'unhealthy', message: r.ok ? 'OK' : `HTTP ${r.status}` }; }
+    catch { return { enabled: true, status: 'unhealthy', message: '连接失败' }; }
+  },
+  'bls-event-service': async () => {
+    try { const r = await fetch('http://bls-event-service:7101/health', { signal: AbortSignal.timeout(3000) }); return { enabled: true, status: r.ok ? 'healthy' : 'unhealthy', message: r.ok ? 'OK' : `HTTP ${r.status}` }; }
+    catch { return { enabled: false, status: 'disabled', message: '未启用或不可达' }; }
+  },
+  'bls-java-server': async () => {
+    try { const r = await fetch('http://bls-java-server:8080/api/health', { signal: AbortSignal.timeout(3000) }); return { enabled: true, status: r.ok ? 'healthy' : 'unhealthy', message: r.ok ? 'OK' : `HTTP ${r.status}` }; }
+    catch { return { enabled: false, status: 'disabled', message: '未启用或不可达' }; }
+  },
+  'mysql': async () => {
+    try { const db: any = await (await import('../../../core/database.js')).getDb(); await db.selectFrom('sys_user').select((eb: any) => eb.fn.countAll().as('c')).executeTakeFirst(); return { enabled: true, status: 'healthy', message: '连接正常' }; }
+    catch { return { enabled: true, status: 'unhealthy', message: '数据库连接失败' }; }
+  },
+  'redis': async () => {
+    try { const { getRedisClient } = await import('../../../shared/utils/redis.js'); const r = await getRedisClient(); if (!r) return { enabled: true, status: 'unhealthy', message: 'Redis 未连接' }; await r.ping(); return { enabled: true, status: 'healthy', message: 'PONG' }; }
+    catch { return { enabled: true, status: 'unhealthy', message: 'Redis 连接失败' }; }
+  },
+  'minio': async () => {
+    try { const r = await fetch('http://minio:9000/minio/health/live', { signal: AbortSignal.timeout(3000) }); return { enabled: true, status: r.ok ? 'healthy' : 'unhealthy', message: r.ok ? 'OK' : `HTTP ${r.status}` }; }
+    catch { return { enabled: true, status: 'unhealthy', message: '连接失败' }; }
+  },
+};
+
+async function checkServiceHealth(name: string): Promise<{ enabled: boolean; status: string; message: string }> {
+  const fn = SERVICE_HEALTH_MAP[name];
+  if (!fn) return { enabled: false, status: 'unknown', message: '未知服务' };
+  return fn();
+}
+
 // ========== 回调（内部签名） ==========
 
 router.post('/releases/callback', async (ctx: Context) => {
@@ -79,18 +121,35 @@ authRouter.get('/releases/running', releasePermission('current'), async (ctx: Co
   } catch (err: any) { logger.error('[OpsRelease] running error: %s', err.message); ctx.status = 500; ctx.body = { code: 500, message: err.message }; }
 });
 
-// GET /releases/services/status
+// GET /releases/services/status — 真实服务健康检查
 authRouter.get('/releases/services/status', releasePermission('services'), async (ctx: Context) => {
   try {
     const tenantId = getTenantId(ctx);
     const env = (ctx.query.environment as string) || 'production';
     const last = await releaseRepository.getLastSuccessfulVersion(env, tenantId);
     const running = await releaseRepository.findRunningTask(env, tenantId);
+
+    // 并行检查所有服务健康状态
+    const serviceList = ['bls-admin', 'bls-server', 'bls-ai-service', 'bls-event-service', 'bls-java-server', 'mysql', 'redis', 'minio'];
+    const services = await Promise.all(serviceList.map(async (name) => {
+      const start = Date.now();
+      const result = await checkServiceHealth(name);
+      return {
+        name,
+        enabled: result.enabled,
+        status: result.status,
+        version: last?.target_version || null,
+        responseTime: Date.now() - start,
+        message: result.message,
+      };
+    }));
+
     success(ctx, {
       environment: env,
       currentVersion: last?.target_version || null,
       checkedAt: new Date().toISOString(),
       runningTask: running ? { taskId: running.task_id, status: running.status, progress: running.progress } : null,
+      services,
     });
   } catch (err: any) { logger.error('[OpsRelease] services/status error: %s', err.message); ctx.status = 500; ctx.body = { code: 500, message: err.message }; }
 });

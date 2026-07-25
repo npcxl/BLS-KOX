@@ -23,9 +23,25 @@ fi
 
 TIMESTAMP=$(date +%s%3N)
 NONCE=$(openssl rand -hex 16)
-BODY="{\"taskId\":\"${TASK_ID}\",\"stage\":\"${STAGE}\",\"status\":\"${STATUS}\",\"progress\":${PROGRESS},\"message\":\"${MESSAGE}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+TS_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# 生成 HMAC-SHA256 签名（与后端 createHmac 算法一致）
+# 用 jq 安全构造 JSON（避免消息中的特殊字符破坏 JSON）
+if command -v jq > /dev/null 2>&1; then
+  BODY=$(jq -nc \
+    --arg taskId "$TASK_ID" \
+    --arg stage "$STAGE" \
+    --arg status "$STATUS" \
+    --arg message "$MESSAGE" \
+    --arg timestamp "$TS_ISO" \
+    --argjson progress "$PROGRESS" \
+    '{ taskId: $taskId, stage: $stage, status: $status, progress: $progress, message: $message, timestamp: $timestamp }')
+else
+  # fallback：手动转义（仅处理基本字符）
+  ESCAPED_MSG=$(printf '%s' "$MESSAGE" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  BODY="{\"taskId\":\"${TASK_ID}\",\"stage\":\"${STAGE}\",\"status\":\"${STATUS}\",\"progress\":${PROGRESS},\"message\":\"${ESCAPED_MSG}\",\"timestamp\":\"${TS_ISO}\"}"
+fi
+
+# 生成 HMAC-SHA256 签名
 PAYLOAD="${TIMESTAMP}\n${NONCE}\n${BODY}"
 SIGNATURE=$(printf "${PAYLOAD}" | openssl dgst -sha256 -hmac "${RELEASE_CALLBACK_SECRET}" | awk '{print $2}')
 
