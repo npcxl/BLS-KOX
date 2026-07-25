@@ -117,15 +117,17 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Callback - register version
+        env:
+          RELEASE_CALLBACK_SECRET: ${{ secrets.RELEASE_CALLBACK_SECRET }}
         run: |
           TIMESTAMP=$(date +%s%3N)
           NONCE=$(openssl rand -hex 16)
           BODY='{"version":"${{ needs.validate.outputs.version }}","status":"built","commitHash":"${{ github.sha }}","services":["admin","server","ai-service","event-service","java-server"]}'
           PAYLOAD="${TIMESTAMP}\n${NONCE}\n${BODY}"
-          SIGNATURE=$(printf "${PAYLOAD}" | openssl dgst -sha256 -hmac "${{ secrets.RELEASE_CALLBACK_SECRET }}" | awk '{print $2}')
+          SIGNATURE=$(printf "${PAYLOAD}" | openssl dgst -sha256 -hmac "${RELEASE_CALLBACK_SECRET}" | awk '{print $2}')
           curl -sf -X POST "${{ vars.RELEASE_CALLBACK_URL }}/api/ops/releases/build-callback" \
             -H "Content-Type: application/json" \
             -H "X-Release-Timestamp: ${TIMESTAMP}" \
             -H "X-Release-Nonce: ${NONCE}" \
             -H "X-Release-Signature: ${SIGNATURE}" \
-            -d "${BODY}" || echo "Build callback failed (ignored)"
+            -d "${BODY}"

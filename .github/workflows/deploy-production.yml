@@ -54,6 +54,8 @@ jobs:
 
       - name: Callback - start
         if: inputs.callbackUrl
+        env:
+          RELEASE_CALLBACK_SECRET: ${{ secrets.RELEASE_CALLBACK_SECRET }}
         run: |
           bash scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "pull_images" "running" 20 "开始部署..."
 
@@ -85,10 +87,14 @@ jobs:
 
       - name: Callback - complete
         if: success() && inputs.callbackUrl
+        env:
+          RELEASE_CALLBACK_SECRET: ${{ secrets.RELEASE_CALLBACK_SECRET }}
         run: |
           bash scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "complete" "success" 100 "发布完成"
 
       - name: Callback - failed
         if: failure() && inputs.callbackUrl
+        env:
+          RELEASE_CALLBACK_SECRET: ${{ secrets.RELEASE_CALLBACK_SECRET }}
         run: |
           bash scripts/callback.sh "${{ inputs.callbackUrl }}" "${{ inputs.taskId }}" "health_check" "failed" 50 "部署失败"
