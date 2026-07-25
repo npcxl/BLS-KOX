@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # GitHub Actions → Koa 回调脚本
-# 用法: ./scripts/callback.sh <callbackUrl> <taskId> <stage> <status> <progress> <message>
+# 用法: RELEASE_CALLBACK_SECRET=xxx ./scripts/callback.sh <callbackUrl> <taskId> <stage> <status> <progress> <message>
+
+set -euo pipefail
 
 CALLBACK_URL="${1:-}"
 TASK_ID="${2:-}"
@@ -10,7 +12,12 @@ PROGRESS="${5:-}"
 MESSAGE="${6:-}"
 
 if [ -z "$CALLBACK_URL" ] || [ -z "$TASK_ID" ]; then
-  echo "用法: $0 <callbackUrl> <taskId> <stage> <status> <progress> <message>"
+  echo "用法: RELEASE_CALLBACK_SECRET=xxx $0 <callbackUrl> <taskId> <stage> <status> <progress> <message>"
+  exit 1
+fi
+
+if [ -z "${RELEASE_CALLBACK_SECRET:-}" ]; then
+  echo "❌ RELEASE_CALLBACK_SECRET 未设置，无法签名回调"
   exit 1
 fi
 
@@ -20,11 +27,11 @@ BODY="{\"taskId\":\"${TASK_ID}\",\"stage\":\"${STAGE}\",\"status\":\"${STATUS}\"
 
 # 生成 HMAC-SHA256 签名（与后端 createHmac 算法一致）
 PAYLOAD="${TIMESTAMP}\n${NONCE}\n${BODY}"
-SIGNATURE=$(printf "${PAYLOAD}" | openssl dgst -sha256 -hmac "${RELEASE_CALLBACK_SECRET:-}" | awk '{print $2}')
+SIGNATURE=$(printf "${PAYLOAD}" | openssl dgst -sha256 -hmac "${RELEASE_CALLBACK_SECRET}" | awk '{print $2}')
 
-curl -s -X POST "${CALLBACK_URL}" \
+curl -sf -X POST "${CALLBACK_URL}" \
   -H "Content-Type: application/json" \
   -H "X-Release-Timestamp: ${TIMESTAMP}" \
   -H "X-Release-Nonce: ${NONCE}" \
   -H "X-Release-Signature: ${SIGNATURE}" \
-  -d "${BODY}" || echo "Callback failed (ignored)"
+  -d "${BODY}"
