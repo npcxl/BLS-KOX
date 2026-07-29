@@ -1,6 +1,6 @@
 import { PageContainer, ProTable, ProDescriptions } from '@ant-design/pro-components';
 import { Badge, Button, Card, Col, Form, Input, Modal, Row, Select, Space, Steps, Tag, message, Popconfirm } from 'antd';
-import { CloudUploadOutlined, RollbackOutlined, ReloadOutlined } from '@ant-design/icons';
+import { CloudUploadOutlined, RollbackOutlined, ReloadOutlined, WarningOutlined } from '@ant-design/icons';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
 import { usePermission } from '@/hooks/usePermission';
@@ -262,7 +262,7 @@ export default function OpsReleasePage() {
             {pendingCreate.environment === 'production' && (
               <>
                 <p style={{ color: '#ff4d4f', marginTop: 16, fontWeight: 500 }}>
-                  ⚠️ 这是生产环境发布，将影响线上用户。
+                  <WarningOutlined style={{ marginRight: 8 }} />这是生产环境发布，将影响线上用户。
                 </p>
                 <Form.Item style={{ marginTop: 12 }}>
                   <Input
