@@ -72,7 +72,8 @@ const formColumns: ProFormColumnsType<RecordType>[] = [
 
 Key rules for formColumns:
 - Each field = one object with: title (中文), dataIndex (camelCase field name), optional valueType
-- valueType types: 'text' (default), 'select', 'textarea', 'digit', 'date', 'password', 'treeSelect'
+- valueType types: 'text' (default), 'select', 'textarea', 'digit', 'date',
+ 'password', 'treeSelect'
 - For required fields: formItemProps: { rules: [{ required: true, message: '请输入...' }] }
 - For select/enum fields: valueEnum object like { '0': '启用', '1': '停用' } + initialValue
 - For dropdown selects from database: fieldProps with options array + valueType 'select'
