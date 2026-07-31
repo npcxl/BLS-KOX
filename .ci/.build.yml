@@ -28,8 +28,8 @@
           echo "${CNB_DOCKER_REGISTRY_PASSWORD}" | docker login ${CNB_DOCKER_REGISTRY} -u ${CNB_TOKEN_USER_NAME} --password-stdin
 
           # 拉取最新镜像并重启
-          docker compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker pull
-          docker compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker up -d --remove-orphans
+          docker-compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker pull
+          docker-compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker up -d --remove-orphans
 
           # 清理旧镜像
           docker image prune -f
@@ -176,7 +176,7 @@ main:
                 set -e
                 cd ${DEPLOY_PATH:-/opt/bls-kox}
                 echo "${CNB_DOCKER_REGISTRY_PASSWORD}" | docker login ${CNB_DOCKER_REGISTRY} -u ${CNB_TOKEN_USER_NAME} --password-stdin
-                docker compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker up -d --remove-orphans
+                docker-compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker up -d --remove-orphans
                 echo "✅ 配置更新完成"
               ENDSSH
 
@@ -232,8 +232,8 @@ main:
                 set -e
                 cd ${DEPLOY_PATH:-/opt/bls-kox}
                 echo "${CNB_DOCKER_REGISTRY_PASSWORD}" | docker login ${CNB_DOCKER_REGISTRY} -u ${CNB_TOKEN_USER_NAME} --password-stdin
-                docker compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker down
-                docker compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker up -d --remove-orphans
+                docker-compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker down
+                docker-compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker up -d --remove-orphans
                 docker image prune -f
                 echo "✅ 版本 ${RELEASE_TAG} 部署完成"
               ENDSSH

@@ -14,7 +14,6 @@ services:
     depends_on:
       - bls-server
       - bls-admin
-      - bls-ai-service
     networks:
       - bls-net
 
@@ -89,12 +88,14 @@ services:
       retries: 3
       start_period: 15s
 
-  # ========== AI 服务 (Koa 微服务) ==========
+  # ========== AI 服务 (Koa 微服务，可选) ==========
   bls-ai-service:
     build:
       context: ./bls-ai-service
     container_name: bls-ai-service
     restart: unless-stopped
+    profiles:
+      - ai
     expose:
       - "7201"
     environment:
