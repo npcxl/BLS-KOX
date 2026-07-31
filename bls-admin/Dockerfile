@@ -4,8 +4,7 @@ FROM node:22-alpine AS builder
 ARG APP_VERSION
 ARG COMMIT_HASH
 
-ENV UTOO_PACK=false
-ENV DISABLE_UTOO_PACK=true
+ENV DISABLE_UTOOPACK=true
 
 WORKDIR /app
 
@@ -16,7 +15,8 @@ RUN npm install --legacy-peer-deps
 
 COPY . .
 
-RUN npm run build
+# 先卸载有问题的 @utoo/pack，再用 umi build 编译
+RUN npm uninstall @utoo/pack 2>/dev/null; npx max build
 
 # 确保 version.json 在构建产物中
 RUN node -e "const fs=require('fs');const v={version:process.env.APP_VERSION||require('./package.json').version,commitHash:process.env.COMMIT_HASH||'unknown',buildTime:new Date().toISOString()};fs.writeFileSync('dist/version.json',JSON.stringify(v));"

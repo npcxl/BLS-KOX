@@ -1,8 +1,9 @@
 /**
- * OCR 图片识别 API
+ * OCR 文件识别 API
  * 
- * 使用 Ollama Unlimited-OCR (Q5_K_M) 模型进行图片文字识别。
- * 当用户在 AI 对话中上传图片时，前端自动调用此接口先做 OCR 识别，
+ * 使用 Ollama Unlimited-OCR (Q5_K_M) 多模态模型进行文件内容识别。
+ * 支持：图片（png/jpg/webp等）、PDF、Office 文档等。
+ * 当用户在 AI 对话中上传文件时，前端自动调用此接口先做 OCR 识别，
  * 再将识别结果作为上下文传给 KOX-AI 对话模型。
  */
 
@@ -19,40 +20,51 @@ const OCR_MODEL = 'hf.co/vimalnakrani/unlimited-ocr-gguf:Q5_K_M';
 /** Ollama API 地址 */
 const OLLAMA_BASE_URL = env.ai.baseUrl || 'http://ollama:11434/v1';
 
-/** OCR 请求超时（图片识别较慢，给 120 秒） */
+/** OCR 请求超时 */
 const OCR_TIMEOUT_MS = 120_000;
 
 /**
  * POST /api/ai/ocr/recognize
  * 
- * 接收 base64 图片数据，调用 Unlimited-OCR 模型进行文字识别。
+ * 接收 base64 编码的文件数据，调用 Unlimited-OCR 多模态模型进行内容识别。
  * 
  * Request Body:
- *   { image: string }  // base64 编码的图片数据（不含 data:xxx;base64, 前缀）
+ *   { image: string, filename?: string }
  * 
  * Response:
  *   { code: 0, data: { text: string }, message: string }
  */
 router.post('/recognize', async (ctx: Context) => {
-  const body = ctx.request.body as { image?: string };
+  const body = ctx.request.body as { image?: string; filename?: string };
 
   if (!body?.image) {
     ctx.status = 400;
-    ctx.body = { code: 400, message: '缺少 image 参数（base64 图片数据）' };
+    ctx.body = { code: 400, message: '缺少 image 参数（base64 文件数据）' };
     return;
   }
 
-  const imageBase64 = body.image.replace(/^data:image\/\w+;base64,/, '');
+  // 清理 base64 前缀（支持各种 data URI）
+  const imageBase64 = body.image.replace(/^data:[^;]+;base64,/, '');
+
+  const fileName = body.filename || 'unknown';
+  const isImage = /\.(png|jpe?g|gif|webp|bmp)$/i.test(fileName)
+    || /^image\//.test(body.image);
 
   logger.info('[OCR] 开始识别', {
-    imageSize: imageBase64.length,
+    filename: fileName,
+    fileSize: imageBase64.length,
+    isImage,
     model: OCR_MODEL,
   });
 
   const startTime = Date.now();
 
+  // 构造 prompt：图片用 "document parsing."，其他文件类型加上更多指引
+  const prompt = isImage
+    ? 'document parsing.'
+    : `Extract and return all text content from this document file. Include any tables, headers, and structured data.`;
+
   try {
-    // 从 Ollama base URL 提取 host，构造 /api/chat 地址
     const ollamaHost = OLLAMA_BASE_URL.replace('/v1', '').replace(/\/$/, '');
     const apiUrl = `${ollamaHost}/api/chat`;
 
@@ -67,7 +79,7 @@ router.post('/recognize', async (ctx: Context) => {
         messages: [
           {
             role: 'user',
-            content: 'document parsing.',
+            content: prompt,
             images: [imageBase64],
           },
         ],
@@ -97,6 +109,7 @@ router.post('/recognize', async (ctx: Context) => {
 
     const elapsed = Date.now() - startTime;
     logger.info('[OCR] 识别完成', {
+      filename: fileName,
       elapsedMs: elapsed,
       textLength: text.length,
       textPreview: text.slice(0, 100),
@@ -105,21 +118,22 @@ router.post('/recognize', async (ctx: Context) => {
     ctx.body = {
       code: 0,
       data: { text },
-      message: 'OCR 识别成功',
+      message: '识别成功',
     };
   } catch (err: any) {
     const elapsed = Date.now() - startTime;
     logger.error('[OCR] 识别失败', {
+      filename: fileName,
       error: err.message,
       elapsedMs: elapsed,
     });
 
     if (err.name === 'AbortError') {
       ctx.status = 504;
-      ctx.body = { code: 504, message: 'OCR 识别超时，请重试' };
+      ctx.body = { code: 504, message: '识别超时，请重试' };
     } else {
       ctx.status = 500;
-      ctx.body = { code: 500, message: `OCR 识别失败: ${err.message}` };
+      ctx.body = { code: 500, message: `识别失败: ${err.message}` };
     }
   }
 });

@@ -93,6 +93,19 @@ const useStyle = createStyles(({ token, css }) => ({
     flex: 1;
     .ant-conversations-list { padding-inline-start: 0; }
   `,
+  sidebarFooter: css`
+    flex-shrink: 0;
+    padding: 12px 8px;
+    border-top: 1px solid ${token.colorBorderSecondary};
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  sidebarFooterRow: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  `,
   chatMain: css`
     flex: 1;
     min-width: 0;
@@ -136,22 +149,6 @@ const useStyle = createStyles(({ token, css }) => ({
   inputMain: css`
     flex: 1;
     min-width: 0;
-  `,
-  inputToolbar: css`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 0 4px;
-    gap: 8px;
-  `,
-  modelSelect: css`
-    color: #6b7280;
-    font-size: 12px;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 6px;
-    transition: background 0.15s;
-    &:hover { background: #f3f4f6; }
   `,
   placeholder: css`
     padding-top: 100px;
@@ -494,7 +491,7 @@ export default function AiWorkbench() {
     },
   }), [handleDelete, handleRename]);
 
-  // ---- OCR 识别图片 ----
+  // ---- OCR 识别文件（图片/PDF/文档） ----
   const doOCR = useCallback(async (file: RcFile): Promise<string> => {
     setOcrLoading(true);
     try {
@@ -511,7 +508,10 @@ export default function AiWorkbench() {
           'Content-Type': 'application/json',
           Authorization: localStorage.getItem('token') || '',
         },
-        body: JSON.stringify({ image: base64 }),
+        body: JSON.stringify({
+          image: base64,
+          filename: file.name,
+        }),
       });
 
       if (!res.ok) throw new Error(`OCR 请求失败(${res.status})`);
@@ -642,6 +642,64 @@ export default function AiWorkbench() {
             activeKey={activeKey}
             onActiveChange={handleActiveChange}
           />
+          <div className={styles.sidebarFooter}>
+            {/* 模型选择 */}
+            {selectedModel && modelOptions.length > 0 && (
+              <Select
+                size="small"
+                value={selectedModel}
+                loading={modelLoading}
+                onChange={handleModelChange}
+                suffixIcon={<DownOutlined />}
+                style={{ width: '100%', fontSize: 12 }}
+                popupMatchSelectWidth={false}
+                optionLabelProp="label"
+              >
+                {modelOptions.map(opt => (
+                  <Select.Option key={opt.value} value={opt.value} label={opt.label}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Tag
+                        color={opt.modelType === 'local' ? 'green' : 'blue'}
+                        style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}
+                      >
+                        {opt.modelType === 'local' ? '本地' : 'API'}
+                      </Tag>
+                      <span>{opt.label}</span>
+                    </span>
+                  </Select.Option>
+                ))}
+              </Select>
+            )}
+            {/* 文件上传 */}
+            <Upload
+              accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.ppt,.pptx"
+              showUploadList={false}
+              beforeUpload={async (file) => {
+                const fileName = file.name || '未知文件';
+                const ocrText = await doOCR(file);
+                if (ocrText) {
+                  const isImage = file.type?.startsWith('image/');
+                  const prompt = isImage
+                    ? `[用户上传了图片 "${fileName}"，识别结果如下]\n\n${ocrText}\n\n请根据以上识别结果回答用户的问题。`
+                    : `[用户上传了文件 "${fileName}"，内容如下]\n\n${ocrText}\n\n请根据以上内容回答用户的问题。`;
+                  sendMessage(inputValue ? `${inputValue}\n\n${prompt}` : prompt);
+                } else {
+                  message.warning(`未从文件 "${fileName}" 中识别到内容`);
+                }
+                return false;
+              }}
+            >
+              <Button
+                block
+                size="small"
+                icon={<PictureOutlined />}
+                loading={ocrLoading}
+                style={{ fontSize: 12 }}
+              >
+                上传文件识别
+              </Button>
+            </Upload>
+          </div>
         </aside>
 
         {/* 重命名弹窗 */}
@@ -747,59 +805,6 @@ export default function AiWorkbench() {
                   placeholder={t.askOrInputUseSkills}
                   style={{ border: 'none', boxShadow: 'none', background: 'transparent' }}
                 />
-                <div className={styles.inputToolbar}>
-                  <Upload
-                    accept="image/*"
-                    showUploadList={false}
-                    beforeUpload={async (file) => {
-                      // 先 OCR 识别图片文字
-                      const ocrText = await doOCR(file);
-                      if (ocrText) {
-                        // 将 OCR 结果作为用户消息发送
-                        const prompt = `[用户上传了一张图片，OCR 识别结果如下]\n\n${ocrText}\n\n请根据以上识别结果回答用户的问题。`;
-                        sendMessage(inputValue ? `${inputValue}\n\n${prompt}` : prompt);
-                      } else {
-                        message.warning('图片识别未获取到文字');
-                      }
-                      return false; // 阻止默认上传行为
-                    }}
-                  >
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<PictureOutlined />}
-                      loading={ocrLoading}
-                      style={{ color: '#6b7280' }}
-                    />
-                  </Upload>
-                  {selectedModel && modelOptions.length > 0 && (
-                    <Select
-                      size="small"
-                      variant="borderless"
-                      value={selectedModel}
-                      loading={modelLoading}
-                      onChange={handleModelChange}
-                      suffixIcon={<DownOutlined />}
-                      style={{ minWidth: 180, color: '#6b7280', fontSize: 12 }}
-                      popupMatchSelectWidth={false}
-                      optionLabelProp="label"
-                    >
-                      {modelOptions.map(opt => (
-                        <Select.Option key={opt.value} value={opt.value} label={opt.label}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Tag
-                              color={opt.modelType === 'local' ? 'green' : 'blue'}
-                              style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}
-                            >
-                              {opt.modelType === 'local' ? '本地' : 'API'}
-                            </Tag>
-                            <span>{opt.label}</span>
-                          </span>
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  )}
-                </div>
               </div>
             </div>
           </div>
