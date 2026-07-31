@@ -1,0 +1,22 @@
+# BLS-KOX 生产部署配置（从 CNB 制品库拉取镜像）
+# 启动: docker compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker up -d
+# 
+# 此文件覆盖 docker-compose.yml 中需要从制品库拉取的服务镜像配置
+
+services:
+  bls-server:
+    # 从 CNB 制品库拉取，不本地构建
+    image: ${CNB_DOCKER_REGISTRY:-docker.cnb.cool}/${CNB_REPO_SLUG:-bls-xl/bls-kox}/bls-server:latest
+    pull_policy: always
+
+  bls-admin:
+    image: ${CNB_DOCKER_REGISTRY:-docker.cnb.cool}/${CNB_REPO_SLUG:-bls-xl/bls-kox}/bls-admin:latest
+    pull_policy: always
+
+  bls-ai-service:
+    image: ${CNB_DOCKER_REGISTRY:-docker.cnb.cool}/${CNB_REPO_SLUG:-bls-xl/bls-kox}/bls-ai-service:latest
+    pull_policy: always
+
+  bls-event-service:
+    image: ${CNB_DOCKER_REGISTRY:-docker.cnb.cool}/${CNB_REPO_SLUG:-bls-xl/bls-kox}/bls-event-service:latest
+    pull_policy: always

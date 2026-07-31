@@ -1,0 +1,30 @@
+# ===== 公共配置：Node.js 构建环境 & Docker 配置 =====
+
+# Node 22 环境（所有 Node 服务共用）
+.node-env: &node-env
+  docker:
+    image: node:22
+  env:
+    NODE_ENV: development
+
+# Node 依赖安装
+.node-install: &node-install
+  name: install
+  script:
+    - npm config set registry https://registry.npmmirror.com
+    - npm ci --legacy-peer-deps
+
+# Node TypeScript 类型检查
+.node-lint: &node-lint
+  name: lint
+  script: npm run lint
+
+# Node 构建
+.node-build: &node-build
+  name: build
+  script: npm run build
+
+# Node 测试
+.node-test: &node-test
+  name: test
+  script: npm test

@@ -1,0 +1,6 @@
+# BLS-KOX 云原生构建流水线
+# 多服务 Monorepo 项目：按变更文件自动构建对应服务
+include:
+  - .ci/.pr.yml
+  - .ci/.build.yml
+  - .ci/.web-trigger.yml

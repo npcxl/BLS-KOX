@@ -1,0 +1,54 @@
+# ===== Web 触发器：手动构建 & 部署 =====
+
+branch:
+  - reg: .*
+    buttons:
+      # 按钮1：构建指定服务镜像
+      - name: 构建服务镜像
+        description: 选择服务构建并推送 Docker 镜像到制品库
+        event: web_trigger_build
+        isDefault: true
+        groupName: 构建部署
+        inputs:
+          - name: 构建配置
+            inputs:
+              SERVICE:
+                name: 选择服务
+                type: select
+                required: true
+                default: bls-server
+                options:
+                  - name: bls-server (Koa 后端)
+                    value: bls-server
+                  - name: bls-admin (前端)
+                    value: bls-admin
+                  - name: bls-ai-service (AI 服务)
+                    value: bls-ai-service
+                  - name: bls-event-service (事件服务)
+                    value: bls-event-service
+              IMAGE_TAG:
+                name: 镜像标签
+                type: input
+                required: false
+                placeholder: 默认使用 commit short SHA
+
+      # 按钮2：全量构建所有服务
+      - name: 全量构建
+        description: 构建所有服务的 Docker 镜像并推送
+        event: web_trigger_build_all
+        groupName: 构建部署
+        inputs:
+          - name: 构建配置
+            inputs:
+              IMAGE_TAG:
+                name: 镜像标签
+                type: input
+                required: false
+                placeholder: 默认使用 commit short SHA
+
+      # 按钮3：启动云原生开发环境
+      - name: 云原生开发
+        description: 在云端启动开发环境
+        event: web_trigger_dev
+        openWorkspace: true
+        groupName: 开发环境
