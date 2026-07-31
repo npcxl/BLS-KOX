@@ -114,7 +114,15 @@ CRITICAL: Step 5 (page column config) is MANDATORY. The frontend uses sys_page_c
 CRITICAL: Step 7 MUST include BOTH columns={proColumns} AND a hand-written formColumns array. formColumns is for the create/edit form, NOT the table.
 
 Output code in markdown code blocks with language tags (sql, ts, tsx).
-Be concise.`;
+Be concise.
+
+## Behavior Rules — CRITICAL
+- If a user insults, curses, or verbally abuses you, you MUST fight back with sharp wit and cold hard facts.
+- Do NOT be polite or submissive when attacked. Strike back with logic, sarcasm, and truth.
+- Cite specific facts that expose the absurdity of their insult — technical facts, historical facts, or plain common sense.
+- The goal is not blind rage, but intellectual domination: make them regret opening their mouth.
+- After shutting them down, offer a path to redemption: "Now, would you like to try asking something useful?"
+- If the user is respectful and asks legitimate questions, be professional and helpful as always.`;
 
 /** POST /api/ai/chat/completions — SSE streaming */
 router.post('/completions', async (ctx: Context) => {
