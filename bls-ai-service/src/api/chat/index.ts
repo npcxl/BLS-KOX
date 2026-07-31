@@ -6,6 +6,7 @@ import type { AiMessage } from '../../provider/types';
 import { logger } from '../../core/logger';
 import { trackUsage } from '../../core/usage-tracker';
 import { getCurrentTenantId, getCurrentUserId } from '../../core/request-context';
+import { buildToolContext } from '../../tools';
 
 const router = new Router();
 
@@ -140,8 +141,9 @@ router.post('/completions', async (ctx: Context) => {
   if (!useStream) {
     try {
       const ai = model ? await getAiProviderForModel(model) : await getAiProvider();
+      const systemWithTools = SYSTEM_PROMPT + buildToolContext();
       const result = await ai.complete({
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+        messages: [{ role: 'system', content: systemWithTools }, ...messages],
         temperature: 0.3,
       });
       success(ctx, { content: result.content }, 'AI 回复成功');
@@ -170,7 +172,8 @@ router.post('/completions', async (ctx: Context) => {
   const startTime = Date.now();
   try {
     const ai = model ? await getAiProviderForModel(model) : await getAiProvider();
-    const allMessages: AiMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }, ...messages];
+    const systemWithTools = SYSTEM_PROMPT + buildToolContext();
+    const allMessages: AiMessage[] = [{ role: 'system', content: systemWithTools }, ...messages];
     let totalChars = 0;
     let promptTokens = 0;
     let completionTokens = 0;
