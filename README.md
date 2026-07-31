@@ -13,6 +13,8 @@
 > 双后端并存的开源多租户后台开发框架与管理系统模板。
 > **一套前端、一套 MySQL、一套 Redis**，同时支持 Koa (TypeScript) 和 Spring Boot (Java 21) 两套后端。
 > 内置 RBAC、多租户隔离、JWT 会话体系、防重放、限流、安全审计、WebSocket、Prometheus Metrics、**AI 智能助手**。
+>
+> 🏠 **仓库地址**：[GitHub](https://github.com/npcxl/BLS-KOX) · [Gitee](https://gitee.com/leheya/bls-kox) · [CNB 原生开发](https://cnb.cool/bls-xl/bls-kox)
 
 ## ✨ Why BLS-KOX
 
