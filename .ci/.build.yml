@@ -48,7 +48,7 @@ main:
         - docker
       env:
         SVC: bls-server
-      imports: https://cnb.cool/${CNB_REPO_SLUG}/-/blob/main/.cnb/secrets.yml
+      imports: https://cnb.cool/bls-xl/bls-kox-secrets/-/blob/main/.cnb/secrets.yml
       stages:
         - name: install
           script:
@@ -79,7 +79,7 @@ main:
         - docker
       env:
         SVC: bls-admin
-      imports: https://cnb.cool/${CNB_REPO_SLUG}/-/blob/main/.cnb/secrets.yml
+      imports: https://cnb.cool/bls-xl/bls-kox-secrets/-/blob/main/.cnb/secrets.yml
       stages:
         - name: install
           script:
@@ -110,7 +110,7 @@ main:
         - docker
       env:
         SVC: bls-ai-service
-      imports: https://cnb.cool/${CNB_REPO_SLUG}/-/blob/main/.cnb/secrets.yml
+      imports: https://cnb.cool/bls-xl/bls-kox-secrets/-/blob/main/.cnb/secrets.yml
       stages:
         - name: install
           script:
@@ -141,7 +141,7 @@ main:
         - docker
       env:
         SVC: bls-event-service
-      imports: https://cnb.cool/${CNB_REPO_SLUG}/-/blob/main/.cnb/secrets.yml
+      imports: https://cnb.cool/bls-xl/bls-kox-secrets/-/blob/main/.cnb/secrets.yml
       stages:
         - name: install
           script:
@@ -164,7 +164,7 @@ main:
       ifModify: ["docker-compose.yml", "nginx.conf", ".cnb/secrets.yml"]
       docker:
         image: alpine:latest
-      imports: https://cnb.cool/${CNB_REPO_SLUG}/-/blob/main/.cnb/secrets.yml
+      imports: https://cnb.cool/bls-xl/bls-kox-secrets/-/blob/main/.cnb/secrets.yml
       stages:
         - name: sync-config
           script:
@@ -188,7 +188,7 @@ main:
         image: node:22
       services:
         - docker
-      imports: https://cnb.cool/${CNB_REPO_SLUG}/-/blob/main/.cnb/secrets.yml
+      imports: https://cnb.cool/bls-xl/bls-kox-secrets/-/blob/main/.cnb/secrets.yml
       env:
         RELEASE_TAG: ${CNB_BRANCH}
       stages:
