@@ -19,6 +19,7 @@ import sqlGenerator from './api/sql/generator';
 import auditAnalyzer from './api/audit/analyzer';
 import configReviewer from './api/config/reviewer';
 import chatRouter from './api/chat';
+import ocrRouter from './api/ocr';
 
 export function createApp(): Koa {
   const app = new Koa();
@@ -87,6 +88,15 @@ export function createApp(): Koa {
   chatR.use(chatRouter.allowedMethods());
   aiRouter.use(chatR.routes());
   aiRouter.use(chatR.allowedMethods());
+
+  // ====== OCR 图片识别 ======
+  // POST /api/ai/ocr/recognize
+  const ocrR = new Router({ prefix: '/ocr' });
+  ocrR.use(aiRateLimit(env.rateLimit.aiPerMinute));
+  ocrR.use(ocrRouter.routes());
+  ocrR.use(ocrRouter.allowedMethods());
+  aiRouter.use(ocrR.routes());
+  aiRouter.use(ocrR.allowedMethods());
 
   // ====== Models ======
   // GET /api/ai/models

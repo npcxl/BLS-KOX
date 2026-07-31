@@ -1,7 +1,8 @@
 import { Conversations, Prompts, Sender, Think, Welcome, XProvider } from '@ant-design/x';
 import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
-import { CopyOutlined, DownOutlined, DeleteOutlined, EditOutlined, FireOutlined, ReadOutlined, RocketOutlined, SyncOutlined } from '@ant-design/icons';
-import { Button, Flex, Input, message, Modal, Select, Space, Tag } from 'antd';
+import { CopyOutlined, DownOutlined, DeleteOutlined, EditOutlined, FireOutlined, ReadOutlined, RocketOutlined, SyncOutlined, PictureOutlined } from '@ant-design/icons';
+import { Button, Flex, Input, message, Modal, Select, Space, Tag, Upload } from 'antd';
+import type { RcFile } from 'antd/es/upload';
 import { createStyles } from 'antd-style';
 import React, { memo, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import hljs from 'highlight.js/lib/core';
@@ -364,6 +365,7 @@ export default function AiWorkbench() {
   const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<{ key: string; label: string } | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [ocrLoading, setOcrLoading] = useState(false);
 
   // ---- 自动滚底 ----
   useEffect(() => {
@@ -492,6 +494,37 @@ export default function AiWorkbench() {
     },
   }), [handleDelete, handleRename]);
 
+  // ---- OCR 识别图片 ----
+  const doOCR = useCallback(async (file: RcFile): Promise<string> => {
+    setOcrLoading(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = () => reject(new Error('文件读取失败'));
+        reader.readAsDataURL(file);
+      });
+
+      const res = await fetch('/api/ai/ocr/recognize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: localStorage.getItem('token') || '',
+        },
+        body: JSON.stringify({ image: base64 }),
+      });
+
+      if (!res.ok) throw new Error(`OCR 请求失败(${res.status})`);
+
+      const json = await res.json();
+      if (json.code !== 0) throw new Error(json.message || 'OCR 识别失败');
+
+      return json.data?.text || '';
+    } finally {
+      setOcrLoading(false);
+    }
+  }, []);
+
   // ---- 发送消息 (SSE 流式) ----
   const sendMessage = useCallback(async (content: string) => {
     const val = content.trim();
@@ -568,7 +601,14 @@ export default function AiWorkbench() {
 
       setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: full, status: 'done' } : m));
     } catch (err: any) {
-      if (err.name !== 'AbortError') {
+      if (err.name === 'AbortError') {
+        // 用户主动停止：将已有内容标记为 done，如果没有任何内容则移除 AI 消息
+        if (!full) {
+          setMessages(prev => prev.filter(m => m.id !== aiId));
+        } else {
+          setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: full, status: 'done' } : m));
+        }
+      } else {
         setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: `[错误] ${err.message}`, status: 'error' } : m));
       }
     } finally {
@@ -708,6 +748,30 @@ export default function AiWorkbench() {
                   style={{ border: 'none', boxShadow: 'none', background: 'transparent' }}
                 />
                 <div className={styles.inputToolbar}>
+                  <Upload
+                    accept="image/*"
+                    showUploadList={false}
+                    beforeUpload={async (file) => {
+                      // 先 OCR 识别图片文字
+                      const ocrText = await doOCR(file);
+                      if (ocrText) {
+                        // 将 OCR 结果作为用户消息发送
+                        const prompt = `[用户上传了一张图片，OCR 识别结果如下]\n\n${ocrText}\n\n请根据以上识别结果回答用户的问题。`;
+                        sendMessage(inputValue ? `${inputValue}\n\n${prompt}` : prompt);
+                      } else {
+                        message.warning('图片识别未获取到文字');
+                      }
+                      return false; // 阻止默认上传行为
+                    }}
+                  >
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<PictureOutlined />}
+                      loading={ocrLoading}
+                      style={{ color: '#6b7280' }}
+                    />
+                  </Upload>
                   {selectedModel && modelOptions.length > 0 && (
                     <Select
                       size="small"
