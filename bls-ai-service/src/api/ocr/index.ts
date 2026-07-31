@@ -53,16 +53,15 @@ router.post('/recognize', async (ctx: Context) => {
   logger.info('[OCR] 开始识别', {
     filename: fileName,
     fileSize: imageBase64.length,
+    base64Prefix: body.image.substring(0, 50),
     isImage,
     model: OCR_MODEL,
   });
 
   const startTime = Date.now();
 
-  // 构造 prompt：图片用 "document parsing."，其他文件类型加上更多指引
-  const prompt = isImage
-    ? 'document parsing.'
-    : `Extract and return all text content from this document file. Include any tables, headers, and structured data.`;
+  // 构造 prompt：要求纯文本输出
+  const prompt = 'Extract all text from this document. Output ONLY the recognized text, no coordinates, no JSON, no extra formatting. Just the plain text content.';
 
   try {
     const ollamaHost = OLLAMA_BASE_URL.replace('/v1', '').replace(/\/$/, '');

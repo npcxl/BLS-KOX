@@ -1,8 +1,10 @@
-import { Conversations, Prompts, Sender, Think, Welcome, XProvider } from '@ant-design/x';
+import { Conversations, FileCard, Prompts, Sender, Think, ThoughtChain, Welcome, XProvider } from '@ant-design/x';
+import type { ThoughtChainProps } from '@ant-design/x';
 import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
-import { CopyOutlined, DownOutlined, DeleteOutlined, EditOutlined, FireOutlined, ReadOutlined, RocketOutlined, SyncOutlined, PictureOutlined } from '@ant-design/icons';
-import { Button, Flex, Input, message, Modal, Select, Space, Tag, Upload } from 'antd';
+import { CopyOutlined, DownOutlined, DeleteOutlined, EditOutlined, FireOutlined, ReadOutlined, RocketOutlined, SyncOutlined, PictureOutlined, RobotOutlined, PaperClipOutlined } from '@ant-design/icons';
+import { Button, Divider, Dropdown, Flex, Input, message, Modal, Select, Space, Tag, Upload } from 'antd';
 import type { RcFile } from 'antd/es/upload';
+import type { MenuProps } from 'antd';
 import { createStyles } from 'antd-style';
 import React, { memo, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import hljs from 'highlight.js/lib/core';
@@ -93,19 +95,6 @@ const useStyle = createStyles(({ token, css }) => ({
     flex: 1;
     .ant-conversations-list { padding-inline-start: 0; }
   `,
-  sidebarFooter: css`
-    flex-shrink: 0;
-    padding: 12px 8px;
-    border-top: 1px solid ${token.colorBorderSecondary};
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  `,
-  sidebarFooterRow: css`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  `,
   chatMain: css`
     flex: 1;
     min-width: 0;
@@ -136,19 +125,12 @@ const useStyle = createStyles(({ token, css }) => ({
     border-radius: 28px;
     background: #fff;
     box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-    padding: 8px 8px 8px 16px;
+    padding: 8px 16px;
     transition: border-color 0.2s, box-shadow 0.2s;
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
     &:focus-within {
       border-color: #1677ff;
       box-shadow: 0 8px 28px rgba(22, 119, 255, 0.18);
     }
-  `,
-  inputMain: css`
-    flex: 1;
-    min-width: 0;
   `,
   placeholder: css`
     padding-top: 100px;
@@ -312,30 +294,46 @@ function MessageContent({ content, status }: { content: string; status?: 'updati
 }
 
 // ==================== 消息类型 ====================
-interface UiMsg { id: string; role: 'user' | 'assistant'; content: string; status?: 'updating' | 'done' | 'error'; }
+interface FileAttachment { name: string; size: number; type: string; src?: string; }
+interface ThinkingStep { title: string; description: string; status: 'pending' | 'loading' | 'success' | 'error'; }
+interface UiMsg { id: string; role: 'user' | 'assistant'; content: string; status?: 'updating' | 'done' | 'error'; file?: FileAttachment; thinking?: ThinkingStep[]; }
 
 // ==================== 单条消息 ====================
 const ChatMessage = memo(function ChatMessage({ msg }: { msg: UiMsg }) {
   const { styles } = useStyle();
   const isUser = msg.role === 'user';
+
+  const thoughtItems: ThoughtChainProps['items'] = msg.thinking?.map(s => ({
+    title: s.title,
+    description: s.description,
+    status: s.status,
+  })) || [
+    { title: '分析需求', description: 'AI 正在理解你的问题...', status: msg.status === 'updating' && !msg.content ? 'loading' : 'success' },
+    { title: '生成回复', description: '正在生成回答...', status: msg.status === 'updating' && !!msg.content ? 'loading' : msg.status === 'done' ? 'success' : 'pending' },
+    { title: '完成', description: '回答已完成', status: msg.status === 'done' ? 'success' : 'pending' },
+  ];
+
   return (
     <div className={`${styles.msgRow} ${isUser ? styles.msgUser : styles.msgAi}`}>
       {isUser ? (
-        <div className={styles.msgBubbleUser}>{msg.content}</div>
+        <Flex vertical align="flex-end" gap={8}>
+          {msg.file && (
+            <FileCard
+              name={msg.file.name}
+              byte={msg.file.size}
+              src={msg.file.src}
+              type={msg.file.type?.startsWith('image/') ? 'image' : 'file'}
+              styles={msg.file.type?.startsWith('image/') ? { file: { width: 200, height: 200 } } : { file: { width: 280 } }}
+            />
+          )}
+          {msg.content && <div className={styles.msgBubbleUser}>{msg.content}</div>}
+        </Flex>
       ) : (
         <div className={styles.msgText}>
-          {msg.status === 'updating' && !msg.content ? (
-            <Think
-              title="思考中..."
-              blink
-              loading
-              icon={<SyncOutlined style={{ fontSize: 14, animation: 'spin 1s linear infinite' }} />}
-            >
-              AI 正在分析你的需求...
-            </Think>
-          ) : (
-            <MessageContent content={msg.content} status={msg.status} />
+          {msg.status === 'updating' && (
+            <ThoughtChain items={thoughtItems} style={{ marginBottom: 12 }} />
           )}
+          {msg.content && <MessageContent content={msg.content} status={msg.status} />}
         </div>
       )}
     </div>
@@ -526,28 +524,59 @@ export default function AiWorkbench() {
   }, []);
 
   // ---- 发送消息 (SSE 流式) ----
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (content: string, file?: FileAttachment, ocrContext?: string) => {
     const val = content.trim();
-    if (!val || isRequesting) return;
+    if (!val && !file) return;
+    if (isRequesting) return;
     setInputValue('');
 
     let convId = activeKeyRef.current;
     if (!convId) {
-      const created = await createAiConversation(val.slice(0, 20));
+      const title = val ? val.slice(0, 20) : (file?.name || '新对话');
+      const created = await createAiConversation(title);
       convId = String(created?.id || `c_${Date.now()}`);
-      setConversations(prev => [{ key: convId!, label: val.slice(0, 20), group: '今天' }, ...prev]);
+      setConversations(prev => [{ key: convId!, label: title, group: '今天' }, ...prev]);
       activeKeyRef.current = convId;
       setActiveKey(convId);
     }
 
-    const userMsg: UiMsg = { id: `u_${Date.now()}`, role: 'user', content: val, status: 'done' };
+    const userMsg: UiMsg = { id: `u_${Date.now()}`, role: 'user', content: val, status: 'done', file };
     const aiId = `a_${Date.now()}`;
-    const aiMsg: UiMsg = { id: aiId, role: 'assistant', content: '', status: 'updating' };
+
+    // 构建思考步骤
+    const thinkingSteps: ThinkingStep[] = [];
+    if (file) {
+      thinkingSteps.push({ title: '图片识别', description: `正在识别 ${file.name}...`, status: 'loading' });
+      thinkingSteps.push({ title: '分析内容', description: '正在分析识别结果...', status: 'pending' });
+      thinkingSteps.push({ title: '生成回复', description: '正在生成回答...', status: 'pending' });
+    } else {
+      thinkingSteps.push({ title: '分析需求', description: 'AI 正在理解你的问题...', status: 'loading' });
+      thinkingSteps.push({ title: '生成回复', description: '正在生成回答...', status: 'pending' });
+    }
+
+    const aiMsg: UiMsg = { id: aiId, role: 'assistant', content: '', status: 'updating', thinking: thinkingSteps };
     setMessages(prev => [...prev, userMsg, aiMsg]);
     setIsRequesting(true);
 
     const ctrl = new AbortController(); abortRef.current = ctrl;
     let full = '';
+
+    // 如果有文件且已有 OCR 结果，更新思考步骤
+    if (file && ocrContext) {
+      setMessages(prev => prev.map(m => m.id === aiId ? {
+        ...m,
+        thinking: [
+          { title: '图片识别', description: '识别完成', status: 'success' },
+          { title: '分析内容', description: '正在分析识别结果...', status: 'loading' },
+          { title: '生成回复', description: '正在生成回答...', status: 'pending' },
+        ],
+      } : m));
+    }
+
+    // 构建最终用户消息（包含 OCR 上下文）
+    const finalContent = ocrContext
+      ? `[用户上传了文件 "${file?.name}"，识别结果如下]\n\n${ocrContext}\n\n${val || '请根据以上内容回答。'}`
+      : val;
 
     try {
       const res = await fetch('/api/ai/chat/completions', {
@@ -556,7 +585,7 @@ export default function AiWorkbench() {
         body: JSON.stringify({
           messages: [
             ...messages.filter(m => m.role === 'user' || m.role === 'assistant'),
-            { role: 'user', content: val },
+            { role: 'user', content: finalContent },
           ].map(m => ({ role: m.role, content: m.content })),
           model: selectedModelRef.current || undefined,
           stream: true,
@@ -570,6 +599,7 @@ export default function AiWorkbench() {
 
       const dec = new TextDecoder();
       let buf = ''; 
+      let firstChunk = true;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -581,28 +611,39 @@ export default function AiWorkbench() {
           if (!d || d === '[DONE]') continue;
           try {
             const parsed = JSON.parse(d);
-            // 检查是否有错误
             if (parsed.error) {
               throw new Error(parsed.error.message || 'AI 服务异常');
             }
             const chunk = parsed.choices?.[0]?.delta?.content;
             if (chunk) {
+              // 第一个 token 到达，更新思考步骤
+              if (firstChunk) {
+                firstChunk = false;
+                setMessages(prev => prev.map(m => m.id === aiId ? {
+                  ...m,
+                  thinking: m.thinking?.map((s, i) => ({
+                    ...s,
+                    status: i < m.thinking!.length - 1 ? 'success' : 'loading',
+                  })),
+                } : m));
+              }
               full += chunk;
               setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: full, status: 'updating' } : m));
             }
           } catch (e: any) {
-            // JSON parse error — might be partial chunk, ignore
             if (e.message && !e.message.includes('JSON')) {
-              throw e; // re-throw real errors
+              throw e;
             }
           }
         }
       }
 
-      setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: full, status: 'done' } : m));
+      setMessages(prev => prev.map(m => m.id === aiId ? {
+        ...m, content: full, status: 'done',
+        thinking: m.thinking?.map(s => ({ ...s, status: 'success' as const })),
+      } : m));
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        // 用户主动停止：将已有内容标记为 done，如果没有任何内容则移除 AI 消息
         if (!full) {
           setMessages(prev => prev.filter(m => m.id !== aiId));
         } else {
@@ -642,64 +683,6 @@ export default function AiWorkbench() {
             activeKey={activeKey}
             onActiveChange={handleActiveChange}
           />
-          <div className={styles.sidebarFooter}>
-            {/* 模型选择 */}
-            {selectedModel && modelOptions.length > 0 && (
-              <Select
-                size="small"
-                value={selectedModel}
-                loading={modelLoading}
-                onChange={handleModelChange}
-                suffixIcon={<DownOutlined />}
-                style={{ width: '100%', fontSize: 12 }}
-                popupMatchSelectWidth={false}
-                optionLabelProp="label"
-              >
-                {modelOptions.map(opt => (
-                  <Select.Option key={opt.value} value={opt.value} label={opt.label}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Tag
-                        color={opt.modelType === 'local' ? 'green' : 'blue'}
-                        style={{ fontSize: 10, lineHeight: '16px', margin: 0 }}
-                      >
-                        {opt.modelType === 'local' ? '本地' : 'API'}
-                      </Tag>
-                      <span>{opt.label}</span>
-                    </span>
-                  </Select.Option>
-                ))}
-              </Select>
-            )}
-            {/* 文件上传 */}
-            <Upload
-              accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.ppt,.pptx"
-              showUploadList={false}
-              beforeUpload={async (file) => {
-                const fileName = file.name || '未知文件';
-                const ocrText = await doOCR(file);
-                if (ocrText) {
-                  const isImage = file.type?.startsWith('image/');
-                  const prompt = isImage
-                    ? `[用户上传了图片 "${fileName}"，识别结果如下]\n\n${ocrText}\n\n请根据以上识别结果回答用户的问题。`
-                    : `[用户上传了文件 "${fileName}"，内容如下]\n\n${ocrText}\n\n请根据以上内容回答用户的问题。`;
-                  sendMessage(inputValue ? `${inputValue}\n\n${prompt}` : prompt);
-                } else {
-                  message.warning(`未从文件 "${fileName}" 中识别到内容`);
-                }
-                return false;
-              }}
-            >
-              <Button
-                block
-                size="small"
-                icon={<PictureOutlined />}
-                loading={ocrLoading}
-                style={{ fontSize: 12 }}
-              >
-                上传文件识别
-              </Button>
-            </Upload>
-          </div>
         </aside>
 
         {/* 重命名弹窗 */}
@@ -795,17 +778,106 @@ export default function AiWorkbench() {
           </div>
           <div className={styles.inputDock}>
             <div className={`${styles.chatInputBox} ai-chat-input-box`}>
-              <div className={styles.inputMain}>
-                <Sender
-                  value={inputValue}
-                  onChange={setInputValue}
-                  onSubmit={() => sendMessage(inputValue)}
-                  onCancel={() => { abortRef.current?.abort(); setIsRequesting(false); }}
-                  loading={isRequesting}
-                  placeholder={t.askOrInputUseSkills}
-                  style={{ border: 'none', boxShadow: 'none', background: 'transparent' }}
-                />
-              </div>
+              <Sender
+                value={inputValue}
+                onChange={setInputValue}
+                onSubmit={() => sendMessage(inputValue)}
+                onCancel={() => { abortRef.current?.abort(); setIsRequesting(false); }}
+                loading={isRequesting}
+                placeholder={t.askOrInputUseSkills}
+                style={{ border: 'none', boxShadow: 'none', background: 'transparent', flex: 1 }}
+                suffix={false}
+                footer={(actionNode) => {
+                  const Switch = Sender.Switch;
+                  const modelItems: MenuProps['items'] = modelOptions.map(opt => ({
+                    key: opt.value,
+                    icon: <Tag color={opt.modelType === 'local' ? 'green' : 'blue'} style={{ fontSize: 10, lineHeight: '16px', margin: 0, marginRight: 4 }}>{opt.modelType === 'local' ? '本地' : 'API'}</Tag>,
+                    label: opt.label,
+                  }));
+                  const currentModel = modelOptions.find(o => o.value === selectedModel);
+                  return (
+                    <Flex justify="space-between" align="center">
+                      <Flex gap="small" align="center">
+                        {/* 模型选择 Dropdown */}
+                        {modelOptions.length > 0 && (
+                          <Dropdown
+                            menu={{
+                              selectedKeys: [selectedModel],
+                              onClick: ({ key }) => handleModelChange(key),
+                              items: modelItems,
+                            }}
+                          >
+                            <Switch
+                              value={false}
+                              icon={<RobotOutlined />}
+                            >
+                              {currentModel?.label || '选择模型'}
+                            </Switch>
+                          </Dropdown>
+                        )}
+                        {/* 文件上传 Dropdown */}
+                        <Dropdown
+                          menu={{
+                            items: [
+                              {
+                                key: 'image',
+                                icon: <PictureOutlined />,
+                                label: '图片',
+                                onClick: () => document.getElementById('ai-file-upload')?.click(),
+                              },
+                              {
+                                key: 'document',
+                                icon: <PaperClipOutlined />,
+                                label: '文档',
+                                onClick: () => document.getElementById('ai-file-upload')?.click(),
+                              },
+                            ],
+                          }}
+                        >
+                          <Switch
+                            value={false}
+                            icon={<PaperClipOutlined />}
+                            loading={ocrLoading}
+                          >
+                            文件识别
+                          </Switch>
+                        </Dropdown>
+                        <Upload
+                          id="ai-file-upload"
+                          accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.ppt,.pptx"
+                          showUploadList={false}
+                          style={{ display: 'none' }}
+                          beforeUpload={async (file) => {
+                            const fileName = file.name || '未知文件';
+                            const isImage = file.type?.startsWith('image/');
+                            const fileAttachment: FileAttachment = {
+                              name: fileName,
+                              size: file.size || 0,
+                              type: file.type || '',
+                              src: isImage ? URL.createObjectURL(file) : undefined,
+                            };
+                            const ocrText = await doOCR(file);
+                            if (ocrText) {
+                              // OCR 结果作为 AI 思考的上下文，不写入用户消息
+                              sendMessage(inputValue || '请识别并分析图片内容', fileAttachment, ocrText);
+                            } else {
+                              message.warning(`未从文件 "${fileName}" 中识别到内容`);
+                            }
+                            return false;
+                          }}
+                        >
+                          <span />
+                        </Upload>
+                      </Flex>
+                      <Flex align="center">
+                        <Divider type="vertical" />
+                        {actionNode}
+                      </Flex>
+                    </Flex>
+                  );
+                }}
+                autoSize={{ minRows: 2, maxRows: 6 }}
+              />
             </div>
           </div>
         </main>

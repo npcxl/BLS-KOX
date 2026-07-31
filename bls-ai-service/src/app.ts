@@ -30,7 +30,7 @@ export function createApp(): Koa {
   app.use(errorHandler);
   app.use(helmet());
   app.use(cors({ origin: '*' }));
-  app.use(bodyParser({ enableTypes: ['json'] }));
+  app.use(bodyParser({ enableTypes: ['json'], jsonLimit: '50mb' }));
 
   // 请求上下文（requestId / traceId）
   app.use(requestContextMiddleware);
