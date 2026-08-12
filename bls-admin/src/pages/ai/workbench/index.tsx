@@ -314,7 +314,8 @@ const ChatMessage = memo(function ChatMessage({ msg }: { msg: UiMsg }) {
   const thoughtItems: ThoughtChainProps['items'] = msg.thinking?.map(s => ({
     title: s.title,
     description: s.description,
-    status: (s.status === 'pending' ? 'loading' : s.status) as 'error' | 'success' | 'loading' | 'abort',
+    // 仅 loading → loading；pending / success / error 保持原样（pending 不转 loading，避免同时出现两个旋转图标）
+    status: (s.status === 'loading' ? 'loading' : s.status === 'pending' ? 'success' : s.status) as 'error' | 'success' | 'loading' | 'abort',
   })) || [
     {
       title: '分析需求',
@@ -324,7 +325,6 @@ const ChatMessage = memo(function ChatMessage({ msg }: { msg: UiMsg }) {
     {
       title: '生成回复',
       description: isGenerating ? '正在生成回答...' : (isDone ? '已生成回答' : '等待开始'),
-      // 分析完成后才会进入生成阶段。generating 时 loading；其他情况全部 success（视觉上已对勾，不再旋转）
       status: (isError ? 'error' : isGenerating ? 'loading' : 'success') as 'error' | 'success' | 'loading' | 'abort',
     },
     {
@@ -563,7 +563,7 @@ export default function AiWorkbench() {
     const aiId = `a_${Date.now()}`;
     const thinkingSteps: ThinkingStep[] = [
       { title: '分析需求', description: 'AI 正在理解你的问题...', status: 'loading' },
-      { title: '生成回复', description: '正在生成回答...', status: 'pending' },
+      { title: '生成回复', description: '即将生成回答...', status: 'pending' },
     ];
     const aiMsg: UiMsg = { id: aiId, role: 'assistant', content: '', status: 'updating', thinking: thinkingSteps };
     setMessages(prev => [...prev, userMsg, aiMsg]);
