@@ -35,8 +35,7 @@ function flattenDepts(nodes: DeptRecord[]): DeptRecord[] {
 
 export default function DeptPage() {
   const { valueEnum: statusValueEnum } = useDict('sys_status');
-
-  useMemo(() => mapValueEnum(statusValueEnum), [statusValueEnum]);
+  const statusOptions = useMemo(() => Object.entries(statusValueEnum).map(([k, v]) => ({ label: v.text, value: k })), [statusValueEnum]);
 
   const [deptTree, setDeptTree] = useState<DeptRecord[]>([]);
   const [selectedDeptId, setSelectedDeptId] = useState<string>('');
@@ -89,7 +88,10 @@ export default function DeptPage() {
     { title: '手机', dataIndex: 'phone', key: 'phone' },
     {
       title: '状态', dataIndex: 'status', key: 'status', width: 60,
-      render: (v: string) => v === '0' ? <Tag color="green">启用</Tag> : <Tag color="red">停用</Tag>,
+      render: (v: string) => {
+        const item = statusValueEnum[v];
+        return item ? <Tag color={v === '0' ? 'green' : 'red'}>{item.text}</Tag> : '-';
+      },
     },
   ];
 
@@ -147,7 +149,10 @@ export default function DeptPage() {
                 { title: '部门名称', dataIndex: 'deptName', key: 'deptName', ellipsis: true },
                 {
                   title: '状态', dataIndex: 'status', key: 'status', width: 56,
-                  render: (v: string) => v === '0' ? <Tag color="green">启用</Tag> : <Tag color="red">停用</Tag>,
+                  render: (v: string) => {
+                    const item = statusValueEnum[v];
+                    return item ? <Tag color={v === '0' ? 'green' : 'red'}>{item.text}</Tag> : '-';
+                  },
                 },
                 {
                   title: '操作', key: 'action', width: 120,
@@ -215,7 +220,7 @@ export default function DeptPage() {
                 <InputNumber min={0} style={{ width: '100%' }} />
               </Form.Item>
               <Form.Item name="status" label="状态" initialValue="0">
-                <Select options={[{ label: '启用', value: '0' }, { label: '停用', value: '1' }]} />
+                <Select options={statusOptions} />
               </Form.Item>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <Button onClick={() => setModalOpen(false)}>取消</Button>

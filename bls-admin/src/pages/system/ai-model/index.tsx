@@ -1,6 +1,7 @@
 import type { ProFormColumnsType } from '@ant-design/pro-components';
 import CrudTablePage from '@/components/CrudTablePage';
 import { usePermission } from '@/hooks/usePermission';
+import { useMultiDict } from '@/hooks/useDict';
 import { Tag } from 'antd';
 import { CloudOutlined, DesktopOutlined } from '@ant-design/icons';
 
@@ -35,6 +36,9 @@ const isDefaultEnum = { '0': '否', '1': '是' };
 
 export default function AiModelConfigPage() {
   const { can } = usePermission();
+  const { sys_status, sys_yes_no } = useMultiDict(['sys_status', 'sys_yes_no']) as any;
+  const statusFormEnum = Object.fromEntries(Object.entries(sys_status?.valueEnum ?? {}).map(([k, v]: [string, any]) => [k, v.text]));
+  const yesNoFormEnum = Object.fromEntries(Object.entries(sys_yes_no?.valueEnum ?? {}).map(([k, v]: [string, any]) => [k, v.text]));
 
   const formColumns: ProFormColumnsType<AiModelRecord>[] = [
     {
@@ -104,14 +108,14 @@ export default function AiModelConfigPage() {
       dataIndex: 'isDefault',
       valueType: 'select',
       initialValue: '0',
-      valueEnum: isDefaultEnum,
+      valueEnum: yesNoFormEnum,
     },
     {
       title: '状态',
       dataIndex: 'status',
       valueType: 'select',
       initialValue: '0',
-      valueEnum: statusEnum,
+      valueEnum: statusFormEnum,
     },
     {
       title: '排序',
@@ -196,7 +200,7 @@ export default function AiModelConfigPage() {
           width: 70,
           render: (_: any, r: AiModelRecord) => (
             <Tag color={r.status === '0' ? 'success' : 'default'}>
-              {statusEnum[r.status]}
+              {sys_status?.valueEnum?.[r.status]?.text ?? r.status}
             </Tag>
           ),
         },

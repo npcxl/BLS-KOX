@@ -37,9 +37,10 @@ export default function WebhookPage() {
   const canTest = can('system:webhook:test');
   const canLogs = can('system:webhook:logs');
 
-  // 字典 — status 字段用 sys_status (0=正常,1=停用)
-  const multiDict = useMultiDict(['sys_status']) as any;
+  // 字典 — status 字段用 sys_status (0=正常,1=停用)，投递状态用 sys_upload_status
+  const multiDict = useMultiDict(['sys_status', 'sys_upload_status']) as any;
   const statusEnum = (multiDict?.sys_status?.valueEnum ?? {}) as Record<string, { text: string; color?: string }>;
+  const deliveryStatusEnum = (multiDict?.sys_upload_status?.valueEnum ?? {}) as Record<string, { text: string; color?: string }>;
 
   // 动态列配置
   const { proColumns, loading: columnsLoading, dictValueEnums } = usePageConfig('system:webhook:list') as any;
@@ -132,7 +133,11 @@ export default function WebhookPage() {
     { title: '事件', dataIndex: 'event', width: 120 },
     {
       title: '状态', dataIndex: 'status', width: 80,
-      render: (_: any, r: any) => r.status === 'success' ? <Tag color="green">成功</Tag> : <Tag color="red">失败</Tag>,
+      render: (_: any, r: any) => {
+        const item = deliveryStatusEnum[r.status];
+        if (item) return <Tag color={item.color || (r.status === 'success' ? 'green' : 'red')}>{item.text}</Tag>;
+        return r.status === 'success' ? <Tag color="green">成功</Tag> : <Tag color="red">失败</Tag>;
+      },
     },
     { title: '响应码', dataIndex: 'responseCode', width: 80 },
     { title: '错误', dataIndex: 'errorMessage', ellipsis: true, width: 200 },

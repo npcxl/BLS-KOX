@@ -4,6 +4,7 @@ import { BarChartOutlined, DollarOutlined, ThunderboltOutlined, ApiOutlined } fr
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { request } from '@umijs/max';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
+import { useDict } from '@/hooks/useDict';
 
 interface UsageStats {
   today: { count: number; totalTokens: number; totalCost: number; avgElapsedMs: number };
@@ -36,6 +37,7 @@ const formatTokens = (v: number) => {
 const formatCost = (v: number | string) => `$${Number(v).toFixed(4)}`;
 
 export default function AiUsagePage() {
+  const { valueEnum: uploadStatusValueEnum } = useDict('sys_upload_status');
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [days, setDays] = useState(7);
@@ -62,7 +64,7 @@ export default function AiUsagePage() {
     { title: '耗时', dataIndex: 'elapsedMs', width: 80, search: false, render: (_, r) => `${r.elapsedMs}ms` },
     {
       title: '状态', dataIndex: 'success', width: 70, search: false,
-      valueEnum: { 1: { text: '成功', status: 'Success' }, 0: { text: '失败', status: 'Error' } },
+      valueEnum: { 1: { text: uploadStatusValueEnum['1']?.text || '成功', status: 'Success' as const }, 0: { text: uploadStatusValueEnum['0']?.text || '失败', status: 'Error' as const } },
     },
   ], []);
 

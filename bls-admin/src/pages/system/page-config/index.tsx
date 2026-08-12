@@ -4,6 +4,7 @@ import { Button, Empty, Form, Input, InputNumber, Layout, message, Popconfirm, S
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getPageColumnConfig, getPageConfig, listPageConfigs, savePageConfig, type PageColumnConfigRecord, type PageConfigRecord } from "@/services/system/page-config";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useDict } from "@/hooks/useDict";
 
 const { Sider, Content } = Layout;
 const { Text } = Typography;
@@ -69,6 +70,7 @@ function DebouncedNumber(props: {
 }
 
 export default function PageConfigPage() {
+  const { valueEnum: statusValueEnum } = useDict('sys_status');
   const [pageList, setPageList] = useState<PageConfigRecord[]>([]);
   const [selectedCode, setSelectedCode] = useState<string>("system_user");
   const [selectedPage, setSelectedPage] = useState<PageConfigRecord | null>(null);
@@ -400,9 +402,9 @@ export default function PageConfigPage() {
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <Text strong={active} style={{ fontSize: 13 }}>{item.pageName}</Text>
                     {!!item.enabled ? (
-                      <Tag color="green" style={{ marginRight: 0, fontSize: 10, lineHeight: "18px", padding: "0 4px" }}>启用</Tag>
+                      <Tag color="green" style={{ marginRight: 0, fontSize: 10, lineHeight: "18px", padding: "0 4px" }}>{statusValueEnum['0']?.text || '启用'}</Tag>
                     ) : (
-                      <Tag style={{ marginRight: 0, fontSize: 10, lineHeight: "18px", padding: "0 4px" }}>停用</Tag>
+                      <Tag style={{ marginRight: 0, fontSize: 10, lineHeight: "18px", padding: "0 4px" }}>{statusValueEnum['1']?.text || '停用'}</Tag>
                     )}
                   </div>
                   <div style={{ fontSize: 11, color: "#8c8c8c", marginTop: 2 }}>
