@@ -57,7 +57,7 @@ describe('File Security', () => {
   it('common 通过', () => expect(validateUploadMeta('common','private').valid).toBe(true));
   it('../common 拒绝', () => { const r=validateUploadMeta('../common','private'); expect(r.valid).toBe(false); expect(r.reason).toContain('非法字符'); });
   it('spaces 拒绝', () => expect(validateUploadMeta('a b','private').valid).toBe(false));
-  it('root 拒绝', () => expect(validateUploadMeta('root','private').valid).toBe(false));
+  it('root 通过 (合法模块名，不再硬编码白名单)', () => expect(validateUploadMeta('root','private').valid).toBe(true));
   it('empty 拒绝', () => expect(validateUploadMeta('','private').valid).toBe(false));
   it('accessType=admin 拒绝', () => expect(validateUploadMeta('common','admin').valid).toBe(false));
 

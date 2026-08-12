@@ -85,9 +85,11 @@ describe('verifyCallbackSignature', () => {
     expect(verifyCallbackSignature(String(Date.now()), 'n', '{}', 'x').valid).toBe(false);
   });
   it('过期时间戳', () => {
+    process.env.RELEASE_CALLBACK_SECRET = 'test-secret';
     const r = verifyCallbackSignature(String(Date.now() - 10 * 60 * 1000), 'n', '{}', 'x');
     expect(r.valid).toBe(false);
     expect(r.error).toContain('时间戳');
+    delete process.env.RELEASE_CALLBACK_SECRET;
   });
   it('未来时间戳', () => {
     const r = verifyCallbackSignature(String(Date.now() + 10 * 60 * 1000), 'n', '{}', 'x');
