@@ -3,7 +3,9 @@ import { getRedisClient } from '../../../shared/utils/redis';
 import { logger } from '../../../core/logger';
 import { CALLBACK_TIME_WINDOW_MS, RELEASE_NONCE_PREFIX } from './release.constants';
 
-const CALLBACK_SECRET = process.env.RELEASE_CALLBACK_SECRET || '';
+function getCallbackSecret(): string {
+  return process.env.RELEASE_CALLBACK_SECRET || '';
+}
 
 /**
  * 验证回调请求签名
@@ -17,7 +19,8 @@ export function verifyCallbackSignature(
   body: string,
   signature: string,
 ): { valid: boolean; error?: string } {
-  if (!CALLBACK_SECRET) {
+  const secret = getCallbackSecret();
+  if (!secret) {
     return { valid: false, error: 'RELEASE_CALLBACK_SECRET 未配置' };
   }
 
@@ -30,7 +33,7 @@ export function verifyCallbackSignature(
 
   // 2. 计算期望签名 — 使用 createHmac（标准 HMAC-SHA256）
   const payload = `${timestamp}\n${nonce}\n${body}`;
-  const expected = createHmac('sha256', CALLBACK_SECRET)
+  const expected = createHmac('sha256', secret)
     .update(payload)
     .digest('hex');
 
