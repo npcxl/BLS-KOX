@@ -1,9 +1,9 @@
 import type { Settings as LayoutSettings } from '@ant-design/pro-components';
 
-let refreshSettingsHandler: (() => Promise<Partial<LayoutSettings>>) | undefined;
+let refreshSettingsHandler: (() => Promise<any>) | undefined;
 
 export function setRefreshGlobalSettingsHandler(
-  handler?: () => Promise<Partial<LayoutSettings>>,
+  handler?: () => Promise<any>,
 ) {
   refreshSettingsHandler = handler;
 }

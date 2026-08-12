@@ -295,8 +295,8 @@ function MessageContent({ content, status }: { content: string; status?: 'updati
 
 // ==================== 消息类型 ====================
 interface FileAttachment { name: string; size: number; type: string; src?: string; }
-interface ThinkingStep { title: string; description: string; status: 'pending' | 'loading' | 'success' | 'error'; }
-interface UiMsg { id: string; role: 'user' | 'assistant'; content: string; status?: 'updating' | 'done' | 'error'; file?: FileAttachment; thinking?: ThinkingStep[]; }
+interface ThinkingStep { title: string; description: string; status: 'pending' | 'loading' | 'success' | 'error' | 'abort'; }
+interface UiMsg { id: string; role: 'user' | 'assistant' | 'system'; content: string; status?: 'updating' | 'done' | 'error'; file?: FileAttachment; thinking?: ThinkingStep[]; }
 
 // ==================== 单条消息 ====================
 const ChatMessage = memo(function ChatMessage({ msg }: { msg: UiMsg }) {
@@ -306,11 +306,11 @@ const ChatMessage = memo(function ChatMessage({ msg }: { msg: UiMsg }) {
   const thoughtItems: ThoughtChainProps['items'] = msg.thinking?.map(s => ({
     title: s.title,
     description: s.description,
-    status: s.status,
+    status: (s.status === 'pending' ? 'loading' : s.status) as 'error' | 'success' | 'loading' | 'abort',
   })) || [
-    { title: '分析需求', description: 'AI 正在理解你的问题...', status: msg.status === 'updating' && !msg.content ? 'loading' : 'success' },
-    { title: '生成回复', description: '正在生成回答...', status: msg.status === 'updating' && !!msg.content ? 'loading' : msg.status === 'done' ? 'success' : 'pending' },
-    { title: '完成', description: '回答已完成', status: msg.status === 'done' ? 'success' : 'pending' },
+    { title: '分析需求', description: 'AI 正在理解你的问题...', status: (msg.status === 'updating' && !msg.content ? 'loading' : 'success') as 'error' | 'success' | 'loading' | 'abort' },
+    { title: '生成回复', description: '正在生成回答...', status: (msg.status === 'updating' && !!msg.content ? 'loading' : msg.status === 'done' ? 'success' : 'loading') as 'error' | 'success' | 'loading' | 'abort' },
+    { title: '完成', description: '回答已完成', status: (msg.status === 'done' ? 'success' : 'loading') as 'error' | 'success' | 'loading' | 'abort' },
   ];
 
   return (
@@ -383,7 +383,7 @@ export default function AiWorkbench() {
       setConversations(items);
 
       if (modelsRes.models.length > 0) {
-        setModelOptions(modelsRes.models);
+        setModelOptions(modelsRes.models.map(m => ({ ...m, modelType: '', provider: modelsRes.provider })));
         const initialModel = modelsRes.currentModel || modelsRes.models[0]?.value || '';
         setSelectedModel(initialModel);
         selectedModelRef.current = initialModel;
@@ -394,7 +394,7 @@ export default function AiWorkbench() {
         activeKeyRef.current = firstKey;
         setActiveKey(firstKey);
         const history = await getAiConversationMessages(firstKey);
-        setMessages(history.map(m => ({ ...m, status: 'done' as const })));
+        setMessages(history.map(m => ({ ...m, status: 'done' as const, role: (m.role === 'system' ? 'assistant' : m.role) as UiMsg['role'] })));
       }
     })();
   }, []);
@@ -412,7 +412,7 @@ export default function AiWorkbench() {
     setMessages([]);
     try {
       const history = await getAiConversationMessages(nextKey);
-      if (activeKeyRef.current === nextKey) setMessages(history.map(m => ({ ...m, status: 'done' as const })));
+      if (activeKeyRef.current === nextKey) setMessages(history.map(m => ({ ...m, status: 'done' as const, role: (m.role === 'system' ? 'assistant' : m.role) as UiMsg['role'] })));
     } finally {
       if (activeKeyRef.current === nextKey) setLoadingMsgs(false);
     }
@@ -524,59 +524,32 @@ export default function AiWorkbench() {
   }, []);
 
   // ---- 发送消息 (SSE 流式) ----
-  const sendMessage = useCallback(async (content: string, file?: FileAttachment, ocrContext?: string) => {
+  const sendMessage = useCallback(async (content: string) => {
     const val = content.trim();
-    if (!val && !file) return;
-    if (isRequesting) return;
+    if (!val || isRequesting) return;
     setInputValue('');
 
     let convId = activeKeyRef.current;
     if (!convId) {
-      const title = val ? val.slice(0, 20) : (file?.name || '新对话');
-      const created = await createAiConversation(title);
+      const created = await createAiConversation(val.slice(0, 20));
       convId = String(created?.id || `c_${Date.now()}`);
-      setConversations(prev => [{ key: convId!, label: title, group: '今天' }, ...prev]);
+      setConversations(prev => [{ key: convId!, label: val.slice(0, 20), group: '今天' }, ...prev]);
       activeKeyRef.current = convId;
       setActiveKey(convId);
     }
 
-    const userMsg: UiMsg = { id: `u_${Date.now()}`, role: 'user', content: val, status: 'done', file };
+    const userMsg: UiMsg = { id: `u_${Date.now()}`, role: 'user', content: val, status: 'done' };
     const aiId = `a_${Date.now()}`;
-
-    // 构建思考步骤
-    const thinkingSteps: ThinkingStep[] = [];
-    if (file) {
-      thinkingSteps.push({ title: '图片识别', description: `正在识别 ${file.name}...`, status: 'loading' });
-      thinkingSteps.push({ title: '分析内容', description: '正在分析识别结果...', status: 'pending' });
-      thinkingSteps.push({ title: '生成回复', description: '正在生成回答...', status: 'pending' });
-    } else {
-      thinkingSteps.push({ title: '分析需求', description: 'AI 正在理解你的问题...', status: 'loading' });
-      thinkingSteps.push({ title: '生成回复', description: '正在生成回答...', status: 'pending' });
-    }
-
+    const thinkingSteps: ThinkingStep[] = [
+      { title: '分析需求', description: 'AI 正在理解你的问题...', status: 'loading' },
+      { title: '生成回复', description: '正在生成回答...', status: 'pending' },
+    ];
     const aiMsg: UiMsg = { id: aiId, role: 'assistant', content: '', status: 'updating', thinking: thinkingSteps };
     setMessages(prev => [...prev, userMsg, aiMsg]);
     setIsRequesting(true);
 
     const ctrl = new AbortController(); abortRef.current = ctrl;
     let full = '';
-
-    // 如果有文件且已有 OCR 结果，更新思考步骤
-    if (file && ocrContext) {
-      setMessages(prev => prev.map(m => m.id === aiId ? {
-        ...m,
-        thinking: [
-          { title: '图片识别', description: '识别完成', status: 'success' },
-          { title: '分析内容', description: '正在分析识别结果...', status: 'loading' },
-          { title: '生成回复', description: '正在生成回答...', status: 'pending' },
-        ],
-      } : m));
-    }
-
-    // 构建最终用户消息（包含 OCR 上下文）
-    const finalContent = ocrContext
-      ? `[用户上传了文件 "${file?.name}"，识别结果如下]\n\n${ocrContext}\n\n${val || '请根据以上内容回答。'}`
-      : val;
 
     try {
       const res = await fetch('/api/ai/chat/completions', {
@@ -585,7 +558,7 @@ export default function AiWorkbench() {
         body: JSON.stringify({
           messages: [
             ...messages.filter(m => m.role === 'user' || m.role === 'assistant'),
-            { role: 'user', content: finalContent },
+            { role: 'user', content: val },
           ].map(m => ({ role: m.role, content: m.content })),
           model: selectedModelRef.current || undefined,
           stream: true,
@@ -848,6 +821,7 @@ export default function AiWorkbench() {
                           showUploadList={false}
                           style={{ display: 'none' }}
                           beforeUpload={async (file) => {
+                            if (isRequesting) return false;
                             const fileName = file.name || '未知文件';
                             const isImage = file.type?.startsWith('image/');
                             const fileAttachment: FileAttachment = {
@@ -856,12 +830,135 @@ export default function AiWorkbench() {
                               type: file.type || '',
                               src: isImage ? URL.createObjectURL(file) : undefined,
                             };
-                            const ocrText = await doOCR(file);
-                            if (ocrText) {
-                              // OCR 结果作为 AI 思考的上下文，不写入用户消息
-                              sendMessage(inputValue || '请识别并分析图片内容', fileAttachment, ocrText);
-                            } else {
+
+                            // 1. 先展示用户气泡（FileCard）+ AI 气泡（OCR 思考中）
+                            const userMsg: UiMsg = { id: `u_${Date.now()}`, role: 'user', content: inputValue, status: 'done', file: fileAttachment };
+                            const aiId = `a_${Date.now()}`;
+                            const aiMsg: UiMsg = {
+                              id: aiId, role: 'assistant', content: '', status: 'updating',
+                              thinking: [
+                                { title: '图片识别', description: `正在识别 ${fileName}...`, status: 'loading' },
+                                { title: '分析内容', description: '等待识别完成...', status: 'pending' },
+                                { title: '生成回复', description: '等待中...', status: 'pending' },
+                              ],
+                            };
+                            setInputValue('');
+                            setIsRequesting(true);
+                            setMessages(prev => [...prev, userMsg, aiMsg]);
+
+                            // 2. 做 OCR 识别
+                            let ocrText = '';
+                            try {
+                              ocrText = await doOCR(file);
+                            } catch {
+                              message.error('图片识别失败');
+                              setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: '[识别失败]', status: 'error', thinking: undefined } : m));
+                              setIsRequesting(false);
+                              return false;
+                            }
+
+                            if (!ocrText) {
                               message.warning(`未从文件 "${fileName}" 中识别到内容`);
+                              setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: '[未识别到内容]', status: 'error', thinking: undefined } : m));
+                              setIsRequesting(false);
+                              return false;
+                            }
+
+                            // 3. OCR 完成，更新思考步骤 → 开始对话
+                            setMessages(prev => prev.map(m => m.id === aiId ? {
+                              ...m,
+                              thinking: [
+                                { title: '图片识别', description: '识别完成', status: 'success' },
+                                { title: '分析内容', description: '正在分析识别结果...', status: 'loading' },
+                                { title: '生成回复', description: '正在生成回答...', status: 'pending' },
+                              ],
+                            } : m));
+
+                            // 4. 调用对话 API
+                            const ctrl = new AbortController(); abortRef.current = ctrl;
+                            let full = '';
+                            const finalContent = `[系统上下文：用户上传了文件 "${fileName}"，内容识别结果如下。请基于此内容回答用户问题，不要在回复中提到"识别结果"或"OCR"等字样，直接当作你看到的内容来回答。]\n\n${ocrText}\n\n---\n用户问题：${inputValue || '请分析以上内容'}`;
+
+                            try {
+                              const res = await fetch('/api/ai/chat/completions', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', Authorization: localStorage.getItem('token') || '' },
+                                body: JSON.stringify({
+                                  messages: [
+                                    ...messages.filter(m => m.role === 'user' || m.role === 'assistant'),
+                                    { role: 'user', content: finalContent },
+                                  ].map(m => ({ role: m.role, content: m.content })),
+                                  model: selectedModelRef.current || undefined,
+                                  stream: true,
+                                }),
+                                signal: ctrl.signal,
+                              });
+                              if (!res.ok) throw new Error(`请求失败(${res.status})`);
+
+                              const reader = res.body?.getReader();
+                              if (!reader) throw new Error('浏览器不支持流式响应');
+
+                              const dec = new TextDecoder();
+                              let buf = '';
+                              let firstChunk = true;
+                              while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                buf += dec.decode(value, { stream: true });
+                                const lines = buf.split('\n'); buf = lines.pop() || '';
+                                for (const line of lines) {
+                                  if (!line.startsWith('data: ')) continue;
+                                  const d = line.slice(6).trim();
+                                  if (!d || d === '[DONE]') continue;
+                                  try {
+                                    const parsed = JSON.parse(d);
+                                    if (parsed.error) throw new Error(parsed.error.message || 'AI 服务异常');
+                                    const chunk = parsed.choices?.[0]?.delta?.content;
+                                    if (chunk) {
+                                      if (firstChunk) {
+                                        firstChunk = false;
+                                        setMessages(prev => prev.map(m => m.id === aiId ? {
+                                          ...m,
+                                          thinking: m.thinking?.map((s, i) => ({
+                                            ...s,
+                                            status: i < m.thinking!.length - 1 ? 'success' : 'loading',
+                                          })),
+                                        } : m));
+                                      }
+                                      full += chunk;
+                                      setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: full, status: 'updating' } : m));
+                                    }
+                                  } catch (e: any) {
+                                    if (e.message && !e.message.includes('JSON')) throw e;
+                                  }
+                                }
+                              }
+
+                              setMessages(prev => prev.map(m => m.id === aiId ? {
+                                ...m, content: full, status: 'done',
+                                thinking: m.thinking?.map(s => ({ ...s, status: 'success' as const })),
+                              } : m));
+                            } catch (err: any) {
+                              if (err.name === 'AbortError') {
+                                if (full) {
+                                  setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: full, status: 'done', thinking: undefined } : m));
+                                } else {
+                                  setMessages(prev => prev.filter(m => m.id !== aiId));
+                                }
+                              } else {
+                                setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: `[错误] ${err.message}`, status: 'error', thinking: undefined } : m));
+                              }
+                            } finally {
+                              setIsRequesting(false);
+                              abortRef.current = null;
+                              // 保存到数据库
+                              const conv = conversations.find(c => c.key === activeKeyRef.current);
+                              const title = conv?.label === '新对话' ? fileName.slice(0, 30) : undefined;
+                              setConversations(prev => prev.map(c => c.key === activeKeyRef.current ? { ...c, label: title || c.label } : c));
+                              saveConversationMessages(activeKeyRef.current!, [
+                                { role: 'user', content: inputValue || `[上传了文件: ${fileName}]` },
+                                { role: 'assistant', content: full },
+                              ], title).catch(() => {});
                             }
                             return false;
                           }}

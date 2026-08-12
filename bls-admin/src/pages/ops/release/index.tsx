@@ -30,7 +30,7 @@ export default function OpsReleasePage() {
   const canLogs = can('ops:release:logs');
   const canServiceView = can('ops:service:view');
 
-  const actionRef = useRef<ActionType>();
+  const actionRef = useRef<ActionType>(null!);
   const [currentVer, setCurrentVer] = useState<CurrentVersion | null>(null);
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
   const [versions, setVersions] = useState<DeployableVersion[]>([]);

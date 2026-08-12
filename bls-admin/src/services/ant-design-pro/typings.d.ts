@@ -34,6 +34,8 @@ declare namespace API {
     name?: string;
     userid?: string;
     access?: string;
+    phone?: string;
+    email?: string;
   };
 
   type LoginResult = {
@@ -112,6 +114,8 @@ declare namespace API {
     title?: string;
     logo?: string | null;
     iconfontUrl?: string | null;
+    /** 嵌套数据（兼容某些接口返回 data.data 结构） */
+    data?: any;
   };
 
   type ErrorResponse = {

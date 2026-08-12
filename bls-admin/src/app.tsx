@@ -74,7 +74,7 @@ function mapBackendMenus(
       icon: resolveMenuIcon(item.icon),
       locale: false,
       children: item.children
-        ? mapBackendMenus(item.children, false)
+        ? mapBackendMenus(item.children, '')
         : undefined,
     }))
     .map((item) => {
@@ -203,6 +203,8 @@ type ThemeLayoutSettings = Partial<LayoutSettings> & {
   siderMenuType?: string;
   splitMenus?: boolean;
   locale?: boolean;
+  logo?: string | false;
+  token?: Record<string, unknown>;
 };
 
 type ThemeMeta = {
@@ -217,8 +219,8 @@ export async function getInitialState(): Promise<{
   loading?: boolean;
   fetchUserInfo?: () => Promise<API.CurrentUser | undefined>;
   refreshSettings?: () => Promise<{
-    theme: ThemeLayoutSettings;
-    themeMeta: ThemeMeta;
+    theme?: ThemeLayoutSettings;
+    themeMeta?: ThemeMeta;
   }>;
   settingDrawerOpen?: boolean;
   systemMap?: Record<string, string>;
@@ -247,8 +249,8 @@ export async function getInitialState(): Promise<{
       publicSystemConfig({ skipErrorMessage: true }),
     ]);
 
-    const theme = themeRes.data?.data ?? themeRes.data;
-    const systemList = systemRes.data?.data ?? systemRes.data ?? [];
+    const theme = (themeRes.data as any)?.data ?? themeRes.data;
+    const systemList = (systemRes.data as any)?.data ?? systemRes.data ?? [];
     const parsedTheme = parseThemeSettings(theme);
 
     return {
@@ -265,8 +267,8 @@ export async function getInitialState(): Promise<{
       systemCurrent(),
     ]);
 
-    const theme = themeRes.data?.data ?? themeRes.data;
-    const systemList = systemRes.data?.data ?? systemRes.data ?? [];
+    const theme = (themeRes.data as any)?.data ?? themeRes.data;
+    const systemList = (systemRes.data as any)?.data ?? systemRes.data ?? [];
     const parsedTheme = parseThemeSettings(theme);
     return {
       theme: parsedTheme.settings,
@@ -321,7 +323,7 @@ export async function getInitialState(): Promise<{
   if (isPublicRoute(location.pathname)) {
     const result = await fetchPublicSettings();
     const systemMap = result.systemMap;
-    const mergedSettings: ThemeLayoutSettings = {
+    const mergedSettings = {
       ...defaultSettings,
       ...result.theme,
       title: result.theme.title ?? systemMap["sys.app.name"] ?? defaultSettings.title,
@@ -334,7 +336,7 @@ export async function getInitialState(): Promise<{
     return {
       fetchUserInfo,
       refreshSettings,
-      settings: mergedSettings,
+      settings: mergedSettings as ThemeLayoutSettings,
       themeMeta: result.themeMeta,
       settingDrawerOpen: false,
       systemMap,
@@ -378,7 +380,7 @@ export async function getInitialState(): Promise<{
   }
 
   const systemMap = initialTheme.systemMap;
-    const mergedSettings: ThemeLayoutSettings = {
+    const mergedSettings = {
       ...defaultSettings,
       ...initialTheme.theme,
       title: initialTheme.theme.title ?? systemMap["sys.app.name"] ?? defaultSettings.title,
@@ -395,7 +397,7 @@ export async function getInitialState(): Promise<{
     fetchUserInfo,
     refreshSettings,
     currentUser,
-    settings: mergedSettings,
+    settings: mergedSettings as ThemeLayoutSettings,
     themeMeta: initialTheme.themeMeta,
     settingDrawerOpen: false,
     systemMap,
@@ -432,6 +434,7 @@ export const layout: RunTimeLayoutConfig = ({
 
   return {
     ...initialState?.settings,
+    locale: undefined as any,
       menuDataRender: () => {
         const dashboardTitle =
           initialState?.systemMap?.['sys.dashboard.name'] || '首页';
