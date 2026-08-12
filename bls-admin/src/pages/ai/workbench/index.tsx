@@ -303,14 +303,34 @@ const ChatMessage = memo(function ChatMessage({ msg }: { msg: UiMsg }) {
   const { styles } = useStyle();
   const isUser = msg.role === 'user';
 
+  // 串行思考步骤：仅当前一步 loading 时才显示 loading；前面步骤一定 success；后续步骤 pending(loading 占位)
+  const isUpdating = msg.status === 'updating';
+  const isError = msg.status === 'error';
+  const isDone = msg.status === 'done';
+  const hasContent = !!msg.content;
   const thoughtItems: ThoughtChainProps['items'] = msg.thinking?.map(s => ({
     title: s.title,
     description: s.description,
     status: (s.status === 'pending' ? 'loading' : s.status) as 'error' | 'success' | 'loading' | 'abort',
   })) || [
-    { title: '分析需求', description: 'AI 正在理解你的问题...', status: (msg.status === 'updating' && !msg.content ? 'loading' : 'success') as 'error' | 'success' | 'loading' | 'abort' },
-    { title: '生成回复', description: '正在生成回答...', status: (msg.status === 'updating' && !!msg.content ? 'loading' : msg.status === 'done' ? 'success' : 'loading') as 'error' | 'success' | 'loading' | 'abort' },
-    { title: '完成', description: '回答已完成', status: (msg.status === 'done' ? 'success' : 'loading') as 'error' | 'success' | 'loading' | 'abort' },
+    {
+      title: '分析需求',
+      description: 'AI 正在理解你的问题...',
+      // 仅当：updating 且还没开始生成内容（!hasContent）时才 loading；错误时 error；完成或已开始生成则 success
+      status: (isError && !hasContent ? 'error' : isUpdating && !hasContent ? 'loading' : 'success') as 'error' | 'success' | 'loading' | 'abort',
+    },
+    {
+      title: '生成回复',
+      description: '正在生成回答...',
+      // 分析完成后才会开始生成：updating 且 hasContent 时 loading；已 done → success；还未开始（updating 但 hasContent=false）→ 静默 pending
+      status: (isError && hasContent ? 'error' : isDone ? 'success' : isUpdating && hasContent ? 'loading' : 'pending') as 'error' | 'success' | 'loading' | 'abort',
+    },
+    {
+      title: '完成',
+      description: '回答已完成',
+      // 仅最终完成才 success
+      status: (isError && isDone ? 'error' : isDone ? 'success' : 'pending') as 'error' | 'success' | 'loading' | 'abort',
+    },
   ];
 
   return (
