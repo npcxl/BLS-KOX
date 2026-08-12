@@ -55,9 +55,34 @@ router.put('/edit', jwtAuth(), hasPerm('system:menu:edit'), async (ctx: Context)
 });
 router.delete('/remove', jwtAuth(), hasPerm('system:menu:remove'), async (ctx: Context) => {
   const db = (await getDb()) as any;
-  const ids = ((ctx.request.body as any)?.ids??[]).map(String);
-  await db.deleteFrom(T).where('menu_id','in',ids).execute();
-  ctx.body = { code: 200, message: '删除成功' };
+  const ids: string[] = ((ctx.request.body as any)?.ids ?? []).map(String);
+  if (!ids.length) { ctx.body = { code: 400, message: '请选择要删除的菜单' }; return; }
+
+  // 递归查找所有子菜单 ID
+  const allIds = new Set<string>(ids);
+  const queue = [...ids];
+  while (queue.length > 0) {
+    const parentId = queue.shift()!;
+    const children = await db.selectFrom(T)
+      .select('menu_id')
+      .where('parent_id', '=', parentId)
+      .execute() as { menu_id: string }[];
+    for (const child of children) {
+      const childId = String(child.menu_id);
+      if (!allIds.has(childId)) {
+        allIds.add(childId);
+        queue.push(childId);
+      }
+    }
+  }
+
+  const deleteIds = [...allIds];
+  // 删除角色-菜单关联
+  await db.deleteFrom('sys_role_menu').where('menu_id', 'in', deleteIds).execute();
+  // 删除菜单记录
+  await db.deleteFrom(T).where('menu_id', 'in', deleteIds).execute();
+
+  ctx.body = { code: 200, message: `删除成功，共删除 ${deleteIds.length} 条菜单` };
 });
 
 export default router;
