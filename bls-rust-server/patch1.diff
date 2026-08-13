@@ -1,0 +1,162 @@
+﻿*** Begin Patch
+*** Update File: C:\git-bls\BLS-KOX\bls-rust-server\Cargo.toml
+@@
+-axum = "0.8"
++axum = { version = "0.8", features = ["multipart", "ws"] }
+*** Update File: C:\git-bls\BLS-KOX\bls-rust-server\src\error.rs
+@@
+ impl AppError {
+@@
+ }
++
++impl From<sqlx::Error> for AppError {
++    fn from(value: sqlx::Error) -> Self {
++        Self::Internal(anyhow::Error::new(value))
++    }
++}
++
++impl From<redis::RedisError> for AppError {
++    fn from(value: redis::RedisError) -> Self {
++        Self::Internal(anyhow::Error::new(value))
++    }
++}
++
++impl From<serde_json::Error> for AppError {
++    fn from(value: serde_json::Error) -> Self {
++        Self::BadRequest(value.to_string())
++    }
++}
++
++impl From<std::io::Error> for AppError {
++    fn from(value: std::io::Error) -> Self {
++        Self::Internal(anyhow::Error::new(value))
++    }
++}
++
++impl From<reqwest::Error> for AppError {
++    fn from(value: reqwest::Error) -> Self {
++        Self::Internal(anyhow::Error::new(value))
++    }
++}
+*** Update File: C:\git-bls\BLS-KOX\bls-rust-server\src\lib.rs
+@@
+-use axum::Router;
++use axum::Router;
+@@
+-pub fn app(state: AppState) -> Router {
++pub fn app(state: AppState) -> Router<AppState> {
+*** Update File: C:\git-bls\BLS-KOX\bls-rust-server\src\auth\mod.rs
+@@
+-use axum::async_trait;
++use async_trait::async_trait;
+*** Update File: C:\git-bls\BLS-KOX\bls-rust-server\src\db\query.rs
+@@
+-use sqlx::Row;
+-use sqlx::mysql::{MySqlPool, MySqlRow};
++use sqlx::{Column, Row, Value};
++use sqlx::mysql::{MySql, MySqlPool, MySqlRow, MySqlValueRef};
+@@
+ fn value_ref_to_json(value: Result<sqlx::mysql::MySqlValueRef<'_>, sqlx::Error>) -> Value {
+-    use sqlx::ValueRef;
+-    match value {
+-        Ok(v) => match v {
+-            ValueRef::Null => Value::Null,
+-            ValueRef::Bool(b) => Value::Bool(b),
+-            ValueRef::Int(i) => Value::Number(i.into()),
+-            ValueRef::Float(f) => serde_json::json!(f),
+-            ValueRef::Double(d) => serde_json::json!(d),
+-            ValueRef::Bytes(bytes) => serde_json::from_slice(bytes)
+-                .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(bytes).into_owned())),
+-            ValueRef::String(s) => Value::String(s.to_owned()),
+-            ValueRef::Json(json) => serde_json::from_slice(json).unwrap_or(Value::Null),
+-        },
+-        Err(_) => Value::Null,
+-    }
++    let Ok(raw) = value else {
++        return Value::Null;
++    };
++    if raw.is_null() {
++        return Value::Null;
++    }
++
++    let type_name = raw.type_info().name().to_ascii_uppercase();
++    let owned = raw.to_owned();
++
++    if type_name == "JSON" {
++        return owned
++            .try_decode_unchecked::<Value>()
++            .unwrap_or(Value::Null);
++    }
++
++    let Some(text) = owned.try_decode_unchecked::<String>().ok() else {
++        return Value::Null;
++    };
++
++    match type_name.as_str() {
++        "BOOLEAN" => text
++            .parse::<i64>()
++            .ok()
++            .map(|n| Value::Bool(n != 0))
++            .unwrap_or_else(|| Value::String(text)),
++        "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "BIGINT" | "YEAR" => text
++            .parse::<i64>()
++            .ok()
++            .map(Value::from)
++            .unwrap_or_else(|| Value::String(text)),
++        "TINYINT UNSIGNED" | "SMALLINT UNSIGNED" | "MEDIUMINT UNSIGNED"
++        | "INT UNSIGNED" | "BIGINT UNSIGNED" => text
++            .parse::<u64>()
++            .ok()
++            .map(Value::from)
++            .unwrap_or_else(|| Value::String(text)),
++        "FLOAT" | "DOUBLE" | "DECIMAL" => text
++            .parse::<f64>()
++            .ok()
++            .and_then(|n| serde_json::Number::from_f64(n))
++            .map(Value::Number)
++            .unwrap_or_else(|| Value::String(text)),
++        _ => Value::String(text),
++    }
+ }
+*** Update File: C:\git-bls\BLS-KOX\bls-rust-server\src\utils\menu_tree.rs
+@@
+-        let id = nodes[i]
+-            .get(id_field)
+-            .and_then(Value::as_str)
+-            .unwrap_or("")
+-            .to_string();
++        let _ = id_field;
+@@
+-    let _ = id;
++    let _ = id_field;
+@@
+-            let children = node.get_mut("children").unwrap_or_else(|| {
+-                node.as_object_mut()
+-                    .unwrap()
+-                    .insert("children".to_string(), Value::Array(vec![]));
+-                node.get_mut("children").unwrap()
+-            });
++            let children = if node.get("children").is_none() {
++                node.as_object_mut()
++                    .unwrap()
++                    .insert("children".to_string(), Value::Array(vec![]));
++                node.get_mut("children").unwrap()
++            } else {
++                node.get_mut("children").unwrap()
++            };
+@@
+-        let children = node.get_mut("children").unwrap_or_else(|| {
+-            node.as_object_mut()
+-                .unwrap()
+-                .insert("children".to_string(), Value::Array(vec![]));
+-            node.get_mut("children").unwrap()
+-        });
++        let children = if node.get("children").is_none() {
++            node.as_object_mut()
++                .unwrap()
++                .insert("children".to_string(), Value::Array(vec![]));
++            node.get_mut("children").unwrap()
++        } else {
++            node.get_mut("children").unwrap()
++        };
+*** End Patch

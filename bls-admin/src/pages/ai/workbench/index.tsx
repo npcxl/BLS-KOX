@@ -563,7 +563,6 @@ export default function AiWorkbench() {
     const aiId = `a_${Date.now()}`;
     const thinkingSteps: ThinkingStep[] = [
       { title: '分析需求', description: 'AI 正在理解你的问题...', status: 'loading' },
-      { title: '生成回复', description: '即将生成回答...', status: 'pending' },
     ];
     const aiMsg: UiMsg = { id: aiId, role: 'assistant', content: '', status: 'updating', thinking: thinkingSteps };
     setMessages(prev => [...prev, userMsg, aiMsg]);

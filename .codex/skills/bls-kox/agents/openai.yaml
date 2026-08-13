@@ -1,0 +1,5 @@
+interface:
+  display_name: "BLS-KOX 项目技能"
+  short_description: "BLS-KOX 项目结构、双后端规范、多租户安全约束与开发命令速查"
+  default_prompt: "使用 $bls-kox 分析或修改 BLS-KOX 仓库中的代码。"
+  brand_color: "#1677FF"

@@ -27,7 +27,7 @@ function buildWsUrl(path: string): string {
   if (typeof window === 'undefined') return '';
   const { protocol, host } = window.location;
   if (process.env.NODE_ENV === 'development') {
-    const port = process.env.WS_PORT ?? '6001';
+    const port = process.env.WS_PORT ?? '6002';
     return `ws://localhost:${port}${path}`;
   }
   const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';

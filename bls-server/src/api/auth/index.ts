@@ -86,9 +86,7 @@ export class AuthService {
 
     if (!isValid) throw new UnauthorizedError('用户名或密码错误');
 
-    // MD5 老用户登录成功 → 标记需要迁移，但不阻塞登录
-    // 迁移时机：用户下次修改密码时，新密码会用 Argon2id 存储
-    // 此处记录日志便于运维跟踪未迁移用户数量
+
     if (algorithm === 'md5') {
       logger.info('[auth] MD5 user logged in (migration pending)', {
         userId: user.userId,
