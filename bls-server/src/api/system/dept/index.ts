@@ -2,7 +2,7 @@ import Router from 'koa-router';
 import { Context } from 'koa';
 import { getDb } from '../../../core/database';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
-import { getCurrentTenantId } from '../../../middleware/tenant';
+import { getCurrentTenantId, requireTenantId } from '../../../middleware/tenant';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
 import { assertTenantResource } from '../../../security/ownership';
@@ -73,7 +73,7 @@ router.get('/:deptId/users', jwtAuth(), async (ctx: Context) => {
 });
 router.post('/add', jwtAuth(), hasPerm('system:dept:add'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;
-  await db.insertInto(T).values({dept_id:generateSnowflakeId(), parent_id:b.parentId??'000000', dept_name:b.deptName, sort_num:b.sortNum??0, status:'0', tenant_id:getCurrentTenantId()??'000000', deleted:0}).execute();
+  await db.insertInto(T).values({dept_id:generateSnowflakeId(), parent_id:b.parentId??'000000', dept_name:b.deptName, sort_num:b.sortNum??0, status:'0', tenant_id:requireTenantId(), deleted:0}).execute();
   ctx.body = { code: 200, message: '新增成功' };
 });
 router.put('/edit', jwtAuth(), hasPerm('system:dept:edit'), async (ctx: Context) => {

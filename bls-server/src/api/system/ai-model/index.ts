@@ -15,7 +15,9 @@ function checkInternal(ctx: Context): boolean {
 }
 
 function getTenantId(ctx: Context): string {
-  return getCurrentTenantId() ?? '000000';
+  const tid = getCurrentTenantId();
+  if (!tid) throw new Error('缺少租户上下文');
+  return tid;
 }
 
 function getUserId(ctx: Context): string {

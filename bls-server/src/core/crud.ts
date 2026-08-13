@@ -13,7 +13,7 @@ import { ValidationError } from './errors';
 import { success, pageSuccess } from './response';
 import { jwtAuth } from '../middleware/auth';
 import { hasPerm } from '../middleware/permission';
-import { getCurrentTenantId } from '../middleware/tenant';
+import { getCurrentTenantId, requireTenantId } from '../middleware/tenant';
 import { generateSnowflakeId } from '../shared/utils/snowflake';
 import { resolveMaxScope, buildScopeWhere } from '../security/data-scope/data-scope';
 import type { DataScopeType, DataScopeColumnMapping } from '../security/data-scope/data-scope';
@@ -192,7 +192,7 @@ export function defineCrudModule(config: CrudModuleConfig): Router {
       data = parsed.data as Record<string, any>;
     }
     const id = data[pk] ?? generateSnowflakeId();
-    const tid = getCurrentTenantId() ?? '000000';
+    const tid = requireTenantId();
     const values: Record<string, any> = { [pk]: id, [tenantField]: data[tenantField] ?? tid, ...data };
     if (softDelete && values.deleted === undefined) values.deleted = 0;
     // fail-closed — 租户校验在写入前，阻止跨租户/无租户写入

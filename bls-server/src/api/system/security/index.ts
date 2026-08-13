@@ -18,6 +18,7 @@ import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { getRedisClient } from '../../../shared/utils/redis';
 import { DEFAULT_RULES, type RiskRule } from '../../../security/event-center/risk-rules';
 import { getRequestContext } from '../../../core/request-context';
+import { requireTenantId } from '../../../middleware/tenant';
 import { logger } from '../../../core/logger';
 
 const router = new Router({ prefix: '/system/security' });
@@ -156,7 +157,7 @@ router.post('/blacklist', jwtAuth(), hasPerm('system:security:blacklist:add'), a
     source: 'manual',
     status: '0',
     expire_at: body.expireAt ?? null,
-    tenant_id: getRequestContext()?.tenantId ?? '000000',
+    tenant_id: requireTenantId(),
     create_by: username,
   }).execute();
 

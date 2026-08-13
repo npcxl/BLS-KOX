@@ -9,7 +9,7 @@ import type { Context } from 'koa';
 import { enqueue, getJob, listJobs } from '../../../queue/queue';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
-import { getCurrentTenantId } from '../../../middleware/tenant';
+import { getCurrentTenantId, requireTenantId } from '../../../middleware/tenant';
 
 /** 允许异步提交的 Job 类型白名单 */
 const ALLOWED_JOB_TYPES = new Set(['export', 'import', 'notification', 'webhook']);
@@ -17,7 +17,7 @@ const ALLOWED_JOB_TYPES = new Set(['export', 'import', 'notification', 'webhook'
 const router = new Router({ prefix: '/system/jobs' });
 
 router.post('/', jwtAuth(), hasPerm('system:job:create'), async (ctx: Context) => {
-  const tid = getCurrentTenantId() ?? '000000';
+  const tid = requireTenantId();
   const body = ctx.request.body as any;
   const { jobType, jobData } = body ?? {};
   if (!jobType || !jobData) {

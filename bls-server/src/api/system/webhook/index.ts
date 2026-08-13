@@ -5,7 +5,7 @@ import Router from 'koa-router';
 import type { Context } from 'koa';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
-import { getCurrentTenantId } from '../../../middleware/tenant';
+import { getCurrentTenantId, requireTenantId } from '../../../middleware/tenant';
 import { getDb } from '../../../core/database';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { createHash, createHmac } from 'crypto';
@@ -31,7 +31,7 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = F
 
 /** 注册 Webhook */
 router.post('/', jwtAuth(), hasPerm('system:webhook:add'), async (ctx: Context) => {
-  const tid = getCurrentTenantId() ?? '000000';
+  const tid = requireTenantId();
   const b: any = ctx.request.body ?? {};
 
   const valid = await validateWebhookUrl(b.url);
@@ -57,7 +57,7 @@ router.get('/', jwtAuth(), hasPerm('system:webhook:list'), async (ctx: Context) 
 
 /** 更新 */
 router.put('/:id', jwtAuth(), hasPerm('system:webhook:edit'), async (ctx: Context) => {
-  const tid = getCurrentTenantId() ?? '000000';
+  const tid = requireTenantId();
   const b: any = ctx.request.body ?? {};
   const db = await getDb();
   const row = await db.selectFrom(T).selectAll().where('webhook_id', '=', ctx.params.id).where('tenant_id', '=', tid).executeTakeFirst() as any;
@@ -81,7 +81,7 @@ router.put('/:id', jwtAuth(), hasPerm('system:webhook:edit'), async (ctx: Contex
 
 /** 删除 */
 router.delete('/:id', jwtAuth(), hasPerm('system:webhook:remove'), async (ctx: Context) => {
-  const tid = getCurrentTenantId() ?? '000000';
+  const tid = requireTenantId();
   const db = await getDb();
   await db.deleteFrom(T).where('webhook_id', '=', ctx.params.id).where('tenant_id', '=', tid).execute();
   ctx.body = { code: 200, message: '删除成功' };
@@ -105,7 +105,7 @@ router.get('/:id/logs', jwtAuth(), hasPerm('system:webhook:logs'), async (ctx: C
 
 /** 测试发送 */
 router.post('/:id/test', jwtAuth(), hasPerm('system:webhook:test'), async (ctx: Context) => {
-  const tid = getCurrentTenantId() ?? '000000';
+  const tid = requireTenantId();
   const db = await getDb();
   const webhook = await db.selectFrom(T).selectAll().where('webhook_id', '=', ctx.params.id).where('tenant_id', '=', tid).executeTakeFirst() as any;
   if (!webhook) { ctx.body = { code: 404, message: 'Webhook 不存在' }; return; }
@@ -135,7 +135,8 @@ router.post('/:id/test', jwtAuth(), hasPerm('system:webhook:test'), async (ctx: 
 
 /** 重试 handler — 导出以便测试 */
 export async function handleRetry(ctx: Context, getDbFn: () => any, getTenantFn: () => string | null | undefined, enqueueFn: (p: any) => Promise<void>) {
-  const tid = getTenantFn() ?? '000000';
+  const tid = getTenantFn();
+  if (!tid) { ctx.body = { code: 403, message: '缺少租户上下文' }; return; }
   const db = await getDbFn();
   const webhook = await db.selectFrom(T).selectAll().where('webhook_id', '=', ctx.params.id).where('tenant_id', '=', tid).executeTakeFirst() as any;
   if (!webhook) { ctx.body = { code: 404, message: 'Webhook 不存在' }; return; }

@@ -2,7 +2,7 @@ import Router from 'koa-router';
 import { Context } from 'koa';
 import { getDb } from '../../../core/database';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
-import { getCurrentTenantId } from '../../../middleware/tenant';
+import { getCurrentTenantId, requireTenantId } from '../../../middleware/tenant';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
 import { assertTenantResource } from '../../../security/ownership';
@@ -38,7 +38,7 @@ router.post('/add', jwtAuth(), hasPerm('system:storage:add'), async (ctx: Contex
   const db = (await getDb()) as any;
   const data = pickAllowed((ctx.request.body ?? {}) as any, STORAGE_FIELDS);
   if (Object.keys(data).length === 0) { ctx.body = { code: 400, message: '没有有效字段' }; return; }
-  await db.insertInto('sys_storage_config').values({...toSnake(data), tenant_id: getCurrentTenantId()??'000000', deleted:0} as any).execute();
+  await db.insertInto('sys_storage_config').values({...toSnake(data), tenant_id: requireTenantId(), deleted:0} as any).execute();
   ctx.body = { code: 200, message: '新增成功' };
 });
 router.put('/edit', jwtAuth(), hasPerm('system:storage:edit'), async (ctx: Context) => {

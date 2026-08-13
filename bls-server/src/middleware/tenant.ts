@@ -7,6 +7,13 @@ export function getCurrentTenantId(): string | null {
   return getRequestContext()?.tenantId ?? null;
 }
 
+/** 获取租户 ID，未获取到时抛错（fail-closed），用于写操作避免静默兜底 000000 */
+export function requireTenantId(): string {
+  const tid = getCurrentTenantId();
+  if (!tid) throw new Error('缺少租户上下文，禁止写操作');
+  return tid;
+}
+
 export async function tenantMiddleware(ctx: Context, next: Next): Promise<void> {
   const rawToken = parseBearerToken(ctx.headers.authorization);
   let tenantId: string | null = null;

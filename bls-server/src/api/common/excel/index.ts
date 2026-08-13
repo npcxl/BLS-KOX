@@ -3,7 +3,7 @@ import { Context } from 'koa';
 import ExcelJS from 'exceljs';
 import { getDb } from '../../../core/database';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
-import { getCurrentTenantId } from '../../../middleware/tenant';
+import { getCurrentTenantId, requireTenantId } from '../../../middleware/tenant';
 import { jwtAuth } from '../../../middleware/auth';
 import { normalizeExportLimit, buildHeaderRow } from './excel.utils';
 import type { ExcelImportRowError } from './excel.types';
@@ -269,7 +269,7 @@ async function handleImport(ctx: Context) {
     if (!colMap.size) { ctx.body = { code: 400, message: '未匹配到任何列，请使用正确的模板' }; return; }
 
     const db = await getDb() as any;
-    const tenantId = getCurrentTenantId() ?? '000000';
+    const tenantId = requireTenantId();
     const errors: ExcelImportRowError[] = [];
     let successCount = 0;
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');

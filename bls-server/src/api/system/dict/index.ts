@@ -2,7 +2,7 @@ import Router from 'koa-router';
 import { Context } from 'koa';
 import { getDb } from '../../../core/database';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
-import { getCurrentTenantId } from '../../../middleware/tenant';
+import { getCurrentTenantId, requireTenantId } from '../../../middleware/tenant';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
 
@@ -22,7 +22,7 @@ router.get('/type/list', jwtAuth(), hasPerm('system:dict:list'), async (ctx: Con
 router.post('/type/add', jwtAuth(), hasPerm('system:dict:add'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;
   const id = b.dictTypeId || generateSnowflakeId();
-  await db.insertInto(T).values({dict_type_id:id, dict_name:b.dictName, dict_type:b.dictType, status:b.status??'0', remark:b.remark??null, tenant_id:getCurrentTenantId()??'000000', deleted:0}).execute();
+  await db.insertInto(T).values({dict_type_id:id, dict_name:b.dictName, dict_type:b.dictType, status:b.status??'0', remark:b.remark??null, tenant_id:requireTenantId(), deleted:0}).execute();
   ctx.body = { code: 200, data: { dictTypeId: id }, message: '新增成功' };
 });
 router.put('/type/edit', jwtAuth(), hasPerm('system:dict:edit'), async (ctx: Context) => {
@@ -56,7 +56,7 @@ router.get('/data/type', jwtAuth(), async (ctx: Context) => {
 });
 router.post('/data/add', jwtAuth(), hasPerm('system:dict:add'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;
-  await db.insertInto(D).values({dict_data_id:generateSnowflakeId(), dict_type_id:b.dictTypeId, dict_label:b.dictLabel, dict_value:b.dictValue, dict_sort:b.dictSort??0, tag:b.tag??'', status:b.status??'0', remark:b.remark??null, tenant_id:getCurrentTenantId()??'000000', deleted:0}).execute();
+  await db.insertInto(D).values({dict_data_id:generateSnowflakeId(), dict_type_id:b.dictTypeId, dict_label:b.dictLabel, dict_value:b.dictValue, dict_sort:b.dictSort??0, tag:b.tag??'', status:b.status??'0', remark:b.remark??null, tenant_id:requireTenantId(), deleted:0}).execute();
   ctx.body = { code: 200, message: '新增成功' };
 });
 router.put('/data/edit', jwtAuth(), hasPerm('system:dict:edit'), async (ctx: Context) => {

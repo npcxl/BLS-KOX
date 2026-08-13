@@ -2,7 +2,7 @@ import Router from 'koa-router';
 import { Context } from 'koa';
 import { getDb } from '../../../core/database';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
-import { getCurrentTenantId } from '../../../middleware/tenant';
+import { getCurrentTenantId, requireTenantId } from '../../../middleware/tenant';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
 import { assertTenantResource } from '../../../security/ownership';
@@ -50,7 +50,7 @@ router.get('/:roleId/menus', jwtAuth(), hasPerm('system:role:list'), async (ctx:
 router.post('/add', jwtAuth(), hasPerm('system:role:add'), async (ctx: Context) => {
   const db = (await getDb()) as any; const b: any = ctx.request.body;
   await db.insertInto(T).values({
-    role_id: generateSnowflakeId(), tenant_id: getCurrentTenantId() ?? '000000',
+    role_id: generateSnowflakeId(), tenant_id: requireTenantId(),
     role_name: b.roleName, role_key: b.roleKey,
     data_scope: b.dataScope ?? 'TENANT',
     sort_num: b.sortNum ?? 0, status: '0', remark: b.remark ?? null, deleted: 0,
