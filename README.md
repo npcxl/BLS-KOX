@@ -6,25 +6,28 @@
 [![Koa](https://img.shields.io/badge/Koa-3.x-333)](https://koajs.com/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.5-6db33f)](https://spring.io/)
 [![Java](https://img.shields.io/badge/Java-21-orange)](https://openjdk.org/)
+[![Rust](https://img.shields.io/badge/Rust-1.85+-dea584)](https://www.rust-lang.org/)
+[![Axum](https://img.shields.io/badge/Axum-0.8-333)](https://github.com/tokio-rs/axum)
 [![Ant Design Pro](https://img.shields.io/badge/Ant%20Design%20Pro-6.x-1677ff)](https://pro.ant.design/)
 [![React](https://img.shields.io/badge/React-19.x-61dafb)](https://react.dev/)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue)](CHANGELOG.md)
 
-> 双后端并存的开源多租户后台开发框架与管理系统模板。
-> **一套前端、一套 MySQL、一套 Redis**，同时支持 Koa (TypeScript) 和 Spring Boot (Java 21) 两套后端。
+> 多后端并存的开源多租户后台开发框架与管理系统模板。
+> **一套前端、一套 MySQL、一套 Redis**，同时支持 Koa (TypeScript)、Spring Boot (Java 21) 和 Rust (Axum) 三套后端。
 > 内置 RBAC、多租户隔离、JWT 会话体系、防重放、限流、安全审计、WebSocket、Prometheus Metrics、**AI 智能助手**。
 >
 > 🏠 **仓库地址**：[GitHub](https://github.com/npcxl/BLS-KOX) · [Gitee](https://gitee.com/leheya/bls-kox) · [CNB 原生开发](https://cnb.cool/bls-xl/bls-kox)
 
 ## ✨ Why BLS-KOX
 
-- **双后端并存** — Koa (TypeScript) 与 Spring Boot (Java 21) 两套后端，API 完全兼容，按需选择或共存
+- **多后端并存** — Koa (TypeScript)、Spring Boot (Java 21) 与 Rust (Axum) 三套后端，API 完全兼容，按需选择或共存
+- **Rust 高性能后端** — 内存安全、无 GC 停顿、零成本抽象，性能逼近 C，同时提供企业级安全与类型保障
 - **AI 智能助手** — 内置 AI 微服务，自然语言一键生成 CRUD 模块、SQL 查询、安全审计、配置审查
 - **安全内置，而非事后追加** — 防重放、限流、审计日志随框架自带
 - **多租户原生支持** — tenant_id 自动注入，跨租户访问自动告警
 - **一行配置生成接口** — Koa `defineCrudModule()` 生成完整的 list/add/edit/remove/status
-- **现代化全栈** — React 19 + Ant Design Pro 6 + TypeScript 前端，双后端任意切换
-- **共享基础设施** — 同一套 MySQL 8.0 + Redis 7 + `sql/Init.sql`，两套后端共用
+- **现代化全栈** — React 19 + Ant Design Pro 6 + TypeScript 前端，多后端任意切换
+- **共享基础设施** — 同一套 MySQL 8.0 + Redis 7 + `sql/Init.sql`，三套后端共用
 - **Docker 一键部署** — `docker compose up -d`
 
 **适合**：学习后端架构 · 快速搭建管理后台 · SaaS 原型开发 · 权限系统参考 · 多语言后端对比 · 二次开发
@@ -49,22 +52,22 @@
 │              static files · /api proxy · gzip                    │
 └───────────────────────────┬──────────────────────────────────────┘
                             │
-       ┌────────────────────┼────────────────────┐
-       ▼                    ▼                    ▼
-┌──────────────┐  ┌──────────────────┐  ┌──────────────┐
-│  bls-server  │  │ bls-ai-service   │  │bls-java-server│
-│  Koa 3       │  │ Koa · AI 微服务   │  │ Spring Boot 3 │
-│  默认后端     │  │ :7201            │  │ Java 21       │
-│  :7001       │  │                  │  │ :8080 (可选)   │
-│              │  │ ┌──────────────┐  │  │               │
-│ ┌──────────┐ │  │ │ CRUD 生成器   │  │  │ ┌───────────┐ │
-│ │CRUD工厂  │ │  │ │ SQL 助手      │  │  │ │Security   │ │
-│ │Middleware│ │  │ │ 审计分析器    │  │  │ │Chain      │ │
-│ └──────────┘ │  │ │ 配置审查器    │  │  │ └───────────┘ │
-│              │  │ │ KOX-AI 对话   │  │  │               │
-└──────┬───────┘  │ └──────────────┘  │  └───────┬───────┘
-       │          └────────┬─────────┘          │
-       └───────────┬───────┴────────────────────┘
+       ┌────────────────────┼────────────────────┬────────────────────┐
+       ▼                    ▼                    ▼                    ▼
+┌──────────────┐  ┌──────────────────┐  ┌──────────────┐  ┌──────────────┐
+│  bls-server  │  │ bls-ai-service   │  │bls-java-server│  │bls-rust-server│
+│  Koa 3       │  │ Koa · AI 微服务   │  │ Spring Boot 3 │  │  Axum 0.8    │
+│  默认后端     │  │ :7201            │  │ Java 21       │  │  Rust 1.85+  │
+│  :7001       │  │                  │  │ :8080 (可选)   │  │ :6002 (可选) │
+│              │  │ ┌──────────────┐  │  │               │  │              │
+│ ┌──────────┐ │  │ │ CRUD 生成器   │  │  │ ┌───────────┐ │  │ ┌──────────┐ │
+│ │CRUD工厂  │ │  │ │ SQL 助手      │  │  │ │Security   │ │  │ │ SQLx     │ │
+│ │Middleware│ │  │ │ 审计分析器    │  │  │ │Chain      │ │  │ │ 内存安全  │ │
+│ └──────────┘ │  │ │ 配置审查器    │  │  │ └───────────┘ │  │ └──────────┘ │
+│              │  │ │ KOX-AI 对话   │  │  │               │  │              │
+└──────┬───────┘  │ └──────────────┘  │  └───────┬───────┘  └──────┬───────┘
+       │          └────────┬─────────┘          │                │
+       └───────────┬───────┴────────────────────┴────────────────┘
                    │
     ┌──────────────┼──────────────┐
     ▼              ▼              ▼
@@ -74,7 +77,7 @@
 └────────┘  └──────────────┘  └──────────────────┘
 ```
 
-> **关键设计**：两套后端共用同一套 MySQL 数据库（`sql/Init.sql`）、同一套 Redis、同一套前端代码。Nginx 通过 upstream 切换后端，前端无需任何修改。AI 微服务独立部署，通过 `/api/ai/*` 路由提供智能能力。
+> **关键设计**：三套后端共用同一套 MySQL 数据库（`sql/Init.sql`）、同一套 Redis、同一套前端代码。Nginx 通过 upstream 切换后端，前端无需任何修改。AI 微服务独立部署，通过 `/api/ai/*` 路由提供智能能力。
 
 ## 🛡️ Security
 
@@ -109,19 +112,58 @@
 | Prometheus Metrics | `/api/metrics`，HTTP/Security/DB/Redis/WS 全量指标 |
 | Docker 部署 | `docker compose up -d` 一键启动 |
 
-## 🔀 双后端定位
+## 🔀 三端对比
 
-BLS-KOX 提供两套后端，**各有特点，按需选择**：
+BLS-KOX 提供三套后端，**各有特点，按需选择**：
 
-| | Koa (TypeScript) | Java (Spring Boot) |
-|------|-------------------|---------------------|
-| **定位** | 轻量灵活，快速二开 | 工程化稳定，企业级 |
-| **亮点** | `defineCrudModule()` 一行配置生成 CRUD | 注解式 AOP + Spring 生态 |
-| **适合** | Node.js 全栈、快速原型 | Java 团队、企业项目、微服务演进 |
+| | Koa (TypeScript) | Java (Spring Boot) | Rust (Axum) |
+|------|-------------------|---------------------|-------------|
+| **定位** | 轻量灵活，快速二开 | 工程化稳定，企业级 | 极致性能，内存安全，面向未来 |
+| **亮点** | `defineCrudModule()` 一行配置生成 CRUD | 注解式 AOP + Spring 生态 | 零成本抽象、无 GC 停顿、SQLx 编译期检查、单二进制部署 |
+| **适合** | Node.js 全栈、快速原型 | Java 团队、企业项目、微服务演进 | 高并发、低延迟、安全敏感、资源受限场景 |
+| **性能** | 中（V8 JIT） | 中（JVM + GC） | 高（原生编译，逼近 C） |
+| **内存** | 较高 | 高（JVM 堆） | 极低（无 GC，栈分配） |
 
-两套后端共享同一套前端、MySQL、Redis、`sql/Init.sql`、API 规范。切换后端只需改代理地址。
+三套后端共享同一套前端、MySQL、Redis、`sql/Init.sql`、API 规范。切换后端只需改代理地址。
 
-> 详见 [双后端定位对比](./docs/backend-comparison.md)
+> 详见 [多后端定位对比](./docs/backend-comparison.md)
+
+### 🦀 Rust 后端（bls-rust-server）
+
+`bls-server` 的 Rust 移植版，基于 **Axum 0.8 + Tokio + SQLx 0.8**，与 Koa / Java 保持 API 完全兼容。作为**面向未来的主流选择**，Rust 后端在以下方面拥有无可替代的优势：
+
+#### 🛡️ 内存安全，无需 GC
+
+- **编译期所有权检查** — 借用检查器在编译阶段就杜绝空指针、悬垂指针、缓冲区溢出、数据竞争等内存问题
+- **零 GC 停顿** — 没有 Java 的垃圾回收停顿，也没有 Node.js 的 V8 GC 卡顿，延迟曲线稳定可预测
+- **无运行时崩溃** — 绝大多数运行时错误在编译期就被拦截，生产环境更稳定
+
+#### ⚡ 极致性能，逼近 C 语言
+
+- **零成本抽象** — 高阶抽象（闭包、泛型、迭代器）编译后与手写底层代码性能一致，没有性能税
+- **Tokio 异步运行时** — 基于 epoll/kqueue 的事件驱动，百万级并发连接轻松应对
+- **内存占用极低** — 单个服务常驻内存远低于 Java/Node.js，适合资源受限的边缘/容器场景
+- **业界公认** — Rust 连续多年蝉联 Stack Overflow 最受喜爱语言，被 Linux 内核、AWS、微软、Cloudflare 等广泛采用
+
+#### 🔒 类型安全，Bug 前置
+
+- **SQLx 编译期检查** — SQL 语句在 `cargo build` 时就会对真实数据库 schema 做校验，字段名/类型写错直接编译报错，而非上线后才发现
+- **强类型 + 模式匹配** — 通过 `Result`/`Option`/枚举穷尽匹配，强迫处理所有错误分支，杜绝"忘记处理空值"
+- **Serde 序列化** — 编译期生成序列化代码，运行时零反射开销
+
+#### 🌐 现代工程体验
+
+- **Cargo 生态** — 统一的包管理、构建、测试、文档工具链，一个 `cargo` 命令搞定一切
+- **跨平台** — 单二进制部署，无运行时依赖，`cargo build --release` 产物可直接丢到任何 Linux 服务器运行
+- **渐进式移植** — 从 Koa 版逐步迁移到 Rust，API 兼容保证前端零改动
+
+```bash
+cd bls-rust-server
+Copy-Item .env.example .env   # 配置 MySQL、Redis、JWT
+cargo run                      # http://localhost:6002
+```
+
+> 详见 [bls-rust-server 文档](./bls-rust-server/README.md)
 
 ## 🛠 Tech Stack
 
@@ -130,8 +172,9 @@ BLS-KOX 提供两套后端，**各有特点，按需选择**：
 | 前端 | React 19 + Ant Design Pro 6 + Umi 4 + TypeScript |
 | 后端 (Koa) | Koa 3 + TypeScript 6 + Kysely ORM + Zod（默认，主后端）|
 | 后端 (Java) | Spring Boot 3.3 + Java 21 + MyBatis-Plus 3.5 + Spring Security（可选，API 兼容并存）|
-| 数据库 | MySQL 8.0（两套后端共用同一库同一表结构）|
-| 缓存 | Redis 7（两套后端共用 Session / 限流 / 缓存）|
+| 后端 (Rust) | Axum 0.8 + Tokio + SQLx 0.8 + Rust 1.85+（可选，API 兼容并存）|
+| 数据库 | MySQL 8.0（三套后端共用同一库同一表结构）|
+| 缓存 | Redis 7（三套后端共用 Session / 限流 / 缓存）|
 | 部署 | Docker Compose + Nginx |
 | 文档 | Knife4j (Java) / Swagger (Koa)
 
@@ -158,6 +201,7 @@ npm run openapi
 | Node.js | ≥ 22.0.0 | Koa 运行时 |
 | Java | ≥ 21 | Java 后端运行时（可选） |
 | Maven | ≥ 3.8 | Java 后端构建（可选） |
+| Rust | ≥ 1.85 | Rust 后端构建（可选） |
 | MySQL | 8.0 | 数据库 |
 | Redis | 7.0 | 缓存 / 限流 / Session |
 | Docker | 20.10+ | 可选，一键部署使用 |
@@ -255,7 +299,7 @@ docker compose --env-file .env.docker up -d --build
 
 > 详见 [Docker 部署指南](./docs/docker-deploy.md)。
 
-### 切换后端（Koa ↔ Java）
+### 切换后端（Koa ↔ Java ↔ Rust）
 
 **方式一：Nginx upstream 切换**
 
@@ -270,13 +314,18 @@ upstream bls_server {
 # upstream bls_server {
 #     server bls-java-server:8080;
 # }
+
+# 切换到 Rust
+# upstream bls_server {
+#     server bls-rust-server:7001;
+# }
 ```
 
 **方式二：前端直接代理**
 
-修改前端开发代理或环境变量，将 API 地址指向 Java 后端端口（默认 8080）。
+修改前端开发代理或环境变量，将 API 地址指向目标后端端口（Java 默认 8080，Rust 默认 6002）。
 
-> **注意**：Java 后端与 Koa 后端 API 完全兼容，前端代码无需任何修改。
+> **注意**：三套后端 API 完全兼容，前端代码无需任何修改。Rust 后端 Docker 部署时容器内端口为 7001（见 `bls-rust-server/Dockerfile`）。
 
 ## 🔑 默认账号
 
@@ -346,12 +395,28 @@ BLS-KOX/
 │       ├── security/        # JwtTokenProvider、JwtAuthFilter、LoginUser、TenantContext
 │       ├── service/         # 业务服务层（含各模块 Service 实现）
 │       └── websocket/       # WebSocket 实时推送
-├── bls-admin/               # React + Ant Design Pro 前端（两套后端共用）
+├── bls-rust-server/         # Axum + Rust 后端（并存后端，API 兼容）
+│   └── src/
+│       ├── api/             # 路由与处理器（auth / ai / common / system）
+│       ├── auth/            # JWT 签发校验、Argon2id/MD5 密码验证
+│       ├── db/              # SQLx 连接池与查询工具
+│       ├── middleware/      # 防重放、限流、鉴权、API 版本、HTTP Metrics
+│       ├── security/        # 数据权限、事件中心、文件安全、会话、限流、所有权
+│       ├── distributed/     # 分布式锁、幂等、限流、链路追踪
+│       ├── outbox/          # Outbox 事件发布
+│       ├── queue/           # 任务队列与 worker
+│       ├── observability/   # Prometheus metrics
+│       ├── services/        # 业务服务层
+│       ├── utils/           # 雪花 ID、菜单树、签名等工具
+│       ├── config.rs        # 环境变量配置加载
+│       ├── state.rs         # 应用共享状态
+│       └── lib.rs           # 路由组装与 App 构建
+├── bls-admin/               # React + Ant Design Pro 前端（三套后端共用）
 │   └── src/
 │       ├── components/      # CrudTablePage、全局搜索、ExcelToolbar 等
 │       ├── hooks/           # usePageConfig、useCrudTable、useWebSocket 等
 │       └── pages/           # 各业务页面（dashboard / system / ai）
-├── sql/                     # 共享数据库初始化 SQL（两套后端共用）
+├── sql/                     # 共享数据库初始化 SQL（三套后端共用）
 │   └── Init.sql             # 完整表结构 + 最小种子数据
 ├── deploy/                  # 部署配置（Prometheus 告警规则等）
 ├── docker-compose.yml       # 全栈编排（Koa + AI 默认）
@@ -368,11 +433,12 @@ BLS-KOX/
 | [快速开始](./docs/getting-started.md) | 环境要求、安装、启动、演示账号 |
 | [Docker 部署](./docs/docker-deploy.md) | Docker Compose 一键部署、Koa/Java 切换、AI 服务配置、故障排查 |
 | [AI 智能助手](./docs/modules/ai-service.md) | 自然语言生成 CRUD、SQL 助手、安全审计、配置审查 |
-| [双后端定位](./docs/backend-comparison.md) | Koa vs Java 定位差异、对比表、如何选择 |
-| [架构设计](./docs/architecture.md) | 请求链路、中间件、双后端总览、AI 服务架构 |
+| [多后端定位](./docs/backend-comparison.md) | Koa vs Java vs Rust 定位差异、对比表、如何选择 |
+| [架构设计](./docs/architecture.md) | 请求链路、中间件、多后端总览、AI 服务架构 |
 | [Koa 后端](./docs/backend-koa.md) | Koa + TypeScript 架构、CRUD 工厂、中间件链 |
 | [Java 后端](./docs/backend-java.md) | Spring Boot 架构、Security、MyBatis-Plus、JWT |
-| [API 兼容性](./docs/api-compatibility.md) | 双后端 API 规范、返回结构、字段命名一致性 |
+| [Rust 后端](./bls-rust-server/README.md) | Axum + SQLx 架构、多后端 API 兼容 |
+| [API 兼容性](./docs/api-compatibility.md) | 多后端 API 规范、返回结构、字段命名一致性 |
 | [分布式能力](./docs/distributed-capabilities.md) | 分布式锁、幂等、限流、链路追踪 |
 | [缓存策略](./docs/cache.md) | Redis 缓存设计、Key 规范、故障降级 |
 | [限流](./docs/rate-limit.md) | 多维度限流、Lua 脚本、注解使用 |
