@@ -25,6 +25,7 @@ import {
   renameAiConversation,
   getAiModels,
 } from '@/services/ai/conversation';
+import { buildReplayHeaders } from '@/services/security/replayInterceptor';
 
 hljs.registerLanguage('javascript', javascript);
 hljs.registerLanguage('js', javascript);
@@ -525,7 +526,8 @@ export default function AiWorkbench() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: localStorage.getItem('token') || '',
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+          ...buildReplayHeaders({ method: 'POST', url: '/api/ai/ocr/recognize', body: { image: base64, filename: file.name } }),
         },
         body: JSON.stringify({
           image: base64,
@@ -572,17 +574,22 @@ export default function AiWorkbench() {
     let full = '';
 
     try {
+      const reqBody = {
+        messages: [
+          ...messages.filter(m => m.role === 'user' || m.role === 'assistant'),
+          { role: 'user', content: val },
+        ].map(m => ({ role: m.role, content: m.content })),
+        model: selectedModelRef.current || undefined,
+        stream: true,
+      };
       const res = await fetch('/api/ai/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: localStorage.getItem('token') || '' },
-        body: JSON.stringify({
-          messages: [
-            ...messages.filter(m => m.role === 'user' || m.role === 'assistant'),
-            { role: 'user', content: val },
-          ].map(m => ({ role: m.role, content: m.content })),
-          model: selectedModelRef.current || undefined,
-          stream: true,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+          ...buildReplayHeaders({ method: 'POST', url: '/api/ai/chat/completions', body: reqBody }),
+        },
+        body: JSON.stringify(reqBody),
         signal: ctrl.signal,
       });
       if (!res.ok) throw new Error(`请求失败(${res.status})`);
@@ -900,17 +907,22 @@ export default function AiWorkbench() {
                             const finalContent = `[系统上下文：用户上传了文件 "${fileName}"，内容识别结果如下。请基于此内容回答用户问题，不要在回复中提到"识别结果"或"OCR"等字样，直接当作你看到的内容来回答。]\n\n${ocrText}\n\n---\n用户问题：${inputValue || '请分析以上内容'}`;
 
                             try {
+                              const reqBody2 = {
+                                messages: [
+                                  ...messages.filter(m => m.role === 'user' || m.role === 'assistant'),
+                                  { role: 'user', content: finalContent },
+                                ].map(m => ({ role: m.role, content: m.content })),
+                                model: selectedModelRef.current || undefined,
+                                stream: true,
+                              };
                               const res = await fetch('/api/ai/chat/completions', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json', Authorization: localStorage.getItem('token') || '' },
-                                body: JSON.stringify({
-                                  messages: [
-                                    ...messages.filter(m => m.role === 'user' || m.role === 'assistant'),
-                                    { role: 'user', content: finalContent },
-                                  ].map(m => ({ role: m.role, content: m.content })),
-                                  model: selectedModelRef.current || undefined,
-                                  stream: true,
-                                }),
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+                                  ...buildReplayHeaders({ method: 'POST', url: '/api/ai/chat/completions', body: reqBody2 }),
+                                },
+                                body: JSON.stringify(reqBody2),
                                 signal: ctrl.signal,
                               });
                               if (!res.ok) throw new Error(`请求失败(${res.status})`);
