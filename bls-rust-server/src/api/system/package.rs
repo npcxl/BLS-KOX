@@ -15,7 +15,7 @@ const SPEC: CrudSpec = CrudSpec {
     pk: "package_id",
     name: "套餐",
     search_fields: &["package_name"],
-    writable_fields: &["package_name", "status", "remark"],
+    writable_fields: &["package_name", "package_code", "status", "remark"],
     perm_prefix: Some("system:package"),
     soft_delete: false,
     status_field: true,

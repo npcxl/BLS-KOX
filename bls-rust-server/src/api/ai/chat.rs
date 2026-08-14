@@ -3,32 +3,46 @@ use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde_json::{Value, json};
 
-use crate::api_response::{ApiResponse, PageResponse};
+use crate::api_response::ApiResponse;
 use crate::auth::AuthUser;
 use crate::db::query::{row_to_json, rows_to_json};
 use crate::error::AppError;
+use crate::services::ai_provider;
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/completions", post(completions))
         .route("/conversations", get(list).post(create))
         .route("/conversations/{id}", put(rename).delete(remove))
         .route("/conversations/{id}/messages", get(messages))
 }
 
+/// POST /api/ai/chat/completions — OpenAI 兼容的 SSE 流式对话
+async fn completions(
+    State(state): State<AppState>,
+    _user: AuthUser,
+    Json(body): Json<ai_provider::AiCompletionRequest>,
+) -> Result<axum::response::Sse<impl futures_util::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>>, AppError> {
+    if body.messages.is_empty() {
+        return Err(AppError::BadRequest("缺少 messages 参数".into()));
+    }
+    let config = state.config.ai.clone();
+    ai_provider::stream_completions(config, body).await
+}
+
 async fn list(
     State(state): State<AppState>,
     user: AuthUser,
-) -> Result<PageResponse<Value>, AppError> {
+) -> Result<ApiResponse<Value>, AppError> {
     let rows = sqlx::query(
-        "SELECT * FROM ai_conversation WHERE tenant_id=? AND user_id=? AND deleted=0 ORDER BY updated_at DESC LIMIT 50",
+        "SELECT * FROM ai_conversation WHERE user_id=? AND deleted=0 ORDER BY updated_at DESC LIMIT 50",
     )
-    .bind(&user.tenant_id)
     .bind(&user.user_id)
     .fetch_all(&state.db)
     .await
     .map_err(AppError::from)?;
-    Ok(PageResponse::success(Value::Array(rows_to_json(rows)), 0))
+    Ok(ApiResponse::success(Value::Array(rows_to_json(rows))))
 }
 
 async fn create(
@@ -36,40 +50,35 @@ async fn create(
     user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<ApiResponse<Value>, AppError> {
-    let provided_id = body.get("id").and_then(Value::as_i64).or_else(|| {
-        body.get("id")
-            .and_then(Value::as_str)
-            .and_then(|s| s.parse::<i64>().ok())
-    });
-    let conv_id = provided_id.unwrap_or_else(|| {
-        state
-            .snowflake
-            .next_id()
-            .unwrap_or_default()
-            .parse::<i64>()
-            .unwrap_or(0)
-    });
+    // id 为雪花 ID 字符串（与 Koa 后端对齐）
+    let conv_id = body
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| state.snowflake.next_id().unwrap_or_default());
+
     let title = body
         .get("title")
         .and_then(Value::as_str)
-        .unwrap_or("New conversation")
+        .unwrap_or("新对话")
         .trim()
         .to_string();
     let title = if title.is_empty() {
-        "New conversation".to_string()
+        "新对话".to_string()
     } else {
         title
     };
 
-    let existing: Option<i64> = sqlx::query_scalar("SELECT id FROM ai_conversation WHERE id = ?")
-        .bind(conv_id)
+    let existing: Option<String> = sqlx::query_scalar("SELECT id FROM ai_conversation WHERE id = ?")
+        .bind(&conv_id)
         .fetch_optional(&state.db)
         .await
         .map_err(AppError::from)?;
     if existing.is_some() {
         sqlx::query("UPDATE ai_conversation SET title=?, updated_at=NOW() WHERE id=?")
             .bind(&title)
-            .bind(conv_id)
+            .bind(&conv_id)
             .execute(&state.db)
             .await
             .map_err(AppError::from)?;
@@ -77,7 +86,7 @@ async fn create(
         sqlx::query(
             "INSERT INTO ai_conversation (id, user_id, tenant_id, title, deleted, created_at, updated_at) VALUES (?,?,?,?,0,NOW(),NOW())",
         )
-        .bind(conv_id)
+        .bind(&conv_id)
         .bind(&user.user_id)
         .bind(&user.tenant_id)
         .bind(&title)
@@ -90,17 +99,12 @@ async fn create(
         for msg in messages {
             let role = msg.get("role").and_then(Value::as_str).unwrap_or("user");
             let content = msg.get("content").and_then(Value::as_str).unwrap_or("");
-            let msg_id = state
-                .snowflake
-                .next_id()
-                .unwrap_or_default()
-                .parse::<i64>()
-                .unwrap_or(0);
+            let msg_id = state.snowflake.next_id().unwrap_or_default();
             sqlx::query(
                 "INSERT INTO ai_conversation_message (id, conversation_id, role, content, deleted, created_at) VALUES (?,?,?,?,0,NOW())",
             )
-            .bind(msg_id)
-            .bind(conv_id)
+            .bind(&msg_id)
+            .bind(&conv_id)
             .bind(role)
             .bind(content)
             .execute(&state.db)
@@ -114,7 +118,7 @@ async fn create(
 
 async fn rename(
     State(state): State<AppState>,
-    Path(id): Path<i64>,
+    Path(id): Path<String>,
     user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<ApiResponse<Value>, AppError> {
@@ -129,7 +133,7 @@ async fn rename(
     }
     sqlx::query("UPDATE ai_conversation SET title=?, updated_at=NOW() WHERE id=? AND user_id=?")
         .bind(&title)
-        .bind(id)
+        .bind(&id)
         .bind(&user.user_id)
         .execute(&state.db)
         .await
@@ -139,11 +143,11 @@ async fn rename(
 
 async fn remove(
     State(state): State<AppState>,
-    Path(id): Path<i64>,
+    Path(id): Path<String>,
     user: AuthUser,
 ) -> Result<ApiResponse<Value>, AppError> {
     sqlx::query("UPDATE ai_conversation SET deleted=1 WHERE id=? AND user_id=?")
-        .bind(id)
+        .bind(&id)
         .bind(&user.user_id)
         .execute(&state.db)
         .await
@@ -153,17 +157,17 @@ async fn remove(
 
 async fn messages(
     State(state): State<AppState>,
-    Path(id): Path<i64>,
+    Path(id): Path<String>,
     _user: AuthUser,
-) -> Result<PageResponse<Value>, AppError> {
+) -> Result<ApiResponse<Value>, AppError> {
     let rows = sqlx::query(
         "SELECT * FROM ai_conversation_message WHERE conversation_id=? AND deleted=0 ORDER BY created_at ASC LIMIT 200",
     )
-    .bind(id)
+    .bind(&id)
     .fetch_all(&state.db)
     .await
     .map_err(AppError::from)?;
-    Ok(PageResponse::success(Value::Array(rows_to_json(rows)), 0))
+    Ok(ApiResponse::success(Value::Array(rows_to_json(rows))))
 }
 
 #[allow(dead_code)]

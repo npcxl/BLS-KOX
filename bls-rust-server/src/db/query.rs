@@ -31,34 +31,47 @@ fn value_ref_to_json(value: Result<sqlx::mysql::MySqlValueRef<'_>, sqlx::Error>)
         return owned.try_decode_unchecked::<Value>().unwrap_or(Value::Null);
     }
 
-    let Some(text) = owned.try_decode_unchecked::<String>().ok() else {
-        return Value::Null;
+    let as_string = || {
+        owned
+            .try_decode_unchecked::<String>()
+            .ok()
+            .unwrap_or_default()
     };
 
     match type_name.as_str() {
-        "BOOLEAN" => text
-            .parse::<i64>()
+        "BOOLEAN" => owned
+            .try_decode_unchecked::<bool>()
             .ok()
-            .map(|n| Value::Bool(n != 0))
-            .unwrap_or_else(|| Value::String(text)),
-        "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "BIGINT" | "YEAR" => text
-            .parse::<i64>()
+            .map(Value::Bool)
+            .or_else(|| as_string().parse::<i64>().ok().map(|n| Value::Bool(n != 0)))
+            .unwrap_or_else(|| Value::String(as_string())),
+        "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "BIGINT" | "YEAR" => owned
+            .try_decode_unchecked::<i64>()
             .ok()
             .map(Value::from)
-            .unwrap_or_else(|| Value::String(text)),
+            .or_else(|| as_string().parse::<i64>().ok().map(Value::from))
+            .unwrap_or_else(|| Value::String(as_string())),
         "TINYINT UNSIGNED" | "SMALLINT UNSIGNED" | "MEDIUMINT UNSIGNED" | "INT UNSIGNED"
-        | "BIGINT UNSIGNED" => text
-            .parse::<u64>()
+        | "BIGINT UNSIGNED" => owned
+            .try_decode_unchecked::<u64>()
             .ok()
             .map(Value::from)
-            .unwrap_or_else(|| Value::String(text)),
-        "FLOAT" | "DOUBLE" | "DECIMAL" => text
-            .parse::<f64>()
+            .or_else(|| as_string().parse::<u64>().ok().map(Value::from))
+            .unwrap_or_else(|| Value::String(as_string())),
+        "FLOAT" | "DOUBLE" | "DECIMAL" => owned
+            .try_decode_unchecked::<f64>()
             .ok()
             .and_then(serde_json::Number::from_f64)
             .map(Value::Number)
-            .unwrap_or_else(|| Value::String(text)),
-        _ => Value::String(text),
+            .or_else(|| {
+                as_string()
+                    .parse::<f64>()
+                    .ok()
+                    .and_then(serde_json::Number::from_f64)
+                    .map(Value::Number)
+            })
+            .unwrap_or_else(|| Value::String(as_string())),
+        _ => Value::String(as_string()),
     }
 }
 

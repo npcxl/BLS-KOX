@@ -14,6 +14,19 @@ pub struct AppState {
     pub snowflake: Arc<SnowflakeGenerator>,
 }
 
+fn unquote_env(value: &str) -> String {
+    let value = value.trim();
+    let bytes = value.as_bytes();
+    if bytes.len() >= 2
+        && ((bytes[0] == b'"' && bytes[bytes.len() - 1] == b'"')
+            || (bytes[0] == b'\'' && bytes[bytes.len() - 1] == b'\''))
+    {
+        value[1..value.len() - 1].to_string()
+    } else {
+        value.to_string()
+    }
+}
+
 impl AppState {
     pub async fn new(config: Config) -> anyhow::Result<Self> {
         let url = format!(
@@ -30,8 +43,8 @@ impl AppState {
                 addr: redis::ConnectionAddr::Tcp(config.redis.host.clone(), config.redis.port),
                 redis: redis::RedisConnectionInfo {
                     db: 0,
-                    username: config.redis.username.clone(),
-                    password: config.redis.password.clone(),
+                    username: config.redis.username.as_deref().map(unquote_env),
+                    password: config.redis.password.as_deref().map(unquote_env),
                     protocol: redis::ProtocolVersion::RESP2,
                 },
             };

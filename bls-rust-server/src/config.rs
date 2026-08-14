@@ -41,6 +41,17 @@ pub struct Config {
     pub event_service: EventServiceConfig,
     pub ws: WsConfig,
     pub upload_dir: String,
+    pub ai: AiConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct AiConfig {
+    pub provider: String,
+    pub model: String,
+    pub api_key: String,
+    pub base_url: String,
+    pub timeout_ms: u64,
+    pub temperature: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +172,14 @@ impl Config {
                 path: env_str("WS_PATH", "/ws/realtime"),
             },
             upload_dir: env_str("UPLOAD_DIR", "./uploads"),
+            ai: AiConfig {
+                provider: env_str("AI_PROVIDER", "deepseek"),
+                model: env_str("AI_MODEL", "deepseek-chat"),
+                api_key: env_str("OPENAI_API_KEY", "ollama"),
+                base_url: env_str("AI_BASE_URL", ""),
+                timeout_ms: env_usize("AI_TIMEOUT_MS", 60_000) as u64,
+                temperature: 0.3,
+            },
         })
     }
 }

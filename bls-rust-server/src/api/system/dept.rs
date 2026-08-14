@@ -1,7 +1,8 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde_json::Value;
+use std::collections::{HashMap, HashSet};
 
 use crate::api_response::ApiResponse;
 use crate::auth::AuthUser;
@@ -21,16 +22,40 @@ pub fn router() -> Router<AppState> {
 
 async fn list(
     State(state): State<AppState>,
+    Query(q): Query<HashMap<String, String>>,
     user: AuthUser,
 ) -> Result<ApiResponse<Value>, AppError> {
     crate::middleware::permission::ensure_perm(&user, "system:dept:list")?;
-    let rows = sqlx::query(
+    let keyword = q.get("keyword").or_else(|| q.get("deptName")).cloned().unwrap_or_default().trim().to_string();
+    let mut rows = sqlx::query(
         "SELECT * FROM sys_dept WHERE tenant_id = ? AND deleted = 0 ORDER BY sort_num ASC",
     )
     .bind(&user.tenant_id)
     .fetch_all(&state.db)
     .await
     .map_err(AppError::from)?;
+    if !keyword.is_empty() {
+        let values = rows_to_json(rows);
+        let mut map: HashMap<String, String> = HashMap::new();
+        for v in &values {
+            let id = v.get("deptId").and_then(Value::as_str).unwrap_or("").to_string();
+            let pid = v.get("parentId").and_then(Value::as_str).unwrap_or("0").to_string();
+            map.insert(id, pid);
+        }
+        let mut matched: HashSet<String> = HashSet::new();
+        for v in &values {
+            let name = v.get("deptName").and_then(Value::as_str).unwrap_or("");
+            if name.contains(&keyword) {
+                let mut current = v.get("deptId").and_then(Value::as_str).unwrap_or("").to_string();
+                while !current.is_empty() && current != "0" {
+                    matched.insert(current.clone());
+                    current = map.get(&current).cloned().unwrap_or_else(|| "0".to_string());
+                }
+            }
+        }
+        let values: Vec<Value> = values.into_iter().filter(|v| matched.contains(v.get("deptId").and_then(Value::as_str).unwrap_or(""))).collect();
+        return Ok(ApiResponse::success(Value::Array(build_tree(values, "parentId", "deptId"))));
+    }
     Ok(ApiResponse::success(Value::Array(build_tree(
         rows_to_json(rows),
         "parentId",

@@ -15,9 +15,9 @@ use crate::state::AppState;
 
 #[derive(Deserialize)]
 pub struct UserQuery {
-    #[serde(default = "default_page_num")]
+    #[serde(default = "default_page_num", alias = "pageNum")]
     page_num: u64,
-    #[serde(default = "default_page_size")]
+    #[serde(default = "default_page_size", alias = "pageSize")]
     page_size: u64,
     keyword: Option<String>,
     status: Option<String>,
@@ -49,29 +49,41 @@ async fn list(
     user: AuthUser,
 ) -> Result<PageResponse<Value>, AppError> {
     crate::middleware::permission::ensure_perm(&user, "system:user:list")?;
-    let mut sql = "SELECT u.*, d.dept_name FROM sys_user u LEFT JOIN sys_dept d ON u.dept_id = d.dept_id AND u.tenant_id = d.tenant_id WHERE u.deleted = 0".to_string();
-    let mut binds: Vec<String> = Vec::new();
-    if user.tenant_id != "000000" {
-        sql.push_str(" AND u.tenant_id = ?");
-        binds.push(user.tenant_id.clone());
-    }
+    let base_from = "FROM sys_user u LEFT JOIN sys_dept d ON u.dept_id = d.dept_id AND u.tenant_id = d.tenant_id WHERE u.deleted = 0";
+    let mut filter_sql = String::new();
+    let mut filter_binds: Vec<String> = Vec::new();
+    filter_sql.push_str(" AND u.tenant_id = ?");
+    filter_binds.push(user.tenant_id.clone());
     if let Some(kw) = q.keyword.as_deref().filter(|s| !s.is_empty()) {
-        sql.push_str(" AND (u.username LIKE ? OR u.nickname LIKE ? OR u.phone LIKE ?)");
-        for _ in 0..3 {
-            binds.push(format!("%{kw}%"));
+        filter_sql.push_str(" AND (u.username LIKE ? OR u.nickname LIKE ? OR u.real_name LIKE ? OR u.phone LIKE ? OR u.email LIKE ?)");
+        for _ in 0..5 {
+            filter_binds.push(format!("%{kw}%"));
         }
     }
     if let Some(status) = q.status.as_deref() {
-        sql.push_str(" AND u.status = ?");
-        binds.push(status.to_string());
+        filter_sql.push_str(" AND u.status = ?");
+        filter_binds.push(status.to_string());
     }
     if let Some(dept_id) = q.dept_id.as_deref() {
-        sql.push_str(" AND u.dept_id = ?");
-        binds.push(dept_id.to_string());
+        filter_sql.push_str(" AND u.dept_id = ?");
+        filter_binds.push(dept_id.to_string());
     }
-    sql.push_str(" ORDER BY u.create_time DESC LIMIT ? OFFSET ?");
-    binds.push(q.page_size.min(100).to_string());
-    binds.push(((q.page_num.max(1) - 1) * q.page_size.min(100)).to_string());
+
+    let count_sql = format!("SELECT COUNT(*) {base_from}{filter_sql}");
+    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
+    for b in &filter_binds {
+        count_query = count_query.bind(b.clone());
+    }
+    let total: i64 = count_query.fetch_one(&state.db).await.unwrap_or(0);
+
+    let sql = format!(
+        "SELECT u.*, d.dept_name {base_from}{filter_sql} ORDER BY u.create_time DESC LIMIT ? OFFSET ?"
+    );
+    let mut binds = filter_binds;
+    let limit = q.page_size.min(100);
+    let offset = (q.page_num.max(1) - 1) * limit;
+    binds.push(limit.to_string());
+    binds.push(offset.to_string());
 
     let mut query = sqlx::query(&sql);
     for b in &binds {
@@ -79,7 +91,7 @@ async fn list(
     }
     let rows = query.fetch_all(&state.db).await.map_err(AppError::from)?;
     let data = rows_to_json(rows);
-    Ok(PageResponse::success(Value::Array(data), 0))
+    Ok(PageResponse::success(Value::Array(data), total as u64))
 }
 
 async fn profile(
@@ -107,10 +119,12 @@ async fn update_profile(
     let email = body.get("email").and_then(Value::as_str).unwrap_or("");
     let phone = body.get("phone").and_then(Value::as_str).unwrap_or("");
     let avatar = body.get("avatar").and_then(Value::as_str).unwrap_or("");
-    sqlx::query("UPDATE sys_user SET nickname = ?, email = ?, phone = ?, avatar = ? WHERE user_id = ? AND tenant_id = ?")
-        .bind(nickname).bind(email).bind(phone).bind(avatar).bind(&user.user_id).bind(&user.tenant_id)
+    let gender = body.get("gender").and_then(Value::as_str).unwrap_or("");
+    let remark = body.get("remark").and_then(Value::as_str).unwrap_or("");
+    sqlx::query("UPDATE sys_user SET nickname = ?, email = ?, phone = ?, avatar = ?, gender = ?, remark = ? WHERE user_id = ? AND tenant_id = ?")
+        .bind(nickname).bind(email).bind(phone).bind(avatar).bind(gender).bind(remark).bind(&user.user_id).bind(&user.tenant_id)
         .execute(&state.db).await.map_err(AppError::from)?;
-    Ok(ApiResponse::message_only("更新成功"))
+    Ok(ApiResponse::message_only("??????"))
 }
 
 async fn add(
@@ -125,22 +139,37 @@ async fn add(
         .get("nickname")
         .and_then(Value::as_str)
         .unwrap_or(username);
-    let password = body
-        .get("password")
-        .and_then(Value::as_str)
-        .unwrap_or("123456");
-    let hashed = hash_argon2id(password)?;
-    let dept_id = body.get("deptId").and_then(Value::as_str).unwrap_or("");
-    let phone = body.get("phone").and_then(Value::as_str).unwrap_or("");
-    let email = body.get("email").and_then(Value::as_str).unwrap_or("");
+    let password = match body.get("password").and_then(Value::as_str) {
+        Some(v) => v.to_string(),
+        None => {
+            sqlx::query_scalar::<_, String>(
+                "SELECT config_value FROM sys_config WHERE config_key = 'sys.user.defaultPassword' AND tenant_id = ? AND deleted = 0 LIMIT 1",
+            )
+            .bind(&user.tenant_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(AppError::from)?
+            .unwrap_or_else(|| "123456".to_string())
+        }
+    };
+    let hashed = hash_argon2id(&password)?;
+    let dept_id = body.get("deptId").and_then(Value::as_str).map(ToOwned::to_owned);
+    let real_name = body.get("realName").and_then(Value::as_str).map(ToOwned::to_owned);
+    let avatar = body.get("avatar").and_then(Value::as_str).map(ToOwned::to_owned);
+    let gender = body.get("gender").and_then(Value::as_str).map(ToOwned::to_owned);
+    let phone = body.get("phone").and_then(Value::as_str).map(ToOwned::to_owned);
+    let email = body.get("email").and_then(Value::as_str).map(ToOwned::to_owned);
+    let status = body.get("status").and_then(Value::as_str).unwrap_or("0");
+    let remark = body.get("remark").and_then(Value::as_str).map(ToOwned::to_owned);
     sqlx::query(
-        "INSERT INTO sys_user (user_id, tenant_id, username, nickname, password, password_algorithm, dept_id, phone, email, status, deleted, create_time)
-         VALUES (?, ?, ?, ?, ?, 'argon2id', ?, ?, ?, '0', 0, NOW())",
+        "INSERT INTO sys_user (user_id, tenant_id, username, nickname, password, password_algorithm, dept_id, real_name, avatar, gender, phone, email, status, remark, deleted, create_time)
+         VALUES (?, ?, ?, ?, ?, 'argon2id', ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())",
     )
     .bind(id).bind(&user.tenant_id).bind(username).bind(nickname).bind(hashed)
-    .bind(if dept_id.is_empty() { None } else { Some(dept_id) }).bind(phone).bind(email)
+    .bind(dept_id).bind(real_name).bind(avatar).bind(gender).bind(phone).bind(email)
+    .bind(status).bind(remark)
     .execute(&state.db).await.map_err(AppError::from)?;
-    Ok(ApiResponse::message_only("新增成功"))
+    Ok(ApiResponse::message_only("?????"))
 }
 
 async fn edit(
@@ -152,15 +181,37 @@ async fn edit(
     let user_id = body
         .get("userId")
         .and_then(Value::as_str)
-        .ok_or_else(|| AppError::BadRequest("缺少 userId".into()))?;
-    let nickname = body.get("nickname").and_then(Value::as_str).unwrap_or("");
-    let phone = body.get("phone").and_then(Value::as_str).unwrap_or("");
-    let email = body.get("email").and_then(Value::as_str).unwrap_or("");
-    let status = body.get("status").and_then(Value::as_str).unwrap_or("0");
-    sqlx::query("UPDATE sys_user SET nickname = ?, phone = ?, email = ?, status = ? WHERE user_id = ? AND tenant_id = ?")
-        .bind(nickname).bind(phone).bind(email).bind(status).bind(user_id).bind(&user.tenant_id)
-        .execute(&state.db).await.map_err(AppError::from)?;
-    Ok(ApiResponse::message_only("编辑成功"))
+        .ok_or_else(|| AppError::BadRequest("??? userId".into()))?;
+    let fields = [
+        ("nickname", "nickname"),
+        ("realName", "real_name"),
+        ("avatar", "avatar"),
+        ("gender", "gender"),
+        ("email", "email"),
+        ("phone", "phone"),
+        ("deptId", "dept_id"),
+        ("status", "status"),
+        ("remark", "remark"),
+    ];
+    let mut sets = Vec::new();
+    let mut binds: Vec<Value> = Vec::new();
+    for (camel, snake) in fields {
+        if let Some(v) = body.get(camel) {
+            sets.push(format!("{snake} = ?"));
+            binds.push(v.clone());
+        }
+    }
+    if sets.is_empty() {
+        return Err(AppError::BadRequest("no updatable fields".into()));
+    }
+    let sql = format!("UPDATE sys_user SET {} WHERE user_id = ? AND tenant_id = ?", sets.join(", "));
+    let mut query = sqlx::query(&sql);
+    for bind in binds {
+        query = query.bind(bind);
+    }
+    query = query.bind(user_id).bind(&user.tenant_id);
+    query.execute(&state.db).await.map_err(AppError::from)?;
+    Ok(ApiResponse::message_only("??????"))
 }
 
 async fn change_password(

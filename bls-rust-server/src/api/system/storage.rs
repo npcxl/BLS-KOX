@@ -1,7 +1,8 @@
-use axum::extract::{Multipart, Path, State};
+use axum::extract::{Multipart, Path, Query, State};
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 
 use crate::api_response::{ApiResponse, PageResponse};
 use crate::auth::AuthUser;
@@ -26,19 +27,18 @@ pub fn router() -> Router<AppState> {
 async fn list(
     State(state): State<AppState>,
     user: AuthUser,
-) -> Result<PageResponse<Value>, AppError> {
+) -> Result<ApiResponse<Value>, AppError> {
     crate::middleware::permission::ensure_perm(&user, "system:storage:list")?;
     let rows = sqlx::query(
-        "SELECT * FROM sys_storage_config WHERE tenant_id = ? AND deleted = 0 ORDER BY is_default DESC, create_time DESC",
+        "SELECT * FROM sys_storage_config WHERE tenant_id = ? AND deleted = 0 ORDER BY create_time DESC",
     )
     .bind(&user.tenant_id)
     .fetch_all(&state.db)
     .await
     .map_err(AppError::from)?;
-    Ok(PageResponse::success(
-        Value::Array(crate::db::query::rows_to_json(rows)),
-        0,
-    ))
+    Ok(ApiResponse::success(Value::Array(
+        crate::db::query::rows_to_json(rows),
+    )))
 }
 
 async fn add(
@@ -75,7 +75,7 @@ async fn add(
     .execute(&state.db)
     .await
     .map_err(AppError::from)?;
-    Ok(ApiResponse::success(json!({"storageId": storage_id})))
+    Ok(ApiResponse::message_only("????"))
 }
 
 async fn edit(
@@ -235,7 +235,7 @@ async fn upload(
     .bind(bucket_name.clone())
     .bind(object_name.clone())
     .bind(original_name.clone())
-    .bind(safe_name)
+    .bind(safe_name.clone())
     .bind(ext)
     .bind(mime_type)
     .bind(data.len() as i64)
@@ -247,12 +247,17 @@ async fn upload(
     .await
     .map_err(AppError::from)?;
 
-    Ok(ApiResponse::success(json!({
-        "fileId": file_id,
-        "url": uploaded_url,
-        "bucketName": bucket_name,
-        "objectName": object_name,
-    })))
+    Ok(ApiResponse::success(json!(
+        {
+            "fileId": file_id,
+            "url": uploaded_url,
+            "bucketName": bucket_name,
+            "objectName": object_name,
+            "originalName": original_name.clone(),
+            "fileName": safe_name.clone(),
+            "fileSize": data.len(),
+        }
+    )))
 }
 
 async fn load_storage_config(
@@ -316,19 +321,39 @@ fn sanitize_filename(filename: &str) -> String {
 
 async fn files(
     State(state): State<AppState>,
+    Query(q): Query<HashMap<String, String>>,
     user: AuthUser,
 ) -> Result<PageResponse<Value>, AppError> {
     crate::middleware::permission::ensure_perm(&user, "system:file:list")?;
-    let rows = sqlx::query(
-        "SELECT * FROM sys_file WHERE tenant_id=? AND deleted=0 ORDER BY create_time DESC LIMIT 100",
-    )
-    .bind(&user.tenant_id)
-    .fetch_all(&state.db)
-    .await
-    .map_err(AppError::from)?;
+    let mut filter_sql = String::from(" WHERE tenant_id = ? AND deleted = 0");
+    let mut binds: Vec<String> = vec![user.tenant_id.clone()];
+    if let Some(v) = q.get("originalName").filter(|s| !s.is_empty()) {
+        filter_sql.push_str(" AND original_name LIKE ?");
+        binds.push(format!("%{v}%"));
+    }
+    if let Some(v) = q.get("moduleName").filter(|s| !s.is_empty()) {
+        filter_sql.push_str(" AND module_name LIKE ?");
+        binds.push(format!("%{v}%"));
+    }
+    if let Some(v) = q.get("accessType").filter(|s| !s.is_empty()) {
+        filter_sql.push_str(" AND access_type = ?");
+        binds.push(v.clone());
+    }
+    let count_sql = format!("SELECT COUNT(*) FROM sys_file{filter_sql}");
+    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
+    for b in &binds { count_query = count_query.bind(b.clone()); }
+    let total: i64 = count_query.fetch_one(&state.db).await.unwrap_or(0);
+    let page_num = q.get("pageNum").and_then(|s| s.parse::<u64>().ok()).unwrap_or(1).max(1);
+    let page_size = q.get("pageSize").and_then(|s| s.parse::<u64>().ok()).unwrap_or(10).clamp(1, 100);
+    let offset = (page_num - 1) * page_size;
+    let sql = format!("SELECT * FROM sys_file{filter_sql} ORDER BY create_time DESC LIMIT ? OFFSET ?");
+    let mut query = sqlx::query(&sql);
+    for b in binds { query = query.bind(b); }
+    query = query.bind(page_size as i64).bind(offset as i64);
+    let rows = query.fetch_all(&state.db).await.map_err(AppError::from)?;
     Ok(PageResponse::success(
         Value::Array(crate::db::query::rows_to_json(rows)),
-        0,
+        total as u64,
     ))
 }
 

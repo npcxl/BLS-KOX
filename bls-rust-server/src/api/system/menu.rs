@@ -1,4 +1,6 @@
-use axum::extract::{Path, State};
+use std::collections::{HashMap, HashSet};
+
+use axum::extract::{Path, Query, State};
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde_json::Value;
@@ -22,6 +24,7 @@ pub fn router() -> Router<AppState> {
 
 async fn list(
     State(state): State<AppState>,
+    Query(q): Query<HashMap<String, String>>,
     user: AuthUser,
 ) -> Result<ApiResponse<Value>, AppError> {
     crate::middleware::permission::ensure_perm(&user, "system:menu:list")?;
@@ -29,8 +32,46 @@ async fn list(
         .fetch_all(&state.db)
         .await
         .map_err(AppError::from)?;
+    let mut values = rows_to_json(rows);
+
+    let keyword = q
+        .get("keyword")
+        .or_else(|| q.get("menuName"))
+        .map(String::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if !keyword.is_empty() {
+        let mut parent_map = HashMap::new();
+        for row in &values {
+            let id = row.get("menuId").and_then(Value::as_str).unwrap_or("").to_string();
+            let parent = row.get("parentId").and_then(Value::as_str).unwrap_or("0").to_string();
+            parent_map.insert(id, parent);
+        }
+        let mut matched = HashSet::new();
+        for row in &values {
+            let name = row.get("menuName").and_then(Value::as_str).unwrap_or("");
+            if name.contains(&keyword) {
+                let mut current = row.get("menuId").and_then(Value::as_str).unwrap_or("").to_string();
+                while !current.is_empty() && current != "0" {
+                    matched.insert(current.clone());
+                    current = parent_map
+                        .get(&current)
+                        .cloned()
+                        .unwrap_or_else(|| "0".to_string());
+                }
+            }
+        }
+        values.retain(|row| {
+            row.get("menuId")
+                .and_then(Value::as_str)
+                .map(|id| matched.contains(id))
+                .unwrap_or(false)
+        });
+    }
+
     Ok(ApiResponse::success(Value::Array(build_tree(
-        rows_to_json(rows),
+        values,
         "parentId",
         "menuId",
     ))))

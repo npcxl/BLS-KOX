@@ -2,9 +2,9 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PageParams {
-    #[serde(default = "default_page_num")]
+    #[serde(default = "default_page_num", alias = "pageNum")]
     pub page_num: u64,
-    #[serde(default = "default_page_size")]
+    #[serde(default = "default_page_size", alias = "pageSize")]
     pub page_size: u64,
     pub keyword: Option<String>,
 }

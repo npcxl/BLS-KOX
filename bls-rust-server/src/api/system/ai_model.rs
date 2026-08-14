@@ -1,9 +1,10 @@
 use axum::extract::State;
+use axum::http::HeaderMap;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::Value;
 
-use crate::api_response::ApiResponse;
+use crate::api_response::{ApiResponse, PageResponse};
 use crate::db::crud::{CrudSpec, crud_router};
 use crate::db::query::rows_to_json;
 use crate::error::AppError;
@@ -30,7 +31,7 @@ const SPEC: CrudSpec = CrudSpec {
         "sort_num",
         "remark",
     ],
-    perm_prefix: Some("system:ai-model"),
+    perm_prefix: None,
     soft_delete: true,
     status_field: true,
     tenant_scoped: true,
@@ -40,10 +41,22 @@ pub fn router() -> Router<AppState> {
     crud_router(SPEC).route("/internal-list", get(internal_list))
 }
 
-async fn internal_list(State(state): State<AppState>) -> Result<ApiResponse<Value>, AppError> {
-    let rows = sqlx::query("SELECT * FROM ai_model_config WHERE status = '0' AND deleted = 0")
+async fn internal_list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<PageResponse<Value>, AppError> {
+    let secret = headers
+        .get("X-Internal-Secret")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if state.config.internal_secret.is_empty() || secret != state.config.internal_secret {
+        return Err(AppError::Forbidden("Forbidden".into()));
+    }
+
+    let rows = sqlx::query("SELECT * FROM ai_model_config WHERE deleted = 0 ORDER BY sort_num ASC")
         .fetch_all(&state.db)
         .await
         .map_err(AppError::from)?;
-    Ok(ApiResponse::success(Value::Array(rows_to_json(rows))))
+    let total = rows.len() as u64;
+    Ok(PageResponse::success(Value::Array(rows_to_json(rows)), total))
 }

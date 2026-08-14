@@ -4,7 +4,6 @@ use axum::{Json, Router};
 use serde_json::{Value, json};
 
 use crate::api_response::ApiResponse;
-use crate::auth::AuthUser;
 use crate::db::crud::{CrudSpec, crud_router};
 use crate::db::query::row_to_json;
 use crate::error::AppError;
@@ -50,7 +49,7 @@ async fn fetch_system_configs(state: &AppState) -> Result<Vec<Value>, AppError> 
     let mut rows = Vec::new();
     for key in keys {
         let row = sqlx::query(
-            "SELECT * FROM sys_config WHERE config_key=? AND deleted=0 AND (tenant_id='000000' OR tenant_id='100000') ORDER BY tenant_id DESC LIMIT 1",
+            "SELECT * FROM sys_config WHERE config_key=? AND deleted=0 AND tenant_id='000000' ORDER BY create_time DESC LIMIT 1",
         )
         .bind(key)
         .fetch_optional(&state.db)
@@ -71,19 +70,18 @@ async fn public_system(State(state): State<AppState>) -> Result<ApiResponse<Valu
 
 async fn public_theme(State(state): State<AppState>) -> Result<ApiResponse<Value>, AppError> {
     let row = sqlx::query(
-        "SELECT * FROM sys_config WHERE config_key='theme.default' AND status='0' AND deleted=0 ORDER BY tenant_id DESC LIMIT 1",
+        "SELECT * FROM sys_config WHERE config_key='theme.default' AND deleted=0 AND tenant_id='000000' ORDER BY create_time DESC LIMIT 1",
     )
     .fetch_optional(&state.db)
     .await
     .map_err(AppError::from)?;
     Ok(ApiResponse::success(
-        row.map(|r| row_to_json(&r)).unwrap_or(json!({})),
+        row.map(|r| row_to_json(&r)).unwrap_or(Value::Null),
     ))
 }
 
 async fn current(
     State(state): State<AppState>,
-    _user: AuthUser,
 ) -> Result<ApiResponse<Value>, AppError> {
     Ok(ApiResponse::success(Value::Array(
         fetch_system_configs(&state).await?,

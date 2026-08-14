@@ -24,9 +24,36 @@ async fn list(
     user: AuthUser,
 ) -> Result<PageResponse<Value>, AppError> {
     crate::middleware::permission::ensure_perm(&user, "system:role:list")?;
-    let rows = sqlx::query("SELECT * FROM sys_role WHERE tenant_id = ? AND deleted = 0 ORDER BY sort_num ASC LIMIT 100")
-        .bind(&user.tenant_id).fetch_all(&state.db).await.map_err(AppError::from)?;
-    Ok(PageResponse::success(Value::Array(rows_to_json(rows)), 0))
+    let mut filter_sql = String::from(" WHERE deleted = 0");
+    let mut binds: Vec<String> = Vec::new();
+    filter_sql.push_str(" AND tenant_id = ?");
+    binds.push(user.tenant_id.clone());
+    if let Some(kw) = q.keyword.as_deref().filter(|s| !s.is_empty()) {
+        filter_sql.push_str(" AND (role_name LIKE ? OR role_key LIKE ?)");
+        binds.push(format!("%{kw}%"));
+        binds.push(format!("%{kw}%"));
+    }
+
+    let count_sql = format!("SELECT COUNT(*) FROM sys_role{filter_sql}");
+    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
+    for b in &binds {
+        count_query = count_query.bind(b.clone());
+    }
+    let total: i64 = count_query.fetch_one(&state.db).await.unwrap_or(0);
+
+    let limit = q.page_size.min(100);
+    let offset = (q.page_num.max(1) - 1) * limit;
+    let sql = format!("SELECT * FROM sys_role{filter_sql} ORDER BY sort_num ASC LIMIT ? OFFSET ?");
+    let mut query = sqlx::query(&sql);
+    for b in binds {
+        query = query.bind(b);
+    }
+    query = query.bind(limit as i64).bind(offset as i64);
+    let rows = query.fetch_all(&state.db).await.map_err(AppError::from)?;
+    Ok(PageResponse::success(
+        Value::Array(rows_to_json(rows)),
+        total as u64,
+    ))
 }
 
 async fn get_menus(
@@ -35,6 +62,7 @@ async fn get_menus(
     user: AuthUser,
 ) -> Result<ApiResponse<Vec<String>>, AppError> {
     crate::middleware::permission::ensure_perm(&user, "system:role:list")?;
+    assert_role_owned(&state, &role_id, &user.tenant_id).await?;
     let ids: Vec<String> =
         sqlx::query_scalar("SELECT menu_id FROM sys_role_menu WHERE role_id = ?")
             .bind(role_id)
@@ -51,6 +79,7 @@ async fn put_menus(
     Json(body): Json<Value>,
 ) -> Result<ApiResponse<Value>, AppError> {
     crate::middleware::permission::ensure_perm(&user, "system:role:assignMenu")?;
+    assert_role_owned(&state, &role_id, &user.tenant_id).await?;
     let menu_ids: Vec<String> = body
         .get("menuIds")
         .and_then(Value::as_array)
@@ -138,6 +167,19 @@ async fn remove(
     query = query.bind(&user.tenant_id);
     query.execute(&state.db).await.map_err(AppError::from)?;
     Ok(ApiResponse::message_only("删除成功"))
+}
+
+async fn assert_role_owned(state: &AppState, role_id: &str, tenant_id: &str) -> Result<(), AppError> {
+    let exists: Option<String> = sqlx::query_scalar("SELECT role_id FROM sys_role WHERE role_id=? AND tenant_id=? AND deleted=0")
+        .bind(role_id)
+        .bind(tenant_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(AppError::from)?;
+    if exists.is_none() {
+        return Err(AppError::NotFound("role not found".into()));
+    }
+    Ok(())
 }
 
 fn ids_from_body(body: &Value) -> Vec<String> {

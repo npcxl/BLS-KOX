@@ -4,6 +4,7 @@ use axum::{Json, Router};
 use serde_json::{Value, json};
 
 use crate::api_response::ApiResponse;
+use crate::auth::AuthUser;
 use crate::db::crud::{CrudSpec, crud_router};
 use crate::error::AppError;
 use crate::state::AppState;
@@ -41,10 +42,15 @@ pub fn router() -> Router<AppState> {
     crud_router(SPEC).route("/current", get(current))
 }
 
-async fn current(State(state): State<AppState>) -> Result<ApiResponse<Value>, AppError> {
+async fn current(
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> Result<ApiResponse<Value>, AppError> {
     let row = sqlx::query(
-        "SELECT * FROM sys_theme_config WHERE status='0' AND deleted=0 AND tenant_id='000000' ORDER BY create_time DESC LIMIT 1",
+        "SELECT * FROM sys_theme_config WHERE status='0' AND deleted=0 AND (tenant_id=? OR tenant_id='000000') ORDER BY CASE WHEN tenant_id=? THEN 0 ELSE 1 END, create_time DESC LIMIT 1",
     )
+    .bind(&user.tenant_id)
+    .bind(&user.tenant_id)
     .fetch_optional(&state.db)
     .await
     .map_err(AppError::from)?;

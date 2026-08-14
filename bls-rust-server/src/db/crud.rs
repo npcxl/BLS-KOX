@@ -11,7 +11,6 @@ use crate::db::query::row_to_json;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use crate::utils::case::{to_camel, to_snake_key};
-use crate::utils::pagination::PageParams;
 
 #[derive(Clone, Copy)]
 pub struct CrudSpec {
@@ -30,9 +29,23 @@ pub struct CrudSpec {
 #[derive(Deserialize)]
 pub struct ListQuery {
     #[serde(flatten)]
-    pub page: PageParams,
-    #[serde(flatten)]
     pub filters: std::collections::HashMap<String, Value>,
+}
+
+fn query_u64(map: &std::collections::HashMap<String, Value>, key: &str) -> u64 {
+    map.get(key)
+        .and_then(|v| match v {
+            Value::Number(n) => n.as_u64(),
+            Value::String(s) => s.parse::<u64>().ok(),
+            _ => None,
+        })
+        .unwrap_or(0)
+}
+
+fn query_string(map: &std::collections::HashMap<String, Value>, key: &str) -> Option<String> {
+    map.get(key)
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
 }
 
 pub fn crud_router(spec: CrudSpec) -> Router<AppState> {
@@ -115,11 +128,15 @@ async fn list(
     spec: CrudSpec,
 ) -> Result<PageResponse<Vec<Value>>, AppError> {
     require_perm(&user, &spec, "list")?;
+    let page_num = query_u64(&query.filters, "pageNum").max(1);
+    let page_size = query_u64(&query.filters, "pageSize").clamp(1, 100).max(1);
+    let offset = (page_num - 1) * page_size;
+    let keyword = query_string(&query.filters, "keyword");
     let pool = &state.db;
     let mut count_qb = QueryBuilder::<sqlx::MySql>::new("SELECT COUNT(*) FROM ");
     count_qb.push(spec.table);
     push_where(&mut count_qb, &user, &spec);
-    if let Some(kw) = query.page.keyword.as_deref().filter(|s| !s.is_empty()) {
+    if let Some(kw) = keyword.as_deref().filter(|s| !s.is_empty()) {
         push_keyword(&mut count_qb, spec.search_fields, kw);
     }
     let total: i64 = count_qb
@@ -131,18 +148,40 @@ async fn list(
     let mut qb = QueryBuilder::<sqlx::MySql>::new("SELECT * FROM ");
     qb.push(spec.table);
     push_where(&mut qb, &user, &spec);
-    if let Some(kw) = query.page.keyword.as_deref().filter(|s| !s.is_empty()) {
+    if let Some(kw) = keyword.as_deref().filter(|s| !s.is_empty()) {
         push_keyword(&mut qb, spec.search_fields, kw);
     }
-    qb.push(" ORDER BY ")
-        .push(spec.pk)
-        .push(" DESC LIMIT ")
-        .push_bind(query.page.limit() as i64)
+    qb.push(" ORDER BY ");
+    if spec.table == "ai_model_config" {
+        qb.push("sort_num ASC, create_time DESC");
+    } else if spec.table == "sys_package" {
+        qb.push("create_time DESC");
+    } else {
+        qb.push(spec.pk).push(" DESC");
+    }
+    qb.push(" LIMIT ")
+        .push_bind(page_size as i64)
         .push(" OFFSET ")
-        .push_bind(query.page.offset() as i64);
+        .push_bind(offset as i64);
 
     let rows = qb.build().fetch_all(pool).await.map_err(AppError::from)?;
-    let data = rows.iter().map(|r| to_camel(row_to_json(r))).collect();
+    let data: Vec<Value> = rows
+        .iter()
+        .map(|r| to_camel(row_to_json(r)))
+        .map(|mut v| {
+            if spec.table == "ai_model_config" {
+                if let Some(obj) = v.as_object_mut() {
+                    if let Some(Value::String(key)) = obj.get("apiKey") {
+                        if key.len() > 4 {
+                            let masked = format!("{}****{}", &key[..4], &key[key.len() - 4..]);
+                            obj.insert("apiKey".to_string(), Value::String(masked));
+                        }
+                    }
+                }
+            }
+            v
+        })
+        .collect();
     Ok(PageResponse::success(data, total as u64))
 }
 
@@ -151,7 +190,7 @@ fn push_where(qb: &mut QueryBuilder<'_, sqlx::MySql>, user: &AuthUser, spec: &Cr
     if spec.soft_delete {
         qb.push(" AND deleted = 0");
     }
-    if spec.tenant_scoped && !user.is_platform() {
+    if spec.tenant_scoped {
         qb.push(" AND tenant_id = ")
             .push_bind(user.tenant_id.clone());
     }
@@ -189,7 +228,7 @@ async fn get_one(
     if spec.soft_delete {
         qb.push(" AND deleted = 0");
     }
-    if spec.tenant_scoped && !user.is_platform() {
+    if spec.tenant_scoped {
         qb.push(" AND tenant_id = ")
             .push_bind(user.tenant_id.clone());
     }
@@ -277,7 +316,7 @@ async fn edit(
         sets.join(", "),
         spec.pk
     );
-    if spec.tenant_scoped && !user.is_platform() {
+    if spec.tenant_scoped {
         sql.push_str(" AND tenant_id = ?");
     }
     let mut query = sqlx::query(&sql);
@@ -285,7 +324,7 @@ async fn edit(
         query = query.bind(bind);
     }
     query = query.bind(id);
-    if spec.tenant_scoped && !user.is_platform() {
+    if spec.tenant_scoped {
         query = query.bind(user.tenant_id.clone());
     }
     query.execute(&state.db).await.map_err(AppError::from)?;
@@ -315,14 +354,14 @@ async fn remove(
             spec.table, spec.pk, placeholders
         )
     };
-    if spec.tenant_scoped && !user.is_platform() {
+    if spec.tenant_scoped {
         sql.push_str(" AND tenant_id = ?");
     }
     let mut query = sqlx::query(&sql);
     for id in ids {
         query = query.bind(id);
     }
-    if spec.tenant_scoped && !user.is_platform() {
+    if spec.tenant_scoped {
         query = query.bind(user.tenant_id.clone());
     }
     query.execute(&state.db).await.map_err(AppError::from)?;
@@ -347,11 +386,11 @@ async fn update_status(
         .cloned()
         .ok_or_else(|| AppError::BadRequest("missing status".into()))?;
     let mut sql = format!("UPDATE {} SET status = ? WHERE {}", spec.table, spec.pk);
-    if spec.tenant_scoped && !user.is_platform() {
+    if spec.tenant_scoped {
         sql.push_str(" AND tenant_id = ?");
     }
     let mut query = sqlx::query(&sql).bind(status).bind(id);
-    if spec.tenant_scoped && !user.is_platform() {
+    if spec.tenant_scoped {
         query = query.bind(user.tenant_id.clone());
     }
     query.execute(&state.db).await.map_err(AppError::from)?;

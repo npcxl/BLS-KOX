@@ -25,13 +25,14 @@ async fn search(
     Query(q): Query<std::collections::HashMap<String, String>>,
     user: AuthUser,
 ) -> Result<ApiResponse<Value>, AppError> {
+    crate::middleware::permission::ensure_perm(&user, "system:global-search:search")?;
     let keyword = q.get("keyword").cloned().unwrap_or_default();
     if keyword.chars().count() < 2 {
         return Ok(ApiResponse::success(Value::Array(vec![])));
     }
     let like = format!("%{keyword}%");
     let rows = sqlx::query(
-        "SELECT * FROM sys_search_index WHERE tenant_id=? AND deleted=0 AND status='0' AND (title LIKE ? OR subtitle LIKE ? OR content LIKE ?) ORDER BY created_at DESC LIMIT 50",
+        "SELECT * FROM sys_search_index WHERE tenant_id=? AND deleted=0 AND status='0' AND (title LIKE ? OR subtitle LIKE ? OR content LIKE ?) ORDER BY create_time DESC LIMIT 50",
     )
     .bind(&user.tenant_id)
     .bind(&like)
@@ -91,21 +92,23 @@ async fn search(
 
 async fn config_list(
     State(state): State<AppState>,
-    _user: AuthUser,
-) -> Result<PageResponse<Value>, AppError> {
+    user: AuthUser,
+) -> Result<ApiResponse<Value>, AppError> {
+    crate::middleware::permission::ensure_perm(&user, "system:global-search:config:list")?;
     let rows =
         sqlx::query("SELECT * FROM sys_global_search_config WHERE deleted=0 ORDER BY sort ASC")
             .fetch_all(&state.db)
             .await
             .map_err(AppError::from)?;
-    Ok(PageResponse::success(Value::Array(rows_to_json(rows)), 0))
+    Ok(ApiResponse::success(Value::Array(rows_to_json(rows))))
 }
 
 async fn config_save(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<ApiResponse<Value>, AppError> {
+    crate::middleware::permission::ensure_perm(&user, "system:global-search:config:save")?;
     let search_id = body
         .get("searchId")
         .and_then(Value::as_str)
@@ -191,8 +194,9 @@ async fn config_save(
 async fn config_delete(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    _user: AuthUser,
+    user: AuthUser,
 ) -> Result<ApiResponse<Value>, AppError> {
+    crate::middleware::permission::ensure_perm(&user, "system:global-search:config:delete")?;
     sqlx::query("UPDATE sys_global_search_config SET deleted=1 WHERE search_id=?")
         .bind(id)
         .execute(&state.db)
@@ -203,8 +207,9 @@ async fn config_delete(
 
 async fn index_modules(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
 ) -> Result<ApiResponse<Value>, AppError> {
+    crate::middleware::permission::ensure_perm(&user, "system:search-index:rebuild")?;
     let rows = sqlx::query(
         "SELECT module_key, module_name FROM sys_global_search_config WHERE enabled=1 AND deleted=0 ORDER BY sort ASC",
     )
@@ -216,9 +221,10 @@ async fn index_modules(
 
 async fn index_rebuild(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
     Json(body): Json<Value>,
 ) -> Result<ApiResponse<Value>, AppError> {
+    crate::middleware::permission::ensure_perm(&user, "system:search-index:rebuild")?;
     let module_keys = body
         .get("moduleKeys")
         .and_then(Value::as_array)
@@ -422,6 +428,7 @@ async fn rebuild_one_module(
         let route_path = cfg.get("routePath").and_then(Value::as_str);
         let owner_id = field_value(cfg, row, "ownerField");
         let dept_id = field_value(cfg, row, "deptField");
+        let created_by = field_value(cfg, row, "createdByField");
         let status = cfg
             .get("statusField")
             .and_then(Value::as_str)
@@ -432,8 +439,8 @@ async fn rebuild_one_module(
 
         let index_id = format!("{tenant_id}:{module_key}:{biz_id}");
         sqlx::query(
-            "REPLACE INTO sys_search_index (index_id, tenant_id, module_key, module_name, biz_id, title, subtitle, content, permission, route_path, owner_id, dept_id, status, deleted, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())",
+            "REPLACE INTO sys_search_index (index_id, tenant_id, module_key, module_name, biz_id, title, subtitle, content, permission, route_path, owner_id, dept_id, created_by, status, deleted, source_table, create_time, update_time)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NOW(), NOW())",
         )
         .bind(index_id)
         .bind(tenant_id)
@@ -447,7 +454,9 @@ async fn rebuild_one_module(
         .bind(route_path)
         .bind(owner_id)
         .bind(dept_id)
+        .bind(created_by)
         .bind(status)
+        .bind(source_table)
         .execute(&state.db)
         .await
         .map_err(AppError::from)?;

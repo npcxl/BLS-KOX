@@ -17,6 +17,15 @@ pub fn router() -> Router<AppState> {
         .route("/save", post(save))
 }
 
+fn bool_to_i64(value: &Value, default: i64) -> i64 {
+    match value {
+        Value::Bool(true) => 1,
+        Value::Bool(false) => 0,
+        Value::Number(n) => n.as_i64().unwrap_or(default),
+        _ => default,
+    }
+}
+
 async fn list(
     State(state): State<AppState>,
     user: AuthUser,
@@ -89,7 +98,7 @@ async fn save(
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let enabled = page.get("enabled").and_then(Value::as_i64).unwrap_or(1);
+    let enabled = bool_to_i64(page.get("enabled").unwrap_or(&Value::Null), 1);
     let sort = page.get("sort").and_then(Value::as_i64).unwrap_or(0);
     let remark = page.get("remark").and_then(Value::as_str);
 
@@ -153,18 +162,15 @@ async fn save(
             .unwrap_or("");
         let title = column.get("title").and_then(Value::as_str).unwrap_or("");
         let order_num = column.get("orderNum").and_then(Value::as_i64).unwrap_or(0);
-        let visible = column.get("visible").and_then(Value::as_i64).unwrap_or(1);
-        let searchable = column
-            .get("searchable")
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
-        let editable = column.get("editable").and_then(Value::as_i64).unwrap_or(0);
-        let copyable = column.get("copyable").and_then(Value::as_i64).unwrap_or(0);
-        let ellipsis = column.get("ellipsis").and_then(Value::as_i64).unwrap_or(0);
+        let visible = bool_to_i64(column.get("visible").unwrap_or(&Value::Null), 1);
+        let searchable = bool_to_i64(column.get("searchable").unwrap_or(&Value::Null), 0);
+        let editable = bool_to_i64(column.get("editable").unwrap_or(&Value::Null), 1);
+        let copyable = bool_to_i64(column.get("copyable").unwrap_or(&Value::Null), 0);
+        let ellipsis = bool_to_i64(column.get("ellipsis").unwrap_or(&Value::Null), 0);
         let value_type = column.get("valueType").and_then(Value::as_str);
         let value_enum_code = column.get("valueEnumCode").and_then(Value::as_str);
         let placeholder = column.get("placeholder").and_then(Value::as_str);
-        let required = column.get("required").and_then(Value::as_i64).unwrap_or(0);
+        let required = bool_to_i64(column.get("required").unwrap_or(&Value::Null), 0);
         sqlx::query(
             "INSERT INTO sys_page_column_config (column_id, tenant_id, page_code, data_index, title, order_num, visible, searchable, editable, copyable, ellipsis, value_type, value_enum_code, placeholder, required, deleted, create_time)
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,NOW())

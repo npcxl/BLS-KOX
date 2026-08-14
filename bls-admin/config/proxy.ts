@@ -10,14 +10,10 @@
  */
 export default {
   dev: {
-    // AI conversation management -> bls-rust-server
-    '/api/ai/chat/conversations': {
-      target: 'http://localhost:6002',
-      changeOrigin: true,
-    },
-    // AI streaming -> AI service (7201)
+    // AI 相关接口（对话管理 / 模型列表 / 流式对话）统一走 Rust 后端
+    // Rust 后端已内置 AI Provider 抽象层，直接对接 OpenAI 兼容接口
     '/api/ai/': {
-      target: 'http://localhost:7201',
+      target: 'http://localhost:6002',
       changeOrigin: true,
       proxyTimeout: 300000,
     },
