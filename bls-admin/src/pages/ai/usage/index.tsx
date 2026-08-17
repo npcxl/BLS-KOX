@@ -1,7 +1,9 @@
 import { PageContainer, ProTable } from '@ant-design/pro-components';
-import { Card, Col, Row, Statistic, Select, Space } from 'antd';
+import { Card, Masonry, Select, Space, Statistic } from 'antd';
+import type { MasonryProps } from 'antd';
 import { BarChartOutlined, DollarOutlined, ThunderboltOutlined, ApiOutlined } from '@ant-design/icons';
 import { useEffect, useState, useRef, useMemo } from 'react';
+import type { ReactNode } from 'react';
 import { request } from '@umijs/max';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
 import { useDict } from '@/hooks/useDict';
@@ -70,6 +72,118 @@ export default function AiUsagePage() {
 
   const empty = <span style={{ color: '#999' }}>-</span>;
 
+  // KPI 卡数据
+  type KpiData = { title: string; value: string | number; icon: ReactNode };
+  const kpiItems: { key: string; data: KpiData }[] = [
+    { key: 'kpi-count', data: { title: '今日调用', value: stats?.today.count ?? 0, icon: <ApiOutlined /> } },
+    { key: 'kpi-token', data: { title: '今日 Token', value: formatTokens(stats?.today.totalTokens ?? 0), icon: <ThunderboltOutlined /> } },
+    { key: 'kpi-cost', data: { title: '今日费用', value: formatCost(stats?.today.totalCost ?? 0), icon: <DollarOutlined /> } },
+    { key: 'kpi-ms', data: { title: '平均耗时', value: `${stats?.today.avgElapsedMs ?? 0}ms`, icon: <BarChartOutlined /> } },
+  ];
+
+  // 表格卡数据
+  type TableKey = 'model' | 'endpoint' | 'user' | 'trend';
+  type TableData = { key: TableKey; title: string };
+  const tableItems: { key: string; data: TableData }[] = [
+    { key: 'model', data: { key: 'model', title: '按模型统计' } },
+    { key: 'endpoint', data: { key: 'endpoint', title: '按端点统计' } },
+    { key: 'user', data: { key: 'user', title: '按用户统计 Top 10' } },
+    { key: 'trend', data: { key: 'trend', title: '每日趋势' } },
+  ];
+
+  const masonryStyles: MasonryProps['styles'] = {
+    root: { gap: 16 },
+    item: { marginBottom: 16 },
+  };
+
+  const renderKpiCard = (data: KpiData) => (
+    <Card loading={loading} style={{ height: '100%' }}>
+      <Statistic title={data.title} value={data.value} prefix={data.icon} />
+    </Card>
+  );
+
+  const renderTableCard = (item: TableData) => {
+    if (item.key === 'model') {
+      return (
+        <Card title={item.title} loading={loading} style={{ height: '100%' }}>
+          <ProTable<UsageStats['modelStats'][number]>
+            dataSource={stats?.modelStats ?? []}
+            rowKey="modelName"
+            search={false}
+            options={false}
+            pagination={false}
+            size="small"
+            columns={[
+              { title: '模型', dataIndex: 'modelName' },
+              { title: '次数', dataIndex: 'count', width: 80 },
+              { title: 'Token', dataIndex: 'totalTokens', width: 100, render: (_, r) => formatTokens(r.totalTokens) },
+              { title: '费用', dataIndex: 'totalCost', width: 100, render: (_, r) => formatCost(r.totalCost) },
+              { title: '平均耗时', dataIndex: 'avgElapsedMs', width: 100, render: (_, r) => r.avgElapsedMs ? `${r.avgElapsedMs}ms` : empty },
+            ]}
+          />
+        </Card>
+      );
+    }
+    if (item.key === 'endpoint') {
+      return (
+        <Card title={item.title} loading={loading} style={{ height: '100%' }}>
+          <ProTable<UsageStats['endpointStats'][number]>
+            dataSource={stats?.endpointStats ?? []}
+            rowKey="endpoint"
+            search={false}
+            options={false}
+            pagination={false}
+            size="small"
+            columns={[
+              { title: '端点', dataIndex: 'endpoint' },
+              { title: '次数', dataIndex: 'count', width: 80 },
+              { title: 'Token', dataIndex: 'totalTokens', width: 100, render: (_, r) => formatTokens(r.totalTokens) },
+              { title: '费用', dataIndex: 'totalCost', width: 100, render: (_, r) => formatCost(r.totalCost) },
+            ]}
+          />
+        </Card>
+      );
+    }
+    if (item.key === 'user') {
+      return (
+        <Card title={item.title} loading={loading} style={{ height: '100%' }}>
+          <ProTable<UsageStats['userStats'][number]>
+            dataSource={stats?.userStats ?? []}
+            rowKey="userId"
+            search={false}
+            options={false}
+            pagination={false}
+            size="small"
+            columns={[
+              { title: '用户', dataIndex: 'username' },
+              { title: '次数', dataIndex: 'count', width: 80 },
+              { title: 'Token', dataIndex: 'totalTokens', width: 100, render: (_, r) => formatTokens(r.totalTokens) },
+              { title: '费用', dataIndex: 'totalCost', width: 100, render: (_, r) => formatCost(r.totalCost) },
+            ]}
+          />
+        </Card>
+      );
+    }
+    return (
+      <Card title={item.title} loading={loading} style={{ height: '100%' }}>
+        <ProTable<UsageStats['dailyTrend'][number]>
+          dataSource={stats?.dailyTrend ?? []}
+          rowKey="date"
+          search={false}
+          options={false}
+          pagination={false}
+          size="small"
+          columns={[
+            { title: '日期', dataIndex: 'date' },
+            { title: '次数', dataIndex: 'count', width: 80 },
+            { title: 'Token', dataIndex: 'totalTokens', width: 100, render: (_, r) => formatTokens(r.totalTokens) },
+            { title: '费用', dataIndex: 'totalCost', width: 100, render: (_, r) => formatCost(r.totalCost) },
+          ]}
+        />
+      </Card>
+    );
+  };
+
   return (
     <PageContainer>
       <Space style={{ marginBottom: 16 }}>
@@ -82,89 +196,25 @@ export default function AiUsagePage() {
         />
       </Space>
 
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={6}><Card><Statistic title="今日调用" value={stats?.today.count ?? 0} prefix={<ApiOutlined />} /></Card></Col>
-        <Col span={6}><Card><Statistic title="今日 Token" value={formatTokens(stats?.today.totalTokens ?? 0)} prefix={<ThunderboltOutlined />} /></Card></Col>
-        <Col span={6}><Card><Statistic title="今日费用" value={formatCost(stats?.today.totalCost ?? 0)} prefix={<DollarOutlined />} /></Card></Col>
-        <Col span={6}><Card><Statistic title="平均耗时" value={`${stats?.today.avgElapsedMs ?? 0}ms`} prefix={<BarChartOutlined />} /></Card></Col>
-      </Row>
+      {/* KPI 瀑布流（4 列） */}
+      <Masonry
+        columns={4}
+        gutter={16}
+        items={kpiItems}
+        styles={masonryStyles}
+        itemRender={({ data }) => renderKpiCard(data)}
+      />
 
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={12}>
-          <Card title="按模型统计" loading={loading}>
-            <ProTable<UsageStats['modelStats'][number]>
-              dataSource={stats?.modelStats ?? []}
-              rowKey="modelName"
-              search={false}
-              options={false}
-              pagination={false}
-              columns={[
-                { title: '模型', dataIndex: 'modelName' },
-                { title: '次数', dataIndex: 'count', width: 80 },
-                { title: 'Token', dataIndex: 'totalTokens', width: 100, render: (_, r) => formatTokens(r.totalTokens) },
-                { title: '费用', dataIndex: 'totalCost', width: 100, render: (_, r) => formatCost(r.totalCost) },
-                { title: '平均耗时', dataIndex: 'avgElapsedMs', width: 100, render: (_, r) => r.avgElapsedMs ? `${r.avgElapsedMs}ms` : empty },
-              ]}
-            />
-          </Card>
-        </Col>
-        <Col span={12}>
-          <Card title="按端点统计" loading={loading}>
-            <ProTable<UsageStats['endpointStats'][number]>
-              dataSource={stats?.endpointStats ?? []}
-              rowKey="endpoint"
-              search={false}
-              options={false}
-              pagination={false}
-              columns={[
-                { title: '端点', dataIndex: 'endpoint' },
-                { title: '次数', dataIndex: 'count', width: 80 },
-                { title: 'Token', dataIndex: 'totalTokens', width: 100, render: (_, r) => formatTokens(r.totalTokens) },
-                { title: '费用', dataIndex: 'totalCost', width: 100, render: (_, r) => formatCost(r.totalCost) },
-              ]}
-            />
-          </Card>
-        </Col>
-      </Row>
+      {/* 表格卡瀑布流（2 列，高度参差自动排列） */}
+      <Masonry
+        columns={2}
+        gutter={16}
+        items={tableItems}
+        styles={masonryStyles}
+        itemRender={({ data }) => renderTableCard(data)}
+      />
 
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={12}>
-          <Card title="按用户统计 Top 10" loading={loading}>
-            <ProTable<UsageStats['userStats'][number]>
-              dataSource={stats?.userStats ?? []}
-              rowKey="userId"
-              search={false}
-              options={false}
-              pagination={false}
-              columns={[
-                { title: '用户', dataIndex: 'username' },
-                { title: '次数', dataIndex: 'count', width: 80 },
-                { title: 'Token', dataIndex: 'totalTokens', width: 100, render: (_, r) => formatTokens(r.totalTokens) },
-                { title: '费用', dataIndex: 'totalCost', width: 100, render: (_, r) => formatCost(r.totalCost) },
-              ]}
-            />
-          </Card>
-        </Col>
-        <Col span={12}>
-          <Card title="每日趋势" loading={loading}>
-            <ProTable<UsageStats['dailyTrend'][number]>
-              dataSource={stats?.dailyTrend ?? []}
-              rowKey="date"
-              search={false}
-              options={false}
-              pagination={false}
-              columns={[
-                { title: '日期', dataIndex: 'date' },
-                { title: '次数', dataIndex: 'count', width: 80 },
-                { title: 'Token', dataIndex: 'totalTokens', width: 100, render: (_, r) => formatTokens(r.totalTokens) },
-                { title: '费用', dataIndex: 'totalCost', width: 100, render: (_, r) => formatCost(r.totalCost) },
-              ]}
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      <Card title="调用明细">
+      <Card title="调用明细" style={{ marginTop: 16 }}>
         <ProTable<UsageRecord>
           actionRef={actionRef}
           rowKey="usageId"

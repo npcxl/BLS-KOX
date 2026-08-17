@@ -229,6 +229,16 @@ router.get('/files', jwtAuth(), hasPerm('system:file:list'), async (ctx: Context
   ctx.body = { code: 200, data: await b.orderBy('create_time','desc').limit(s).offset((p-1)*s).execute(), total: Number(cr?.total??0) };
 });
 
+router.delete('/files/remove', jwtAuth(), hasPerm('system:file:remove'), async (ctx: Context) => {
+  const db = (await getDb()) as any;
+  const ids = ((ctx.request.body as any)?.ids ?? []).map(String).filter(Boolean);
+  if (!ids.length) { ctx.body = { code: 400, message: '缺少 ids' }; return; }
+  const tid = getCurrentTenantId();
+  await db.updateTable('sys_file').set({ deleted: 1 })
+    .where('file_id', 'in', ids).where('tenant_id', '=', tid).execute();
+  ctx.body = { code: 200, message: '删除成功' };
+});
+
 router.delete('/file/:fileId', jwtAuth(), hasPerm('system:file:remove'), async (ctx: Context) => {
   const tid = getCurrentTenantId();
   await assertTenantResource('sys_file', 'file_id', ctx.params.fileId);

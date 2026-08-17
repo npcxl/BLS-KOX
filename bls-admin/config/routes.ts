@@ -126,6 +126,11 @@ export default [
             name: "登录日志",
             component: "./system/log/login",
           },
+          {
+            path: "/system/log/sql-audit",
+            name: "SQL审计",
+            component: "./system/log/sql-audit",
+          },
         ],
       },
       {

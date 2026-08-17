@@ -2,27 +2,29 @@
  * @name 代理配置
  * @doc https://umijs.org/docs/guides/proxy
  *
- * Default backend: bls-rust-server (6002). 
- * AI streaming target: AI service (7201).
- * To use 
- * Koa: point /api/ target back to http://localhost:6001; 
- * Java: http://localhost:8080
+ * 默认指向 Koa 后端 (6001)，AI 接口指向 AI 服务 (7201)。
+ * 切换 Java 后端：将 /api/ 的 target 改为 http://localhost:8080
+ * 切换 Rust 后端：将 /api/ 的 target 改为 http://localhost:6002
  */
 export default {
   dev: {
-    // AI 相关接口（对话管理 / 模型列表 / 流式对话）统一走 Rust 后端
-    // Rust 后端已内置 AI Provider 抽象层，直接对接 OpenAI 兼容接口
+    // AI 对话管理 → Koa 后端 (bls-server)
+    '/api/ai/chat/conversations': {
+      target: 'http://localhost:6001',
+      changeOrigin: true,
+    },
+    // AI 流式接口 → AI 微服务 (7201)
     '/api/ai/': {
-      target: 'http://localhost:6002',
+      target: 'http://localhost:7201',
       changeOrigin: true,
       proxyTimeout: 300000,
     },
     '/api/': {
-      target: 'http://localhost:6002',
+      target: 'http://localhost:6001',
       changeOrigin: true,
     },
     '/ws/': {
-      target: 'ws://localhost:6002',
+      target: 'ws://localhost:6001',
       ws: true,
       changeOrigin: true,
     },

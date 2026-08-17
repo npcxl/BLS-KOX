@@ -7,7 +7,7 @@ import type {
 } from "@ant-design/pro-components";
 import { request } from "@umijs/max";
 import { message, Switch } from "antd";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 export type StorageRecord = {
   storageId: string;
@@ -61,6 +61,7 @@ export default function StoragePage() {
   const { options: storageTypeOptions } = useDict("sys_storage_type");
   const { options: statusOptions } = useDict("sys_status");
   const { proColumns: baseColumns } = usePageConfig("system_storage");
+  const [reloadKey, setReloadKey] = useState(0);
 
   const storageTypeValueEnum = Object.fromEntries(
     storageTypeOptions.map((item) => [item.value, { text: item.label }])
@@ -75,7 +76,11 @@ export default function StoragePage() {
         ...col,
         render: (_: any, record: StorageRecord) => (
           <Switch
-            checked={String(record.isDefault) === "1"}
+            checked={
+              record.isDefault === true ||
+              record.isDefault === "1" ||
+              record.isDefault === 1
+            }
             onChange={async (checked) => {
               const res = await request("/api/system/storage/edit", {
                 method: "PUT",
@@ -83,7 +88,8 @@ export default function StoragePage() {
               });
               if (res?.code === 200) {
                 message.success("默认存储已更新");
-                window.location.reload();
+                // 局部刷新表格，而不是刷新整个页面
+                setReloadKey((k) => k + 1);
               }
             }}
           />
@@ -191,6 +197,7 @@ export default function StoragePage() {
 
   return (
     <CrudTablePage<StorageRecord>
+      key={reloadKey}
       title="OSS存储"
       rowKey="storageId"
       resource={{ basePath: "/api/system/storage", status: false }}

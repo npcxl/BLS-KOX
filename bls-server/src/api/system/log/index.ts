@@ -71,4 +71,18 @@ router.get('/security', jwtAuth(), hasPerm('system:log:security:list'), async (c
   ctx.body = { code: 200, data: await b.orderBy('create_time','desc').limit(s).offset((p-1)*s).execute(), total: Number(cr?.total??0) };
 });
 
+// SQL 审计列表
+router.get('/sql-audit', jwtAuth(), hasPerm('system:log:sqlaudit:list'), async (ctx: Context) => {
+  const db = (await getDb()) as any; const q: any = ctx.query;
+  const p = Math.max(1, +q.pageNum||1); const s = Math.min(100, +q.pageSize||10);
+  let b = db.selectFrom('sys_sql_audit').selectAll();
+  if (q.username) b = b.where('username','like',`%${q.username}%`);
+  if (q.operation) b = b.where('operation','=',q.operation);
+  if (q.errorCode) b = b.where('error_code','like',`%${q.errorCode}%`);
+  if (q.clientIp) b = b.where('client_ip','like',`%${q.clientIp}%`);
+  if (q.keyword) b = b.where((eb:any)=>eb.or(['sql_text','error_message'].map((f:string)=>eb(f,'like',`%${q.keyword}%`))));
+  const cr = await (b as any).clearSelect().select((eb:any)=>eb.fn.countAll().as('total')).executeTakeFirst();
+  ctx.body = { code: 200, data: await b.orderBy('created_at','desc').limit(s).offset((p-1)*s).execute(), total: Number(cr?.total??0) };
+});
+
 export default router;

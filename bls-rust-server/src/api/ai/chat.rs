@@ -1,5 +1,5 @@
 use axum::extract::{Path, State};
-use axum::routing::{delete, get, post, put};
+use axum::routing::{get, put};
 use axum::{Json, Router};
 use serde_json::{Value, json};
 
@@ -7,28 +7,17 @@ use crate::api_response::ApiResponse;
 use crate::auth::AuthUser;
 use crate::db::query::{row_to_json, rows_to_json};
 use crate::error::AppError;
-use crate::services::ai_provider;
 use crate::state::AppState;
 
+/// 对话管理 CRUD（对齐 Koa bls-server 的 /api/ai/chat 职责）。
+///
+/// 注意：AI 流式对话（/completions）与模型列表（/models）由 bls-ai-service
+/// 微服务（7201）提供，主后端不重复实现，由前端 proxy / nginx 按路径分流。
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/completions", post(completions))
         .route("/conversations", get(list).post(create))
         .route("/conversations/{id}", put(rename).delete(remove))
         .route("/conversations/{id}/messages", get(messages))
-}
-
-/// POST /api/ai/chat/completions — OpenAI 兼容的 SSE 流式对话
-async fn completions(
-    State(state): State<AppState>,
-    _user: AuthUser,
-    Json(body): Json<ai_provider::AiCompletionRequest>,
-) -> Result<axum::response::Sse<impl futures_util::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>>, AppError> {
-    if body.messages.is_empty() {
-        return Err(AppError::BadRequest("缺少 messages 参数".into()));
-    }
-    let config = state.config.ai.clone();
-    ai_provider::stream_completions(config, body).await
 }
 
 async fn list(

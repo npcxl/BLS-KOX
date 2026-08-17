@@ -76,29 +76,7 @@ function mapBackendMenus(
       children: item.children
         ? mapBackendMenus(item.children, '')
         : undefined,
-    }))
-    .map((item) => {
-      if (item.path === '/tenant') {
-        return {
-          ...item,
-          children: [
-            { key: '/tenant/list', path: '/tenant/list', name: '租户列表', locale: false },
-            { key: '/tenant/package', path: '/tenant/package', name: '租户套餐', locale: false },
-          ],
-        };
-      }
-      if (item.path === '/system/log') {
-        return {
-          ...item,
-          children: [
-            { key: '/system/log/login', path: '/system/log/login', name: '登录日志', locale: false },
-            { key: '/system/log/audit', path: '/system/log/audit', name: '操作审计', locale: false },
-            { key: '/system/log/security', path: '/system/log/security', name: '安全日志', locale: false },
-          ],
-        };
-      }
-      return item;
-    });
+    }));
 
   return [
     {

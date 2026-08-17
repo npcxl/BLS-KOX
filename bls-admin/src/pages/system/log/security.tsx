@@ -24,11 +24,12 @@ export default function SecurityLogPage() {
     <CrudTablePage
       title="安全日志"
       rowKey="logId"
-      resource={{ basePath: "/api/system/log/security", list: "" }}
+      resource={{ basePath: "/api/system/log/security", list: "", remove: false, status: false }}
       columns={columns}
       formColumns={[]}
       showCreateButton={false}
       showEditAction={false}
+      showRemoveAction={false}
     />
   );
 }

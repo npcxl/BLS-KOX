@@ -30,11 +30,15 @@ fn unquote_env(value: &str) -> String {
 impl AppState {
     pub async fn new(config: Config) -> anyhow::Result<Self> {
         let url = format!(
-            "mysql://{}:{}@{}:{}/{}?charset=utf8mb4",
+            "mysql://{}:{}@{}:{}/{}?charset=utf8mb4&ssl-mode=required",
             config.db.user, config.db.password, config.db.host, config.db.port, config.db.database
         );
         let db = MySqlPoolOptions::new()
             .max_connections(config.db.max_connections)
+            // 连接空闲超过 5 分钟则关闭，避免复用被服务端 wait_timeout 关闭的坏连接
+            // （否则会出现 "Malformed communication packet" 错误）
+            .idle_timeout(std::time::Duration::from_secs(300))
+            .max_lifetime(std::time::Duration::from_secs(1800))
             .connect(&url)
             .await?;
 

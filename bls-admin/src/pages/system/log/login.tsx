@@ -40,15 +40,16 @@ export default function LoginLogPage() {
     <CrudTablePage
       title="登录日志"
       rowKey="logId"
-      resource={{ basePath: "/api/system/log/login", list: "", status: false }}
+      resource={{ basePath: "/api/system/log/login", list: "", status: false, remove: false }}
       columns={columns}
       formColumns={[]}
       modalWidth={760}
+      showRemoveAction={false}
+      showCreateButton={false}
+      showEditAction={false}
       permissions={{
         import: "system:log:import",
         export: "system:log:export",
-        status: "system:log:status",
-        remove: "system:log:remove",
       }}
     />
   );

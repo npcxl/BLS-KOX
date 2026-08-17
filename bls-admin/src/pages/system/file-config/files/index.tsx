@@ -153,7 +153,7 @@ function FilePageInner() {
           list: "/files",
           add: false,
           edit: false,
-          remove: false,
+          remove: "/files/remove",
           status: false,
         }}
         permissions={{
@@ -165,6 +165,7 @@ function FilePageInner() {
           remove: "system:file:remove",
         }}
         showCreateButton={false}
+        showRemoveAction={false}
         columns={columns}
         formColumns={formColumns}
         modalWidth={720}

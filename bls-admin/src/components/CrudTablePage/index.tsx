@@ -48,6 +48,7 @@ export type CrudTablePageProps<T extends Record<string, any>> = {
   embedded?: boolean;
   showFormModal?: boolean;
   showEditAction?: boolean;
+  showRemoveAction?: boolean;
   formGrid?: boolean;
   formColProps?: Record<string, any>;
   defaultSearchMode?: "fuzzy" | "exact";
@@ -124,6 +125,7 @@ export default function CrudTablePage<T extends Record<string, any>>({
   createButtonText = "新增",
   showCreateButton = true,
   showEditAction = true,
+  showRemoveAction = true,
   showFormModal = true,
   modalWidth = 640,
   pagination = { defaultPageSize: 10, showSizeChanger: true },
@@ -236,8 +238,8 @@ export default function CrudTablePage<T extends Record<string, any>>({
   }`;
 
   const normalizedFormColumns = useMemo(
-    () =>
-      formGrid
+    () => {
+      const base = formGrid
         ? formColumns.map((column) => ({
             ...column,
             colProps: {
@@ -245,8 +247,19 @@ export default function CrudTablePage<T extends Record<string, any>>({
               ...column.colProps,
             },
           }))
-        : formColumns,
-    [formColProps, formColumns, formGrid]
+        : formColumns;
+      // 编辑模式下移除 initialValue，避免与 initialValues 冲突
+      // （antd 会报 "Form already set 'initialValues' with path 'xxx'" 警告）
+      if (crud.mode === "edit") {
+        return base.map((column) => {
+          if (!("initialValue" in column)) return column;
+          const { initialValue: _ignored, ...rest } = column;
+          return rest;
+        });
+      }
+      return base;
+    },
+    [formColProps, formColumns, formGrid, crud.mode]
   );
 
   const normalizedInitialValues = useMemo(() => {
@@ -352,7 +365,7 @@ export default function CrudTablePage<T extends Record<string, any>>({
 
         {extraActions?.(record)}
 
-        {canRemove && resource.remove !== false && (
+        {showRemoveAction && canRemove && resource.remove !== false && (
           <a style={{ color: "#ff4d4f" }} onClick={() => crud.remove([record])}>
             删除
           </a>
@@ -409,11 +422,15 @@ export default function CrudTablePage<T extends Record<string, any>>({
             </Button>
           ) : null,
         ]}
-        rowSelection={canRemove || tableAlertExtraRender ? {} : false}
+        rowSelection={
+          (canRemove && resource.remove !== false) || tableAlertExtraRender
+            ? {}
+            : false
+        }
         tableAlertOptionRender={({ selectedRows, onCleanSelected }) =>
-          canRemove || tableAlertExtraRender ? (
+          (canRemove && resource.remove !== false) || tableAlertExtraRender ? (
             <Space size={16}>
-              {canRemove && (
+              {canRemove && resource.remove !== false && (
                 <a
                   onClick={() => {
                     crud.remove(selectedRows as T[]);
@@ -441,10 +458,12 @@ export default function CrudTablePage<T extends Record<string, any>>({
           modalProps={{
             destroyOnHidden: true,
             onCancel: crud.closeModal,
-            bodyStyle: {
-              maxHeight: "calc(80vh - 120px)",
-              overflowY: "auto",
-              overflowX: "hidden",
+            styles: {
+              body: {
+                maxHeight: "calc(80vh - 120px)",
+                overflowY: "auto",
+                overflowX: "hidden",
+              },
             },
           }}
           columns={normalizedFormColumns}

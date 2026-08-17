@@ -2,6 +2,7 @@ import mysql from 'mysql2/promise';
 import { createPool as createMysqlPool } from 'mysql2';
 import { env } from '../config/env';
 import { dbQueryDurationSeconds, dbQueryErrorsTotal } from '../observability/metrics';
+import { writeSqlError } from './sql-audit';
 
 console.log('[db] config loaded', {
   host: env.db.host,
@@ -198,7 +199,7 @@ function wrapQueryBuilder(builder: any): any {
     get(target, prop, receiver) {
       const original = Reflect.get(target, prop, receiver);
 
-      // 拦截 execute / executeTakeFirst / executeTakeFirstOrThrow，添加重试 + 指标
+      // 拦截 execute / executeTakeFirst / executeTakeFirstOrThrow，添加重试 + 指标 + SQL 错误审计
       if (typeof prop === 'string' && executeRetryMethods.has(prop)) {
         return (...args: any[]) => {
           const op = prop === 'executeTakeFirst' ? 'kysely_execute_take_first'
@@ -206,7 +207,16 @@ function wrapQueryBuilder(builder: any): any {
             : 'kysely_execute';
           return observeDbOperation(op, () =>
             withRetry(() => original.apply(target, args), `kysely.${prop}`)
-          );
+          ).catch((error: unknown) => {
+            // Kysely 路径报错也接入 SQL 审计（尽力提取 SQL 文本，失败不阻塞）
+            try {
+              const compiled = (target as any).compile?.() as { sql?: string } | undefined;
+              writeSqlError('kysely', compiled?.sql ?? '(kysely query)', error);
+            } catch (_) {
+              writeSqlError('kysely', '(kysely query)', error);
+            }
+            throw error;
+          });
         };
       }
 
@@ -266,36 +276,51 @@ export async function query<T>(
   sql: string,
   params?: QueryParams,
 ): Promise<T[]> {
-  return observeDbOperation('query', () =>
-    withRetry(async () => {
-      const [rows] = await pool.query(sql, params as any);
-      return rows as T[];
-    }, 'query')
-  );
+  try {
+    return await observeDbOperation('query', () =>
+      withRetry(async () => {
+        const [rows] = await pool.query(sql, params as any);
+        return rows as T[];
+      }, 'query')
+    );
+  } catch (error) {
+    writeSqlError('query', sql, error);
+    throw error;
+  }
 }
 
 export async function queryOne<T>(
   sql: string,
   params?: QueryParams,
 ): Promise<T | null> {
-  return observeDbOperation('query_one', () =>
-    withRetry(async () => {
-      const [rows] = await pool.query(sql, params as any);
-      return (rows as T[])[0] ?? null;
-    }, 'queryOne')
-  );
+  try {
+    return await observeDbOperation('query_one', () =>
+      withRetry(async () => {
+        const [rows] = await pool.query(sql, params as any);
+        return (rows as T[])[0] ?? null;
+      }, 'queryOne')
+    );
+  } catch (error) {
+    writeSqlError('query_one', sql, error);
+    throw error;
+  }
 }
 
 export async function execute(
   sql: string,
   params?: QueryParams,
 ): Promise<mysql.ResultSetHeader> {
-  return observeDbOperation('execute', () =>
-    withRetry(async () => {
-      const [result] = await pool.execute(sql, params as any);
-      return result as mysql.ResultSetHeader;
-    }, 'execute')
-  );
+  try {
+    return await observeDbOperation('execute', () =>
+      withRetry(async () => {
+        const [result] = await pool.execute(sql, params as any);
+        return result as mysql.ResultSetHeader;
+      }, 'execute')
+    );
+  } catch (error) {
+    writeSqlError('execute', sql, error);
+    throw error;
+  }
 }
 
 export async function transaction<T>(

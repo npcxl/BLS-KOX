@@ -255,20 +255,20 @@ async fn add(
         .as_object()
         .ok_or_else(|| AppError::BadRequest("request body must be an object".into()))?;
     let mut columns = vec![spec.pk.to_string()];
-    let mut binds = vec![Value::String(state.snowflake.next_id()?)];
+    let mut binds: Vec<String> = vec![state.snowflake.next_id()?];
     if spec.tenant_scoped {
         columns.push("tenant_id".to_string());
-        binds.push(Value::String(user.tenant_id.clone()));
+        binds.push(user.tenant_id.clone());
     }
     for field in spec.writable_fields {
         if let Some(v) = obj.get(*field) {
             columns.push(field.to_string());
-            binds.push(v.clone());
+            binds.push(value_to_string(v));
         }
     }
     if spec.soft_delete && !columns.contains(&"deleted".to_string()) {
         columns.push("deleted".to_string());
-        binds.push(Value::from(0));
+        binds.push("0".to_string());
     }
     let sql = format!(
         "INSERT INTO {} ({}) VALUES ({})",
@@ -304,14 +304,14 @@ async fn edit(
         }
         if let Some(v) = obj.get(*field) {
             sets.push(format!("{field} = ?"));
-            binds.push(v.clone());
+            binds.push(value_to_string(v));
         }
     }
     if sets.is_empty() {
         return Err(AppError::BadRequest("no updatable fields".into()));
     }
     let mut sql = format!(
-        "UPDATE {} SET {} WHERE {}",
+        "UPDATE {} SET {} WHERE {} = ?",
         spec.table,
         sets.join(", "),
         spec.pk
@@ -385,7 +385,8 @@ async fn update_status(
         .or_else(|| body.get("status"))
         .cloned()
         .ok_or_else(|| AppError::BadRequest("missing status".into()))?;
-    let mut sql = format!("UPDATE {} SET status = ? WHERE {}", spec.table, spec.pk);
+    let status = value_to_string(&status);
+    let mut sql = format!("UPDATE {} SET status = ? WHERE {} = ?", spec.table, spec.pk);
     if spec.tenant_scoped {
         sql.push_str(" AND tenant_id = ?");
     }
@@ -408,6 +409,22 @@ fn snake_object(value: &Value) -> Value {
         }
         Value::Array(items) => Value::Array(items.iter().map(snake_object).collect()),
         other => other.clone(),
+    }
+}
+
+/// 将 serde_json::Value 转为可直接绑定到 MySQL 的字符串。
+///
+/// 关键：SQLx 的 `json` feature 会让 `serde_json::Value` 以 JSON 文本形式编码，
+/// 直接 `.bind(Value)` 绑定到普通 VARCHAR/INT 列会发送带引号/格式错误的 packet，
+/// 导致 "Malformed communication packet" 或 "Data too long"。
+/// 这里统一转为字符串，由 MySQL 做隐式类型转换。
+fn value_to_string(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => if *b { "1".to_string() } else { "0".to_string() },
+        Value::Null => String::new(),
+        other => other.to_string(),
     }
 }
 

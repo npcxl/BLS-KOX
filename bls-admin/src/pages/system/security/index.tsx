@@ -129,7 +129,7 @@ export default function SecurityCenterPage() {
       {/* ====== 安全事件流 ====== */}
       <ProCard title="最近安全事件">
         <ProTable<any>
-          rowKey="log_id"
+          rowKey="id"
           request={async (params) => {
             const res = await request<{ data: any[]; total: number }>('/api/system/security/events', {
               params: { pageNum: params.current, pageSize: params.pageSize, ...params },

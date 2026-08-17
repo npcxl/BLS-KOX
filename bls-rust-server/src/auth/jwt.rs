@@ -6,11 +6,16 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String,
+    // 对齐 Koa bls-server 的 JWT 字段命名（camelCase），
+    // 以便 token 能被 bls-ai-service（7201）等微服务用相同约定解析。
+    #[serde(rename = "userId")]
     pub user_id: String,
+    #[serde(rename = "tenantId")]
     pub tenant_id: String,
     pub username: String,
     pub perms: Vec<String>,
     pub jti: String,
+    #[serde(rename = "tokenType")]
     pub token_type: String,
     pub exp: usize,
     pub iat: usize,

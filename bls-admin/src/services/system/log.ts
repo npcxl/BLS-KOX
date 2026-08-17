@@ -37,6 +37,22 @@ export type OperationLogRecord = {
   createTime?: string;
 };
 
+export type SqlAuditRecord = {
+  auditId: string;
+  tenantId: string;
+  userId?: string | null;
+  username?: string | null;
+  operation: string;
+  sqlText: string;
+  errorCode?: string | null;
+  errorNumber?: number | null;
+  errorMessage?: string | null;
+  clientIp?: string | null;
+  userAgent?: string | null;
+  requestId?: string | null;
+  createdAt?: string;
+};
+
 export type UploadAuditRecord = {
   auditId: string;
   tenantId: string;
@@ -88,4 +104,8 @@ export async function listOperationLogs(params?: Record<string, any>) {
 
 export async function listUploadAudits(params?: Record<string, any>) {
   return fetchPage<UploadAuditRecord>('/api/system/log/upload', params);
+}
+
+export async function listSqlAudits(params?: Record<string, any>) {
+  return fetchPage<SqlAuditRecord>('/api/system/log/sql-audit', params);
 }

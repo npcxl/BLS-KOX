@@ -27,6 +27,15 @@ import {
 } from '@/services/ai/conversation';
 import { buildReplayHeaders } from '@/services/security/replayInterceptor';
 
+/**
+ * 获取 Authorization 头。
+ * 后端登录接口返回的 token 已带 "Bearer " 前缀，这里避免重复拼接。
+ */
+function authHeader(): string {
+  const raw = localStorage.getItem('token') || '';
+  return raw.startsWith('Bearer ') ? raw : `Bearer ${raw}`;
+}
+
 hljs.registerLanguage('javascript', javascript);
 hljs.registerLanguage('js', javascript);
 hljs.registerLanguage('typescript', typescript);
@@ -526,7 +535,7 @@ export default function AiWorkbench() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+          Authorization: authHeader(),
           ...buildReplayHeaders({ method: 'POST', url: '/api/ai/ocr/recognize', body: { image: base64, filename: file.name } }),
         },
         body: JSON.stringify({
@@ -586,7 +595,7 @@ export default function AiWorkbench() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+          Authorization: authHeader(),
           ...buildReplayHeaders({ method: 'POST', url: '/api/ai/chat/completions', body: reqBody }),
         },
         body: JSON.stringify(reqBody),
@@ -919,7 +928,7 @@ export default function AiWorkbench() {
                                 method: 'POST',
                                 headers: {
                                   'Content-Type': 'application/json',
-                                  Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+                                  Authorization: authHeader(),
                                   ...buildReplayHeaders({ method: 'POST', url: '/api/ai/chat/completions', body: reqBody2 }),
                                 },
                                 body: JSON.stringify(reqBody2),
