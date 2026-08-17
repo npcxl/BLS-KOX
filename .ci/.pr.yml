@@ -1,0 +1,37 @@
+# ===== PR 检查：代码质量 & 测试 =====
+
+.pr-check: &pr-check
+  services:
+    - docker
+  stages:
+    - name: install
+      script:
+        - npm config set registry https://registry.npmmirror.com
+        - npm ci --legacy-peer-deps
+    - name: lint
+      script: npm run lint
+    - name: test
+      script: npm test
+
+main:
+  pull_request:
+    # PR 检查：bls-server
+    - <<: *pr-check
+      name: pr-server
+      ifModify: ["bls-server/**"]
+      docker:
+        image: node:22
+
+    # PR 检查：bls-admin
+    - <<: *pr-check
+      name: pr-admin
+      ifModify: ["bls-admin/**"]
+      docker:
+        image: node:22
+
+    # PR 检查：bls-ai-service
+    - <<: *pr-check
+      name: pr-ai
+      ifModify: ["bls-ai-service/**"]
+      docker:
+        image: node:22

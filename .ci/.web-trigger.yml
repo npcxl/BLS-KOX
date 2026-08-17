@@ -1,0 +1,70 @@
+# ===== Web 触发器对应的构建流水线 =====
+
+"$":
+  # 构建指定服务镜像
+  web_trigger_build:
+    - name: 构建服务镜像
+      services:
+        - docker
+      stages:
+        - name: install
+          script:
+            - cd ${SERVICE}
+            - npm config set registry https://registry.npmmirror.com
+            - npm ci --legacy-peer-deps
+        - name: build
+          script:
+            - cd ${SERVICE}
+            - npm run build
+        - name: docker-build-push
+          script:
+            - echo "${CNB_DOCKER_REGISTRY_PASSWORD}" | docker login ${CNB_DOCKER_REGISTRY} -u ${CNB_TOKEN_USER_NAME} --password-stdin
+            - |
+              TAG="${IMAGE_TAG:-${CNB_COMMIT_SHORT}}"
+              IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG}/${SERVICE}:${TAG}"
+              docker build -t ${IMAGE} -f ${SERVICE}/Dockerfile ./${SERVICE}
+              docker push ${IMAGE}
+              echo "✅ ${IMAGE}"
+
+  # 全量构建所有服务
+  web_trigger_build_all:
+    - name: 全量构建所有服务
+      services:
+        - docker
+      stages:
+        - name: build-server
+          script:
+            - echo "${CNB_DOCKER_REGISTRY_PASSWORD}" | docker login ${CNB_DOCKER_REGISTRY} -u ${CNB_TOKEN_USER_NAME} --password-stdin
+            - |
+              TAG="${IMAGE_TAG:-${CNB_COMMIT_SHORT}}"
+              IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG}/bls-server:${TAG}"
+              docker build -t ${IMAGE} -f bls-server/Dockerfile ./bls-server
+              docker push ${IMAGE}
+        - name: build-admin
+          script:
+            - |
+              TAG="${IMAGE_TAG:-${CNB_COMMIT_SHORT}}"
+              IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG}/bls-admin:${TAG}"
+              docker build -t ${IMAGE} -f bls-admin/Dockerfile ./bls-admin
+              docker push ${IMAGE}
+        - name: build-ai
+          script:
+            - |
+              TAG="${IMAGE_TAG:-${CNB_COMMIT_SHORT}}"
+              IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG}/bls-ai-service:${TAG}"
+              docker build -t ${IMAGE} -f bls-ai-service/Dockerfile ./bls-ai-service
+              docker push ${IMAGE}
+        - name: build-event
+          script:
+            - |
+              TAG="${IMAGE_TAG:-${CNB_COMMIT_SHORT}}"
+              IMAGE="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG}/bls-event-service:${TAG}"
+              docker build -t ${IMAGE} -f bls-event-service/Dockerfile ./bls-event-service
+              docker push ${IMAGE}
+
+  # 云原生开发（openWorkspace 直接启动，不需要额外 stages）
+  web_trigger_dev:
+    - name: 云原生开发环境
+      stages:
+        - name: setup
+          script: echo "启动云原生开发环境..."

@@ -1,0 +1,239 @@
+# ===== Push 构建镜像 + 自动部署到服务器 =====
+
+# Docker 登录 & 构建推送脚本片段
+.docker-push: &docker-push
+  - echo "${CNB_DOCKER_REGISTRY_PASSWORD}" | docker login ${CNB_DOCKER_REGISTRY} -u ${CNB_TOKEN_USER_NAME} --password-stdin
+  - |
+    IMAGE_TAG="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG}/${SVC}:${CNB_COMMIT_SHORT}"
+    LATEST_TAG="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG}/${SVC}:latest"
+    docker build -t ${IMAGE_TAG} -t ${LATEST_TAG} -f ${SVC}/Dockerfile ./${SVC}
+    docker push ${IMAGE_TAG}
+    docker push ${LATEST_TAG}
+    echo "✅ ${IMAGE_TAG}"
+
+# SSH 部署到服务器
+.deploy-via-ssh: &deploy-via-ssh
+  - name: deploy-to-server
+    image: alpine:latest
+    script:
+      - apk add --no-cache openssh-client
+      - mkdir -p ~/.ssh
+      - echo "${DEPLOY_SSH_KEY}" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+      - |
+        ssh -o StrictHostKeyChecking=no ${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST} << 'ENDSSH'
+          set -e
+          cd ${DEPLOY_PATH:-/opt/bls-kox}
+
+          # 登录 CNB 制品库
+          echo "${CNB_DOCKER_REGISTRY_PASSWORD}" | docker login ${CNB_DOCKER_REGISTRY} -u ${CNB_TOKEN_USER_NAME} --password-stdin
+
+          # 拉取最新镜像并重启
+          docker-compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker pull
+          docker-compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker up -d --remove-orphans
+
+          # 清理旧镜像
+          docker image prune -f
+
+          echo "✅ 部署完成"
+        ENDSSH
+
+main:
+  push:
+    # ===== bls-server (Koa 后端) =====
+    - name: build-deploy-server
+      ifModify: ["bls-server/**"]
+      docker:
+        image: node:22
+      services:
+        - docker
+      env:
+        SVC: bls-server
+      imports: https://cnb.cool/bls-xl/bls-kox-secrets/-/blob/main/.cnb/secrets.yml
+      stages:
+        - name: install
+          script:
+            - cd bls-server
+            - npm config set registry https://registry.npmmirror.com
+            - npm ci --legacy-peer-deps
+        - name: lint
+          script:
+            - cd bls-server
+            - npm run lint
+        - name: test
+          script:
+            - cd bls-server
+            - npm test
+        - name: build-and-push
+          script: *docker-push
+        - <<: *deploy-via-ssh
+      failStages:
+        - name: notify-fail
+          script: echo "❌ bls-server 部署失败"
+
+    # ===== bls-admin (前端) =====
+    - name: build-deploy-admin
+      ifModify: ["bls-admin/**"]
+      docker:
+        image: node:22
+      services:
+        - docker
+      env:
+        SVC: bls-admin
+      imports: https://cnb.cool/bls-xl/bls-kox-secrets/-/blob/main/.cnb/secrets.yml
+      stages:
+        - name: install
+          script:
+            - cd bls-admin
+            - npm config set registry https://registry.npmmirror.com
+            - npm ci --legacy-peer-deps
+        - name: lint
+          script:
+            - cd bls-admin
+            - npm run lint
+        - name: test
+          script:
+            - cd bls-admin
+            - npm test
+        - name: build-and-push
+          script: *docker-push
+        - <<: *deploy-via-ssh
+      failStages:
+        - name: notify-fail
+          script: echo "❌ bls-admin 部署失败"
+
+    # ===== bls-ai-service (AI 微服务) =====
+    - name: build-deploy-ai
+      ifModify: ["bls-ai-service/**"]
+      docker:
+        image: node:22
+      services:
+        - docker
+      env:
+        SVC: bls-ai-service
+      imports: https://cnb.cool/bls-xl/bls-kox-secrets/-/blob/main/.cnb/secrets.yml
+      stages:
+        - name: install
+          script:
+            - cd bls-ai-service
+            - npm config set registry https://registry.npmmirror.com
+            - npm ci --legacy-peer-deps
+        - name: lint
+          script:
+            - cd bls-ai-service
+            - npm run lint
+        - name: test
+          script:
+            - cd bls-ai-service
+            - npm test
+        - name: build-and-push
+          script: *docker-push
+        - <<: *deploy-via-ssh
+      failStages:
+        - name: notify-fail
+          script: echo "❌ bls-ai-service 部署失败"
+
+    # ===== bls-event-service (事件微服务) =====
+    - name: build-deploy-event
+      ifModify: ["bls-event-service/**"]
+      docker:
+        image: node:22
+      services:
+        - docker
+      env:
+        SVC: bls-event-service
+      imports: https://cnb.cool/bls-xl/bls-kox-secrets/-/blob/main/.cnb/secrets.yml
+      stages:
+        - name: install
+          script:
+            - cd bls-event-service
+            - npm config set registry https://registry.npmmirror.com
+            - npm ci --legacy-peer-deps
+        - name: lint
+          script:
+            - cd bls-event-service
+            - npm run lint
+        - name: build-and-push
+          script: *docker-push
+        - <<: *deploy-via-ssh
+      failStages:
+        - name: notify-fail
+          script: echo "❌ bls-event-service 部署失败"
+
+    # ===== Docker Compose / Nginx 配置变更 =====
+    - name: deploy-config
+      ifModify: ["docker-compose.yml", "nginx.conf", ".cnb/secrets.yml"]
+      docker:
+        image: alpine:latest
+      imports: https://cnb.cool/bls-xl/bls-kox-secrets/-/blob/main/.cnb/secrets.yml
+      stages:
+        - name: sync-config
+          script:
+            - apk add --no-cache openssh-client rsync
+            - mkdir -p ~/.ssh
+            - echo "${DEPLOY_SSH_KEY}" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+            - |
+              ssh -o StrictHostKeyChecking=no ${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST} << 'ENDSSH'
+                set -e
+                cd ${DEPLOY_PATH:-/opt/bls-kox}
+                echo "${CNB_DOCKER_REGISTRY_PASSWORD}" | docker login ${CNB_DOCKER_REGISTRY} -u ${CNB_TOKEN_USER_NAME} --password-stdin
+                docker-compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker up -d --remove-orphans
+                echo "✅ 配置更新完成"
+              ENDSSH
+
+"$":
+  tag_push:
+    # Tag 发版：构建全部镜像 + 部署
+    - name: release-deploy-all
+      docker:
+        image: node:22
+      services:
+        - docker
+      imports: https://cnb.cool/bls-xl/bls-kox-secrets/-/blob/main/.cnb/secrets.yml
+      env:
+        RELEASE_TAG: ${CNB_BRANCH}
+      stages:
+        - name: build-push-server
+          script:
+            - echo "${CNB_DOCKER_REGISTRY_PASSWORD}" | docker login ${CNB_DOCKER_REGISTRY} -u ${CNB_TOKEN_USER_NAME} --password-stdin
+            - |
+              IMG="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG}/bls-server:${RELEASE_TAG}"
+              docker build -t ${IMG} -f bls-server/Dockerfile ./bls-server
+              docker push ${IMG}
+              echo "✅ bls-server:${RELEASE_TAG}"
+        - name: build-push-admin
+          script:
+            - |
+              IMG="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG}/bls-admin:${RELEASE_TAG}"
+              docker build -t ${IMG} -f bls-admin/Dockerfile ./bls-admin
+              docker push ${IMG}
+              echo "✅ bls-admin:${RELEASE_TAG}"
+        - name: build-push-ai
+          script:
+            - |
+              IMG="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG}/bls-ai-service:${RELEASE_TAG}"
+              docker build -t ${IMG} -f bls-ai-service/Dockerfile ./bls-ai-service
+              docker push ${IMG}
+              echo "✅ bls-ai-service:${RELEASE_TAG}"
+        - name: build-push-event
+          script:
+            - |
+              IMG="${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG}/bls-event-service:${RELEASE_TAG}"
+              docker build -t ${IMG} -f bls-event-service/Dockerfile ./bls-event-service
+              docker push ${IMG}
+              echo "✅ bls-event-service:${RELEASE_TAG}"
+        - name: deploy-release
+          image: alpine:latest
+          script:
+            - apk add --no-cache openssh-client
+            - mkdir -p ~/.ssh
+            - echo "${DEPLOY_SSH_KEY}" > ~/.ssh/id_rsa && chmod 600 ~/.ssh/id_rsa
+            - |
+              ssh -o StrictHostKeyChecking=no ${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST} << ENDSSH
+                set -e
+                cd ${DEPLOY_PATH:-/opt/bls-kox}
+                echo "${CNB_DOCKER_REGISTRY_PASSWORD}" | docker login ${CNB_DOCKER_REGISTRY} -u ${CNB_TOKEN_USER_NAME} --password-stdin
+                docker-compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker down
+                docker-compose -f docker-compose.yml -f docker-compose.deploy.yml --env-file .env.docker up -d --remove-orphans
+                docker image prune -f
+                echo "✅ 版本 ${RELEASE_TAG} 部署完成"
+              ENDSSH
