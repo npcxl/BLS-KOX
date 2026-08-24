@@ -22,6 +22,7 @@ const toneBgMap: Record<string, string> = {
   toneOrange: 'color-mix(in srgb, rgb(242, 160, 68) 11%, white)',
   toneCyan: 'color-mix(in srgb, rgb(45, 191, 193) 11%, white)',
 };
+
 const actToneBg: Record<string, string> = {
   toneBlue: 'linear-gradient(145deg, rgb(121,183,255), rgb(76,127,241))',
   toneGreen: 'linear-gradient(145deg, rgb(155,217,109), rgb(103,185,70))',

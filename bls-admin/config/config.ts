@@ -216,6 +216,9 @@ export default defineConfig({
         },
       },
     },
+    // 生产构建优化：关闭 sourcemap，减小产物体积
+    // 注意：stats 不能关闭，utoopack 构建流程依赖 dist/stats.json
+    sourceMaps: false,
   },
   //exportStatic: {},
   define: {

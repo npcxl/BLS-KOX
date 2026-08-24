@@ -11,6 +11,7 @@ All tables defined in `sql/Init.sql`. Charset: utf8mb4, Collation: utf8mb4_0900_
 - **Timestamp columns**: `create_time` / `update_time` (NOT `created_at` / `updated_at`)
 - **Status column**: `char(1)` type, `'0'` = normal, `'1'` = disabled
 - **Menu type**: `char(1)`, `'0'` = directory, `'1'` = menu page, `'2'` = button
+- **例外**: AI 对话表（`ai_conversation`/`ai_conversation_message`）和 `sys_ai_usage` 使用 `created_at`/`updated_at`、`BIGINT` 主键（非 varchar(32)），与主后端表规范不同
 
 ---
 
@@ -207,44 +208,197 @@ CREATE TABLE `sys_dict_data` (
 
 ```sql
 CREATE TABLE `sys_page_config` (
-  `config_id` varchar(32) NOT NULL,
-  `tenant_id` varchar(32) NOT NULL,
-  `page_code` varchar(64) NOT NULL COMMENT '页面标识',
-  `page_name` varchar(64) NOT NULL COMMENT '页面名称',
-  `route_path` varchar(255) DEFAULT NULL,
-  `deleted` tinyint NOT NULL DEFAULT '0',
-  `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
+  `page_config_id` varchar(32) NOT NULL COMMENT '页面配置ID',
+  `page_code` varchar(100) NOT NULL COMMENT '页面编码',
+  `page_name` varchar(100) NOT NULL COMMENT '页面名称',
+  `enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否启用',
+  `sort` int NOT NULL DEFAULT '0' COMMENT '排序',
+  `tenant_id` varchar(32) NOT NULL DEFAULT '000000' COMMENT '租户ID',
+  `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+  `deleted` tinyint NOT NULL DEFAULT '0' COMMENT '逻辑删除',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`config_id`),
+  PRIMARY KEY (`page_config_id`),
   UNIQUE KEY `uk_page_code_tenant` (`tenant_id`,`page_code`)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='页面配置表';
 ```
 
 ## sys_page_column_config
 
 ```sql
 CREATE TABLE `sys_page_column_config` (
-  `col_id` varchar(32) NOT NULL,
-  `page_code` varchar(64) NOT NULL,
-  `col_key` varchar(64) NOT NULL COMMENT '字段key（对应表字段名）',
-  `col_label` varchar(64) NOT NULL COMMENT '列标题',
-  `sort_order` int NOT NULL DEFAULT '0',
-  `visible` tinyint NOT NULL DEFAULT '1' COMMENT '0隐藏 1显示',
-  `searchable` tinyint NOT NULL DEFAULT '0',
-  `sortable` tinyint NOT NULL DEFAULT '0',
-  `editable` tinyint NOT NULL DEFAULT '0',
-  `filterable` tinyint NOT NULL DEFAULT '0',
-  `input_type` varchar(20) NOT NULL DEFAULT 'text',
-  `dict_type` varchar(100) DEFAULT NULL,
-  `width` int DEFAULT NULL,
-  `fixed_side` char(10) DEFAULT NULL,
-  `tenant_id` varchar(32) NOT NULL DEFAULT '000000',
-  `deleted` tinyint NOT NULL DEFAULT '0',
-  `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
+  `column_id` varchar(32) NOT NULL COMMENT '列配置ID',
+  `page_code` varchar(100) NOT NULL COMMENT '页面编码',
+  `data_index` varchar(100) NOT NULL COMMENT '字段标识（camelCase，对应表字段名）',
+  `title` varchar(100) NOT NULL COMMENT '列标题',
+  `order_num` int NOT NULL DEFAULT '0' COMMENT '排序',
+  `visible` tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否可见',
+  `searchable` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否可搜索',
+  `editable` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否可编辑',
+  `copyable` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否可复制',
+  `ellipsis` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否省略',
+  `value_type` varchar(50) DEFAULT NULL COMMENT '值类型: text/select/date/digit/textarea/image/dateTime',
+  `value_enum_code` varchar(100) DEFAULT NULL COMMENT '字典编码',
+  `placeholder` varchar(200) DEFAULT NULL COMMENT '占位提示',
+  `required` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否必填',
+  `tenant_id` varchar(32) NOT NULL DEFAULT '000000' COMMENT '租户ID',
+  `deleted` tinyint NOT NULL DEFAULT '0' COMMENT '逻辑删除',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`col_id`),
+  PRIMARY KEY (`column_id`),
   KEY `idx_col_page_code` (`page_code`)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='页面列配置表';
+```
+
+> **注意**：这是新版 schema（字段为 `column_id`/`data_index`/`title`/`order_num`/`value_type`/`value_enum_code`/`required`）。前端 `usePageConfig()` hook 读取此表生成 ProTable 动态列。
+
+## ai_model_config (AI 模型配置)
+
+```sql
+CREATE TABLE `ai_model_config` (
+  `config_id`   VARCHAR(32)  NOT NULL COMMENT '配置ID',
+  `tenant_id`   VARCHAR(32)  NOT NULL DEFAULT '000000',
+  `model_name`  VARCHAR(100) NOT NULL COMMENT '模型显示名称',
+  `model_type`  VARCHAR(20)  NOT NULL DEFAULT 'api' COMMENT 'api=API模型 local=本地模型',
+  `provider`    VARCHAR(50)  NOT NULL COMMENT '提供商',
+  `model_id`    VARCHAR(100) NOT NULL COMMENT '模型标识',
+  `api_key`     VARCHAR(500) DEFAULT NULL,
+  `base_url`    VARCHAR(500) DEFAULT NULL,
+  `temperature` DECIMAL(3,2) NOT NULL DEFAULT 0.30,
+  `max_tokens`  INT          NOT NULL DEFAULT 4096,
+  `timeout_ms`  INT          NOT NULL DEFAULT 60000,
+  `is_default`  CHAR(1)      NOT NULL DEFAULT '0',
+  `status`      CHAR(1)      NOT NULL DEFAULT '0',
+  `sort_num`    INT          NOT NULL DEFAULT 0,
+  `remark`      VARCHAR(500) DEFAULT NULL,
+  `deleted`     TINYINT      NOT NULL DEFAULT 0,
+  `create_by`   VARCHAR(32)  DEFAULT NULL,
+  `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_by`   VARCHAR(32)  DEFAULT NULL,
+  `update_time` DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`config_id`),
+  INDEX `idx_tenant_status` (`tenant_id`, `status`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI模型配置';
+```
+
+**Seed data:**
+| config_id | model_name | model_type | provider | model_id | api_key | base_url |
+|-----------|-----------|-----------|----------|----------|---------|----------|
+| ai_cfg_001 | Qwen2.5 | local | ollama | qwen2.5:7b | NULL | http://ollama:11434/v1 (is_default='1') |
+| ai_cfg_002 | DeepSeek V4 | api | deepseek | deepseek-chat | CHANGE_TO_YOUR_API_KEY | https://api.deepseek.com/v1 |
+| ai_cfg_003 | Unlimited-OCR 图片识别 | local | ollama | hf.co/vimalnakrani/unlimited-ocr-gguf:Q5_K_M | NULL | http://ollama:11434/v1 |
+
+> **坑**：DECIMAL 字段（temperature）用 SQLx 读时需 `CAST(temperature AS DOUBLE)`；api_key 数据库存明文，前端掩码显示。Rust 后端读配置时 key 为空或 `CHANGE_TO_` 前缀则降级 `.env` 的 OPENAI_API_KEY。
+
+## sys_ai_usage (AI 用量统计)
+
+```sql
+CREATE TABLE `sys_ai_usage` (
+  `usage_id`    VARCHAR(32)  NOT NULL COMMENT '用量ID',
+  `tenant_id`   VARCHAR(32)  NOT NULL DEFAULT '000000',
+  `user_id`     VARCHAR(32)  DEFAULT NULL,
+  `username`    VARCHAR(50)  DEFAULT NULL,
+  `model_name`  VARCHAR(100) NOT NULL COMMENT '模型名称',
+  `provider`    VARCHAR(50)  NOT NULL COMMENT '提供商',
+  `endpoint`    VARCHAR(64)  NOT NULL DEFAULT 'chat' COMMENT '接口: chat/crud/sql/audit/config',
+  `prompt_tokens`      INT NOT NULL DEFAULT 0,
+  `completion_tokens`  INT NOT NULL DEFAULT 0,
+  `total_tokens`       INT NOT NULL DEFAULT 0,
+  `estimated_cost`     DECIMAL(10,6) NOT NULL DEFAULT 0 COMMENT '估算费用(USD)',
+  `elapsed_ms`  INT NOT NULL DEFAULT 0,
+  `success`     TINYINT NOT NULL DEFAULT 1,
+  `error_msg`   VARCHAR(500) DEFAULT NULL,
+  `stream_mode` TINYINT NOT NULL DEFAULT 0 COMMENT '0=非流式 1=流式(估算)',
+  `created_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`usage_id`),
+  INDEX `idx_usage_tenant_time` (`tenant_id`, `created_at`),
+  INDEX `idx_usage_user_time` (`user_id`, `created_at`),
+  INDEX `idx_usage_model` (`model_name`),
+  INDEX `idx_usage_endpoint` (`endpoint`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 用量统计表';
+```
+
+## ai_conversation (AI 对话)
+
+```sql
+CREATE TABLE `ai_conversation` (
+  `id`          BIGINT       NOT NULL,
+  `user_id`     BIGINT       NOT NULL,
+  `tenant_id`   VARCHAR(20)  NOT NULL DEFAULT '000000',
+  `title`       VARCHAR(200) NOT NULL DEFAULT '新对话',
+  `deleted`     TINYINT      NOT NULL DEFAULT 0,
+  `created_at`  DATETIME     NOT NULL,
+  `updated_at`  DATETIME     NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_user_tenant` (`user_id`, `tenant_id`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+## ai_conversation_message (AI 对话消息)
+
+```sql
+CREATE TABLE `ai_conversation_message` (
+  `id`              BIGINT        NOT NULL,
+  `conversation_id` BIGINT        NOT NULL,
+  `role`            VARCHAR(20)   NOT NULL,
+  `content`         LONGTEXT      NOT NULL,
+  `deleted`         TINYINT       NOT NULL DEFAULT 0,
+  `created_at`      DATETIME      NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_conversation` (`conversation_id`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+## sys_sql_audit (SQL 错误审计)
+
+```sql
+CREATE TABLE `sys_sql_audit` (
+  `audit_id`    varchar(32)  NOT NULL COMMENT '审计ID',
+  `tenant_id`   varchar(32)  NOT NULL DEFAULT '000000' COMMENT '租户ID',
+  `user_id`     varchar(32)  DEFAULT NULL COMMENT '用户ID',
+  `username`    varchar(50)  DEFAULT NULL COMMENT '用户名',
+  `operation`   varchar(50)  NOT NULL COMMENT '操作类型(query/query_one/execute/transaction)',
+  `sql_text`    longtext     NOT NULL COMMENT '报错的 SQL 语句',
+  `error_code`  varchar(50)  DEFAULT NULL COMMENT '错误码',
+  `error_number` int         DEFAULT NULL COMMENT 'MySQL 错误编号',
+  `error_message` varchar(2000) DEFAULT NULL COMMENT '错误信息',
+  `client_ip`   varchar(45)  DEFAULT NULL COMMENT '客户端IP',
+  `user_agent`  varchar(500) DEFAULT NULL COMMENT 'User-Agent',
+  `request_id`  varchar(64)  DEFAULT NULL COMMENT '请求追踪ID',
+  `created_at`  datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录时间',
+  PRIMARY KEY (`audit_id`),
+  KEY `idx_sql_audit_tenant_time` (`tenant_id`, `created_at`),
+  KEY `idx_sql_audit_operation` (`operation`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='SQL 错误审计表';
+```
+
+> 由 `bls-server/src/core/sql-audit.ts` 的 `writeSqlError()` 写入（fire-and-forget），`core/database.ts` 的 `query`/`queryOne`/`execute` catch 块调用。注意 writeSqlError 内部必须用 `pool.execute` 直接执行，避免递归审计。
+
+## sys_package (租户套餐)
+
+```sql
+CREATE TABLE `sys_package` (
+  `package_id` varchar(32) NOT NULL COMMENT '套餐ID',
+  `package_name` varchar(100) NOT NULL COMMENT '套餐名称',
+  `status` char(1) NOT NULL DEFAULT '0' COMMENT '0正常 1停用',
+  `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`package_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='租户套餐表';
+```
+
+**Seed:** `('P001','平台版','0',...)`, `('P100','租户标准版套餐','0',...)`
+
+## sys_package_menu (套餐菜单关联)
+
+```sql
+CREATE TABLE `sys_package_menu` (
+  `package_id` varchar(32) NOT NULL COMMENT '套餐ID',
+  `menu_id` varchar(32) NOT NULL COMMENT '菜单ID',
+  PRIMARY KEY (`package_id`,`menu_id`),
+  KEY `idx_package_menu_menu` (`menu_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='套餐菜单关联表';
 ```
 
 ## sys_operation_log
@@ -405,3 +559,8 @@ CREATE TABLE `sys_file_config` (
 6. **sys_config key format**: `sys.app.name`, `sys.user.defaultPassword`, `sys.upload.maxSize` etc.
 7. **ID format**: Varchar(32) Snowflake IDs, seed roles/users use shorter IDs like `000001`
 8. **All IDs are strings**: Despite Snowflake being numeric, store as `varchar(32)`
+9. **AI 表例外**: `ai_conversation`/`ai_conversation_message` 使用 BIGINT 主键 + `created_at`/`updated_at` 命名，不遵循主表规范。`sys_ai_usage` 也使用 `created_at` 而非 `create_time`
+10. **AI 模型配置(temperature)**: `DECIMAL(3,2)` 字段，用 SQLx 读时需 `CAST(temperature AS DOUBLE)` 避免 panic
+11. **SQL 审计递归**: `writeSqlError()` 内部必须用 `pool.execute` 直接执行（绕过审计钩子），否则报错写入 SQL 会触发递归
+12. **sys_page_config/sys_page_column_config 新版 schema**: 字段为 `page_config_id`/`page_code`/`data_index`/`title`/`order_num`/`value_type`/`value_enum_code`/`required`，前端 `usePageConfig()` hook 读取
+13. **sys_migrations**: 数据库迁移版本记录表，`version` 为文件名，`checksum` 为 SHA256，`execution_time_ms` 为执行耗时。执行迁移时跳过已存在的 version
