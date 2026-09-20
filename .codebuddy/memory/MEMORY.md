@@ -100,6 +100,9 @@
 - **`.codex/skills/bls-kox/references/database-schema.md` is stale** (covers only 18 of the 40
   tables, and `sys_job` → really `sys_jobs`, `sys_file_config` → really `sys_storage_config`).
   Historical reference only; the schema authority is `00-common/07-database.md` and `sql/Init.sql`.
+- The repo-root `README.md` keeps a short **"🧠 Memory"** section (entry-point table, the 13 shared
+  documents, the sync rule) and otherwise stays a **concise** project README (~175 lines). Keep it
+  that way — long-form content belongs in `docs/` and `bls-memory/`, not in the README.
 
 ## IV. Collaboration preferences
 
