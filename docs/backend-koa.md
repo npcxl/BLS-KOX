@@ -142,11 +142,12 @@ export const config = {
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |------|------|------|------|
-| `GET` | `/list` | `hasPerm('{permPrefix}:list')` | 分页列表 + 关键字搜索 + 动态字段过滤 |
-| `POST` | `/add` | `hasPerm('{permPrefix}:add')` | 新增（Snowflake ID、Zod 校验、自动注入 tenant_id） |
-| `PUT` | `/edit` | `hasPerm('{permPrefix}:edit')` | 编辑（主键校验、租户隔离、Data Scope） |
-| `DELETE` | `/remove` | `hasPerm('{permPrefix}:remove')` | 批量删除（软删除/硬删除、租户隔离） |
-| `PUT` | `/status` | `hasPerm('{permPrefix}:status')` | 状态切换 |
+| `GET` | `/list` | `hasPerm('{permPrefix}:list')` | 分页列表 + 关键字搜索 + 白名单字段过滤 |
+| `GET` | `/:id` | `hasPerm('{permPrefix}:list')` | 单条详情（租户 + 软删除 + Data Scope） |
+| `POST` | `/add` | `hasPerm('{permPrefix}:add')` | 新增（Snowflake ID、Zod 校验、字段白名单、自动注入 tenant_id） |
+| `PUT` | `/edit` | `hasPerm('{permPrefix}:edit')` | 编辑（主键校验、租户隔离、Data Scope、0 行 → 404） |
+| `DELETE` | `/remove` | `hasPerm('{permPrefix}:remove')` | 批量删除（请求体 `{ ids: [] }`、软删除/硬删除、租户隔离） |
+| `PUT` | `/status` | `hasPerm('{permPrefix}:status')` | 状态切换（0 行 → 404） |
 
 ### 完整配置项
 
@@ -156,16 +157,21 @@ export const config = {
 | `pkField` | `string` | **必填** | 主键字段名（snake_case） |
 | `prefix` | `string` | 路径推导 | 路由前缀 |
 | `searchFields` | `string[]` | - | 关键字模糊搜索的字段列表 |
+| `filterFields` | `string[]` | `[]` | 允许精确过滤的 query 字段白名单（未列出的参数被忽略） |
+| `createFields` | `string[]` | 由 Zod schema 推导 | 新增字段白名单；为空则拒绝写入 |
+| `updateFields` | `string[]` | 由 Zod schema 推导 | 编辑字段白名单；主键/tenant_id/deleted 不可写 |
 | `tenantField` | `string` | `'tenant_id'` | 租户字段名 |
+| `globalTable` | `boolean` | `false` | 全局表（无 tenant_id）跳过租户过滤 |
 | `statusField` | `string` | `'status'` | 状态字段名 |
 | `softDelete` | `boolean` | `true` | 是否使用软删除（`deleted = 0/1`） |
+| `orderBy` | `string` | 主键倒序 | 列表默认排序字段 |
 | `name` | `string` | - | 模块中文名（用于审计日志） |
 | `permPrefix` | `string` | - | RBAC 权限前缀，为空则跳过鉴权 |
 | `schema` | `{ create?, update? }` | - | Zod 校验 Schema |
 | `dataScope` | `false \| DataScopeColumnMapping` | `false` | 数据权限列映射配置 |
-| `onWrite` | `() => void` | - | 写入前回调（清缓存等） |
+| `onWrite` | `() => void` | - | 写入成功后回调（清缓存等） |
 | `transactional` | `boolean` | `false` | 是否使用数据库事务包裹写操作 |
-| `onTransactionCommitted` | `() => void` | - | 事务提交后回调（发送事件等） |
+| `onTransactionCommitted` | `() => void` | - | 事务提交成功后回调（发送事件等） |
 
 ### 混合模式
 
@@ -191,13 +197,14 @@ export const config = {
 
 CRUD 工厂在每个端点上自动注入以下安全机制：
 
-- **租户隔离**：所有查询自动附加 `WHERE tenant_id = ?`
-- **软删除过滤**：列表/编辑/删除自动附加 `WHERE deleted = 0`
-- **Data Scope**：基于角色 `dataScope` 属性构建数据权限 WHERE 条件（ALL / TENANT / DEPT / DEPT_AND_CHILDREN / SELF）
+- **租户隔离**：所有读写自动附加 `WHERE tenant_id = ?`；`tenant_id` 只来自服务端请求上下文，请求体不可覆盖（缺失即拒绝写入）
+- **软删除过滤**：列表/详情/编辑/删除/状态自动附加 `WHERE deleted = 0`
+- **Data Scope**：基于角色 `dataScope` 属性构建数据权限 WHERE 条件（ALL / TENANT / DEPT / DEPT_AND_CHILDREN / SELF），并作用于事务内真正执行的查询
+- **字段白名单**：`createFields` / `updateFields` / `filterFields`；未知字段安全忽略，防止 mass assignment 与任意列名查询
 - **Snowflake ID**：新增时自动生成分布式 ID
 - **snake_case ↔ camelCase**：入参自动转蛇形，出参自动转驼峰
 - **Zod 校验**：可选的输入 Schema 校验（`schema.create` / `schema.update`）
-- **事务支持**：`transactional: true` 将写操作包裹在数据库事务中
+- **事务支持**：`transactional: true` 使用 Kysely 原生事务；`onWrite` / `onTransactionCommitted` 仅在写成功（事务提交）后执行，0 行受影响返回 404
 - **最大分页限制**：`pageSize` 上限 100
 
 ## 认证与安全体系

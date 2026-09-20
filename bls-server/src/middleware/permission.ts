@@ -4,8 +4,11 @@ import { writeSecurityLog, actorFromCtx, SecurityEventType, RiskLevel } from '..
 
 export function hasPerm(perm: string) {
   return async (ctx: Context, next: Next): Promise<void> => {
-    const user = ctx.state.user;
+    const user = ctx.state.user as any;
     if (!user) throw new UnauthorizedError();
+
+    // 权限字段兼容：AuthService.profile 返回 permissions，部分调用方使用 perms
+    const perms: string[] = user.perms ?? user.permissions ?? [];
 
     // 跨租户访问检测：用户 tenantId 与请求路径中的 tenantId 不一致
     const requestedTenant = (ctx.query as any)?.tenantId
@@ -25,17 +28,17 @@ export function hasPerm(perm: string) {
     }
 
     // 平台租户或超级管理员
-    if (user.tenantId === "000000" || user.perms.includes('*')) {
+    if (user.tenantId === "000000" || perms.includes('*')) {
       await next();
       return;
     }
 
-    if (!user.perms.includes(perm)) {
+    if (!perms.includes(perm)) {
       await writeSecurityLog({
         eventType: SecurityEventType.PERMISSION_DENIED,
         riskLevel: RiskLevel.MEDIUM,
         title: `权限拒绝：${user.username} 缺少 ${perm}`,
-        detail: { userId: user.userId, tenantId: user.tenantId, requiredPerm: perm, userPerms: user.perms.slice(0, 20) },
+        detail: { userId: user.userId, tenantId: user.tenantId, requiredPerm: perm, userPerms: perms.slice(0, 20) },
         actor: actorFromCtx(ctx),
         route: ctx.path,
         method: ctx.method,

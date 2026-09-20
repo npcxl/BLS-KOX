@@ -1,6 +1,7 @@
 package com.bls.server.core;
 
 import com.bls.server.common.ApiResponse;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
@@ -47,9 +48,15 @@ public abstract class BaseCrudController<T, C, E> {
         return ApiResponse.success(null, "编辑成功");
     }
 
+    /**
+     * 删除（支持批量）。
+     * <p>
+     * 统一契约：{@code { "ids": ["a","b"] }}，同时兼容裸数组与逗号分隔字符串，
+     * 保证与 Koa / 前端行为一致。
+     */
     @DeleteMapping("/remove")
-    public ApiResponse<Void> remove(@RequestBody List<String> ids) {
-        service.remove(ids);
+    public ApiResponse<Void> remove(@RequestBody JsonNode body) {
+        service.remove(RemoveIds.extract(body));
         return ApiResponse.success(null, "删除成功");
     }
 }

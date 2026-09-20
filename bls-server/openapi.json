@@ -20,6 +20,591 @@
     }
   ],
   "paths": {
+    "/api/system/ai-model/{id}": {
+      "get": {
+        "tags": [
+          "ai-model"
+        ],
+        "summary": "ai-model - 查询 :id",
+        "operationId": "get_api_system_ai-model_id_",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ai-model_get__api_system_ai-model_id_"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/ai-model/add": {
+      "post": {
+        "tags": [
+          "ai-model"
+        ],
+        "summary": "ai-model - 新增记录",
+        "operationId": "post_api_system_ai-model_add",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ai-model_post__api_system_ai-model_add"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/ai-model/edit": {
+      "put": {
+        "tags": [
+          "ai-model"
+        ],
+        "summary": "ai-model - 修改记录",
+        "operationId": "put_api_system_ai-model_edit",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ai-model_put__api_system_ai-model_edit"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/ai-model/internal-list": {
+      "get": {
+        "tags": [
+          "ai-model"
+        ],
+        "summary": "ai-model - 查询 internal-list",
+        "operationId": "get_api_system_ai-model_internal-list",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ]
+      }
+    },
+    "/api/system/ai-model/list": {
+      "get": {
+        "tags": [
+          "ai-model"
+        ],
+        "summary": "ai-model - 分页列表",
+        "operationId": "get_api_system_ai-model_list",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          },
+          {
+            "name": "pageNum",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "pageNum"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "pageSize"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ai-model_get__api_system_ai-model_list"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/ai-model/remove": {
+      "delete": {
+        "tags": [
+          "ai-model"
+        ],
+        "summary": "ai-model - 删除记录",
+        "operationId": "delete_api_system_ai-model_remove",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ai-model_delete__api_system_ai-model_remove"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/ai-model/status": {
+      "put": {
+        "tags": [
+          "ai-model"
+        ],
+        "summary": "ai-model - 切换状态",
+        "operationId": "put_api_system_ai-model_status",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ai-model_put__api_system_ai-model_status"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/ai-usage/list": {
+      "get": {
+        "tags": [
+          "ai-usage"
+        ],
+        "summary": "ai-usage - 分页列表",
+        "operationId": "get_api_system_ai-usage_list",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "pageNum",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "pageNum"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "pageSize"
+          }
+        ]
+      }
+    },
+    "/api/system/ai-usage/report": {
+      "post": {
+        "tags": [
+          "ai-usage"
+        ],
+        "summary": "ai-usage - 提交 report",
+        "operationId": "post_api_system_ai-usage_report",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ai-usage_post__api_system_ai-usage_report"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/ai-usage/stats": {
+      "get": {
+        "tags": [
+          "ai-usage"
+        ],
+        "summary": "ai-usage - 查询 stats",
+        "operationId": "get_api_system_ai-usage_stats",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "days"
+          }
+        ]
+      }
+    },
     "/api/auth/get-stored-session": {
       "get": {
         "tags": [
@@ -246,6 +831,303 @@
         }
       }
     },
+    "/api/ai/chat/conversations": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "chat - 查询 conversations",
+        "operationId": "get_api_ai_chat_conversations",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "chat - 提交 conversations",
+        "operationId": "post_api_ai_chat_conversations",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/chat_post__api_ai_chat_conversations"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai/chat/conversations/{id}": {
+      "delete": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "chat - 删除 :id",
+        "operationId": "delete_api_ai_chat_conversations_id_",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "chat - 修改 :id",
+        "operationId": "put_api_ai_chat_conversations_id_",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/chat_put__api_ai_chat_conversations_id_"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai/chat/conversations/{id}/messages": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "chat - 查询 messages",
+        "operationId": "get_api_ai_chat_conversations_id_messages",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "id"
+          }
+        ]
+      }
+    },
+    "/api/system/config/{id}": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "系统参数 - 详情查询（租户 + 软删除 + 数据权限）",
+        "operationId": "get_api_system_config_id_",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          },
+          "401": {
+            "description": "未授权"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "所需权限: system:config:list",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "主键 config_id"
+          }
+        ]
+      }
+    },
     "/api/system/config/add": {
       "post": {
         "tags": [
@@ -308,7 +1190,7 @@
         "tags": [
           "config"
         ],
-        "summary": "config - 获取当前配置",
+        "summary": "config - 当前配置",
         "operationId": "get_api_system_config_current",
         "responses": {
           "200": {
@@ -337,16 +1219,8 @@
           },
           "400": {
             "description": "参数错误"
-          },
-          "401": {
-            "description": "未授权"
           }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
+        }
       }
     },
     "/api/system/config/edit": {
@@ -404,52 +1278,6 @@
             }
           }
         }
-      }
-    },
-    "/api/system/config/fetch-system-configs": {
-      "get": {
-        "tags": [
-          "config"
-        ],
-        "summary": "config - 获取系统配置列表",
-        "operationId": "get_api_system_config_fetch-system-configs",
-        "responses": {
-          "200": {
-            "description": "成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "integer",
-                      "example": 200
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "操作成功"
-                    },
-                    "data": {
-                      "type": "object",
-                      "description": "响应数据"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "参数错误"
-          },
-          "401": {
-            "description": "未授权"
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
       }
     },
     "/api/system/config/list": {
@@ -551,7 +1379,7 @@
         "description": "所需权限: system:config:list",
         "parameters": [
           {
-            "name": "current",
+            "name": "pageNum",
             "in": "query",
             "required": false,
             "schema": {
@@ -566,7 +1394,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "每页条数，默认 10"
+            "description": "每页条数，默认 10，最大 100"
           },
           {
             "name": "keyword",
@@ -576,6 +1404,33 @@
               "type": "string"
             },
             "description": "关键词（config_key, config_name）"
+          },
+          {
+            "name": "config_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "精确过滤（白名单字段）"
+          },
+          {
+            "name": "config_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "精确过滤（白名单字段）"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "精确过滤（白名单字段）"
           }
         ]
       }
@@ -585,7 +1440,7 @@
         "tags": [
           "config"
         ],
-        "summary": "config - 获取公开系统配置",
+        "summary": "config - 查询 public-system",
         "operationId": "get_api_system_config_public-system",
         "responses": {
           "200": {
@@ -623,7 +1478,7 @@
         "tags": [
           "config"
         ],
-        "summary": "config - 获取公开主题配置",
+        "summary": "config - 查询 public-theme",
         "operationId": "get_api_system_config_public-theme",
         "responses": {
           "200": {
@@ -701,17 +1556,16 @@
           }
         ],
         "description": "所需权限: system:config:remove",
-        "parameters": [
-          {
-            "name": "ids",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "主键ID，批量用逗号分隔"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/config_delete__api_system_config_remove"
+              }
+            }
           }
-        ]
+        }
       }
     },
     "/api/system/config/status": {
@@ -923,6 +1777,15 @@
         },
         "parameters": [
           {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          },
+          {
             "name": "deptId",
             "in": "query",
             "required": false,
@@ -931,7 +1794,17 @@
             },
             "description": "deptId"
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/dept_get__api_system_dept_deptId_users"
+              }
+            }
+          }
+        }
       }
     },
     "/api/system/dept/add": {
@@ -1353,24 +2226,6 @@
             "description": "tenantId"
           },
           {
-            "name": "pageNum",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "pageNum"
-          },
-          {
-            "name": "pageSize",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "pageSize"
-          },
-          {
             "name": "dictTypeId",
             "in": "query",
             "required": false,
@@ -1672,24 +2527,6 @@
               "type": "string"
             },
             "description": "tenantId"
-          },
-          {
-            "name": "pageNum",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "pageNum"
-          },
-          {
-            "name": "pageSize",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "pageSize"
           },
           {
             "name": "dictName",
@@ -2975,6 +3812,128 @@
         }
       }
     },
+    "/api/system/log/sql-audit": {
+      "get": {
+        "tags": [
+          "log"
+        ],
+        "summary": "log - 查询 sql-audit",
+        "operationId": "get_api_system_log_sql-audit",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          },
+          {
+            "name": "pageNum",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "pageNum"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "pageSize"
+          },
+          {
+            "name": "username",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "username"
+          },
+          {
+            "name": "operation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "operation"
+          },
+          {
+            "name": "errorCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "errorCode"
+          },
+          {
+            "name": "clientIp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "clientIp"
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "keyword"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/log_get__api_system_log_sql-audit"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/system/log/upload": {
       "get": {
         "tags": [
@@ -3336,6 +4295,27 @@
           "400": {
             "description": "参数错误"
           }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/menu_get__api_system_menu_package-tree"
+              }
+            }
+          }
         }
       }
     },
@@ -3394,6 +4374,566 @@
                 "$ref": "#/components/schemas/menu_delete__api_system_menu_remove"
               }
             }
+          }
+        }
+      }
+    },
+    "/api/ops/releases": {
+      "get": {
+        "tags": [
+          "ops-release"
+        ],
+        "summary": "ops-release - 查询 releases",
+        "operationId": "get_api_ops_releases",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "pageNum",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "pageNum"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "pageSize"
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "ops-release"
+        ],
+        "summary": "ops-release - 提交 releases",
+        "operationId": "post_api_ops_releases",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        }
+      }
+    },
+    "/api/ops/releases/{taskId}": {
+      "get": {
+        "tags": [
+          "ops-release"
+        ],
+        "summary": "ops-release - 查询 :taskId",
+        "operationId": "get_api_ops_releases_taskId_",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "taskId"
+          }
+        ]
+      }
+    },
+    "/api/ops/releases/{taskId}/logs": {
+      "get": {
+        "tags": [
+          "ops-release"
+        ],
+        "summary": "ops-release - 查询 logs",
+        "operationId": "get_api_ops_releases_taskId_logs",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "taskId"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "limit"
+          }
+        ]
+      }
+    },
+    "/api/ops/releases/{taskId}/rollback": {
+      "post": {
+        "tags": [
+          "ops-release"
+        ],
+        "summary": "ops-release - 提交 rollback",
+        "operationId": "post_api_ops_releases_taskId_rollback",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "taskId"
+          }
+        ]
+      }
+    },
+    "/api/ops/releases/{taskId}/steps": {
+      "get": {
+        "tags": [
+          "ops-release"
+        ],
+        "summary": "ops-release - 查询 steps",
+        "operationId": "get_api_ops_releases_taskId_steps",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "taskId"
+          }
+        ]
+      }
+    },
+    "/api/ops/releases/build-callback": {
+      "post": {
+        "tags": [
+          "ops-release"
+        ],
+        "summary": "ops-release - 提交 build-callback",
+        "operationId": "post_api_ops_releases_build-callback",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        }
+      }
+    },
+    "/api/ops/releases/callback": {
+      "post": {
+        "tags": [
+          "ops-release"
+        ],
+        "summary": "ops-release - 提交 callback",
+        "operationId": "post_api_ops_releases_callback",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        }
+      }
+    },
+    "/api/ops/releases/current": {
+      "get": {
+        "tags": [
+          "ops-release"
+        ],
+        "summary": "ops-release - 当前配置",
+        "operationId": "get_api_ops_releases_current",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "environment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "environment"
+          }
+        ]
+      }
+    },
+    "/api/ops/releases/running": {
+      "get": {
+        "tags": [
+          "ops-release"
+        ],
+        "summary": "ops-release - 查询 running",
+        "operationId": "get_api_ops_releases_running",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "environment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "environment"
+          }
+        ]
+      }
+    },
+    "/api/ops/releases/services/status": {
+      "get": {
+        "tags": [
+          "ops-release"
+        ],
+        "summary": "ops-release - 切换状态",
+        "operationId": "get_api_ops_releases_services_status",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "environment",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "environment"
+          }
+        ]
+      }
+    },
+    "/api/ops/releases/versions": {
+      "get": {
+        "tags": [
+          "ops-release"
+        ],
+        "summary": "ops-release - 查询 versions",
+        "operationId": "get_api_ops_releases_versions",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
           }
         }
       }
@@ -3854,6 +5394,65 @@
         }
       }
     },
+    "/api/system/package/status": {
+      "put": {
+        "tags": [
+          "package"
+        ],
+        "summary": "package - 切换状态",
+        "operationId": "put_api_system_package_status",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/package_put__api_system_package_status"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/system/page-config/list": {
       "get": {
         "tags": [
@@ -3888,6 +5487,27 @@
           },
           "400": {
             "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/page-config_get__api_system_page-config_list"
+              }
+            }
           }
         }
       }
@@ -3977,6 +5597,15 @@
         },
         "parameters": [
           {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          },
+          {
             "name": "pageCode",
             "in": "query",
             "required": false,
@@ -3985,7 +5614,17 @@
             },
             "description": "pageCode"
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/page-config_delete__api_system_page-config_page_pageCode_"
+              }
+            }
+          }
+        }
       }
     },
     "/api/system/page-config/page/{pageCode}/columns": {
@@ -4073,6 +5712,17 @@
             "description": "参数错误"
           }
         },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -4476,6 +6126,65 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/role_delete__api_system_role_remove"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/role/status": {
+      "put": {
+        "tags": [
+          "role"
+        ],
+        "summary": "role - 切换状态",
+        "operationId": "put_api_system_role_status",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/role_put__api_system_role_status"
               }
             }
           }
@@ -4942,6 +6651,74 @@
         }
       }
     },
+    "/api/system/storage/{storageId}": {
+      "get": {
+        "tags": [
+          "storage"
+        ],
+        "summary": "storage - 查询 :storageId",
+        "operationId": "get_api_system_storage_storageId_",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          },
+          {
+            "name": "storageId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "storageId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/storage_get__api_system_storage_storageId_"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/system/storage/add": {
       "post": {
         "tags": [
@@ -5368,6 +7145,65 @@
         }
       }
     },
+    "/api/system/storage/files/remove": {
+      "delete": {
+        "tags": [
+          "storage"
+        ],
+        "summary": "storage - 删除记录",
+        "operationId": "delete_api_system_storage_files_remove",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/storage_delete__api_system_storage_files_remove"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/system/storage/list": {
       "get": {
         "tags": [
@@ -5413,6 +7249,42 @@
               "type": "string"
             },
             "description": "tenantId"
+          },
+          {
+            "name": "pageNum",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "pageNum"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "pageSize"
+          },
+          {
+            "name": "storageName",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "storageName"
+          },
+          {
+            "name": "storageType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "storageType"
           }
         ],
         "requestBody": {
@@ -5539,6 +7411,65 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/storage_post__api_system_storage_upload"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/tenant/{tenantId}": {
+      "get": {
+        "tags": [
+          "tenant"
+        ],
+        "summary": "tenant - 查询 :tenantId",
+        "operationId": "get_api_system_tenant_tenantId_",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/tenant_get__api_system_tenant_tenantId_"
               }
             }
           }
@@ -5905,6 +7836,64 @@
         }
       }
     },
+    "/api/system/theme/{id}": {
+      "get": {
+        "tags": [
+          "theme"
+        ],
+        "summary": "主题 - 详情查询（租户 + 软删除 + 数据权限）",
+        "operationId": "get_api_system_theme_id_",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          },
+          "401": {
+            "description": "未授权"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "所需权限: system:theme:list",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "主键 theme_id"
+          }
+        ]
+      }
+    },
     "/api/system/theme/add": {
       "post": {
         "tags": [
@@ -6157,6 +8146,10 @@
                             "type": "string",
                             "description": "0正常 1停用"
                           },
+                          "remark": {
+                            "type": "string",
+                            "description": "备注"
+                          },
                           "deleted": {
                             "type": "integer",
                             "description": "逻辑删除"
@@ -6196,7 +8189,7 @@
         "description": "所需权限: system:theme:list",
         "parameters": [
           {
-            "name": "current",
+            "name": "pageNum",
             "in": "query",
             "required": false,
             "schema": {
@@ -6211,7 +8204,7 @@
             "schema": {
               "type": "integer"
             },
-            "description": "每页条数，默认 10"
+            "description": "每页条数，默认 10，最大 100"
           },
           {
             "name": "keyword",
@@ -6220,7 +8213,16 @@
             "schema": {
               "type": "string"
             },
-            "description": "关键词（theme_name, theme_key）"
+            "description": "关键词（title）"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "精确过滤（白名单字段）"
           }
         ]
       }
@@ -6270,17 +8272,16 @@
           }
         ],
         "description": "所需权限: system:theme:remove",
-        "parameters": [
-          {
-            "name": "ids",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "主键ID，批量用逗号分隔"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/theme_delete__api_system_theme_remove"
+              }
+            }
           }
-        ]
+        }
       }
     },
     "/api/system/theme/status": {
@@ -7317,13 +9318,128 @@
   },
   "components": {
     "schemas": {
-      "auth_post__api_auth_login": {
+      "ai-model_get__api_system_ai-model_id_": {
         "type": "object",
         "properties": {
           "tenantId": {
             "type": "string",
             "description": "tenantId"
+          }
+        }
+      },
+      "ai-model_post__api_system_ai-model_add": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
+      "ai-model_put__api_system_ai-model_edit": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
+      "ai-model_get__api_system_ai-model_list": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
+      "ai-model_delete__api_system_ai-model_remove": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
+      "ai-model_put__api_system_ai-model_status": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
+      "ai-usage_post__api_system_ai-usage_report": {
+        "type": "object",
+        "properties": {
+          "insertInto": {
+            "type": "string",
+            "description": "insertInto"
           },
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          },
+          "userId": {
+            "type": "string",
+            "description": "userId"
+          },
+          "username": {
+            "type": "string",
+            "description": "username"
+          },
+          "modelName": {
+            "type": "string",
+            "description": "modelName"
+          },
+          "provider": {
+            "type": "string",
+            "description": "provider"
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "endpoint"
+          },
+          "promptTokens": {
+            "type": "string",
+            "description": "promptTokens"
+          },
+          "completionTokens": {
+            "type": "string",
+            "description": "completionTokens"
+          },
+          "totalTokens": {
+            "type": "string",
+            "description": "totalTokens"
+          },
+          "estimatedCost": {
+            "type": "string",
+            "description": "estimatedCost"
+          },
+          "elapsedMs": {
+            "type": "string",
+            "description": "elapsedMs"
+          },
+          "success": {
+            "type": "string",
+            "description": "success"
+          },
+          "errorMsg": {
+            "type": "string",
+            "description": "errorMsg"
+          },
+          "streamMode": {
+            "type": "string",
+            "description": "streamMode"
+          }
+        }
+      },
+      "auth_post__api_auth_login": {
+        "type": "object",
+        "properties": {
           "username": {
             "type": "string",
             "description": "username"
@@ -7340,6 +9456,32 @@
           "refreshToken": {
             "type": "string",
             "description": "refreshToken"
+          }
+        }
+      },
+      "chat_post__api_ai_chat_conversations": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "id"
+          },
+          "title": {
+            "type": "string",
+            "description": "title"
+          },
+          "messages": {
+            "type": "string",
+            "description": "messages"
+          }
+        }
+      },
+      "chat_put__api_ai_chat_conversations_id_": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "title"
           }
         }
       },
@@ -7428,6 +9570,18 @@
           "config_id"
         ]
       },
+      "config_delete__api_system_config_remove": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "string",
+            "description": "主键 ID 数组，支持批量删除"
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      },
       "config_put__api_system_config_status": {
         "type": "object",
         "properties": {
@@ -7445,28 +9599,21 @@
           "status"
         ]
       },
+      "dept_get__api_system_dept_deptId_users": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
       "dept_post__api_system_dept_add": {
         "type": "object",
         "properties": {
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "insertInto": {
-            "type": "string",
-            "description": "insertInto"
-          },
-          "parentId": {
-            "type": "string",
-            "description": "parentId"
-          },
-          "deptName": {
-            "type": "string",
-            "description": "deptName"
-          },
-          "sortNum": {
-            "type": "string",
-            "description": "sortNum"
           }
         }
       },
@@ -7476,30 +9623,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "deptId": {
-            "type": "string",
-            "description": "deptId"
-          },
-          "updateTable": {
-            "type": "string",
-            "description": "updateTable"
-          },
-          "parentId": {
-            "type": "string",
-            "description": "parentId"
-          },
-          "deptName": {
-            "type": "string",
-            "description": "deptName"
-          },
-          "sortNum": {
-            "type": "string",
-            "description": "sortNum"
-          },
-          "status": {
-            "type": "string",
-            "description": "status"
           }
         }
       },
@@ -7518,10 +9641,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "ids": {
-            "type": "string",
-            "description": "ids"
           }
         }
       },
@@ -7531,38 +9650,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "insertInto": {
-            "type": "string",
-            "description": "insertInto"
-          },
-          "dictTypeId": {
-            "type": "string",
-            "description": "dictTypeId"
-          },
-          "dictLabel": {
-            "type": "string",
-            "description": "dictLabel"
-          },
-          "dictValue": {
-            "type": "string",
-            "description": "dictValue"
-          },
-          "dictSort": {
-            "type": "string",
-            "description": "dictSort"
-          },
-          "tag": {
-            "type": "string",
-            "description": "tag"
-          },
-          "status": {
-            "type": "string",
-            "description": "status"
-          },
-          "remark": {
-            "type": "string",
-            "description": "remark"
           }
         }
       },
@@ -7572,38 +9659,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "updateTable": {
-            "type": "string",
-            "description": "updateTable"
-          },
-          "dictLabel": {
-            "type": "string",
-            "description": "dictLabel"
-          },
-          "dictValue": {
-            "type": "string",
-            "description": "dictValue"
-          },
-          "dictSort": {
-            "type": "string",
-            "description": "dictSort"
-          },
-          "tag": {
-            "type": "string",
-            "description": "tag"
-          },
-          "status": {
-            "type": "string",
-            "description": "status"
-          },
-          "remark": {
-            "type": "string",
-            "description": "remark"
-          },
-          "dictDataId": {
-            "type": "string",
-            "description": "dictDataId"
           }
         }
       },
@@ -7622,10 +9677,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "ids": {
-            "type": "string",
-            "description": "ids"
           }
         }
       },
@@ -7635,30 +9686,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "dictTypeId": {
-            "type": "string",
-            "description": "dictTypeId"
-          },
-          "insertInto": {
-            "type": "string",
-            "description": "insertInto"
-          },
-          "dictName": {
-            "type": "string",
-            "description": "dictName"
-          },
-          "dictType": {
-            "type": "string",
-            "description": "dictType"
-          },
-          "status": {
-            "type": "string",
-            "description": "status"
-          },
-          "remark": {
-            "type": "string",
-            "description": "remark"
           }
         }
       },
@@ -7668,30 +9695,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "updateTable": {
-            "type": "string",
-            "description": "updateTable"
-          },
-          "dictName": {
-            "type": "string",
-            "description": "dictName"
-          },
-          "dictType": {
-            "type": "string",
-            "description": "dictType"
-          },
-          "status": {
-            "type": "string",
-            "description": "status"
-          },
-          "remark": {
-            "type": "string",
-            "description": "remark"
-          },
-          "dictTypeId": {
-            "type": "string",
-            "description": "dictTypeId"
           }
         }
       },
@@ -7710,10 +9713,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "ids": {
-            "type": "string",
-            "description": "ids"
           }
         }
       },
@@ -7723,18 +9722,6 @@
           "metaKey": {
             "type": "string",
             "description": "metaKey"
-          },
-          "keyword": {
-            "type": "string",
-            "description": "keyword"
-          },
-          "exportMode": {
-            "type": "string",
-            "description": "exportMode"
-          },
-          "customMaxNum": {
-            "type": "string",
-            "description": "customMaxNum"
           }
         }
       },
@@ -7889,6 +9876,15 @@
           }
         }
       },
+      "log_get__api_system_log_sql-audit": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
       "log_get__api_system_log_upload": {
         "type": "object",
         "properties": {
@@ -7904,42 +9900,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "insertInto": {
-            "type": "string",
-            "description": "insertInto"
-          },
-          "parentId": {
-            "type": "string",
-            "description": "parentId"
-          },
-          "menuName": {
-            "type": "string",
-            "description": "menuName"
-          },
-          "path": {
-            "type": "string",
-            "description": "path"
-          },
-          "component": {
-            "type": "string",
-            "description": "component"
-          },
-          "perms": {
-            "type": "string",
-            "description": "perms"
-          },
-          "icon": {
-            "type": "string",
-            "description": "icon"
-          },
-          "menuType": {
-            "type": "string",
-            "description": "menuType"
-          },
-          "sortNum": {
-            "type": "string",
-            "description": "sortNum"
           }
         }
       },
@@ -7949,54 +9909,19 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "updateTable": {
-            "type": "string",
-            "description": "updateTable"
-          },
-          "parentId": {
-            "type": "string",
-            "description": "parentId"
-          },
-          "menuName": {
-            "type": "string",
-            "description": "menuName"
-          },
-          "path": {
-            "type": "string",
-            "description": "path"
-          },
-          "component": {
-            "type": "string",
-            "description": "component"
-          },
-          "perms": {
-            "type": "string",
-            "description": "perms"
-          },
-          "icon": {
-            "type": "string",
-            "description": "icon"
-          },
-          "menuType": {
-            "type": "string",
-            "description": "menuType"
-          },
-          "sortNum": {
-            "type": "string",
-            "description": "sortNum"
-          },
-          "status": {
-            "type": "string",
-            "description": "status"
-          },
-          "menuId": {
-            "type": "string",
-            "description": "menuId"
           }
         }
       },
       "menu_get__api_system_menu_list": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
+      "menu_get__api_system_menu_package-tree": {
         "type": "object",
         "properties": {
           "tenantId": {
@@ -8011,10 +9936,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "ids": {
-            "type": "string",
-            "description": "ids"
           }
         }
       },
@@ -8033,18 +9954,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "menuIds": {
-            "type": "string",
-            "description": "menuIds"
-          },
-          "length": {
-            "type": "string",
-            "description": "length"
-          },
-          "map": {
-            "type": "string",
-            "description": "map"
           }
         }
       },
@@ -8054,26 +9963,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "insertInto": {
-            "type": "string",
-            "description": "insertInto"
-          },
-          "packageName": {
-            "type": "string",
-            "description": "packageName"
-          },
-          "packageCode": {
-            "type": "string",
-            "description": "packageCode"
-          },
-          "status": {
-            "type": "string",
-            "description": "status"
-          },
-          "remark": {
-            "type": "string",
-            "description": "remark"
           }
         }
       },
@@ -8083,30 +9972,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "updateTable": {
-            "type": "string",
-            "description": "updateTable"
-          },
-          "packageName": {
-            "type": "string",
-            "description": "packageName"
-          },
-          "packageCode": {
-            "type": "string",
-            "description": "packageCode"
-          },
-          "status": {
-            "type": "string",
-            "description": "status"
-          },
-          "remark": {
-            "type": "string",
-            "description": "remark"
-          },
-          "packageId": {
-            "type": "string",
-            "description": "packageId"
           }
         }
       },
@@ -8134,27 +9999,42 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "ids": {
+          }
+        }
+      },
+      "package_put__api_system_package_status": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
             "type": "string",
-            "description": "ids"
+            "description": "tenantId"
+          }
+        }
+      },
+      "page-config_get__api_system_page-config_list": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
+      "page-config_delete__api_system_page-config_page_pageCode_": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
           }
         }
       },
       "page-config_post__api_system_page-config_save": {
         "type": "object",
         "properties": {
-          "selectFrom": {
+          "tenantId": {
             "type": "string",
-            "description": "selectFrom"
-          },
-          "updateTable": {
-            "type": "string",
-            "description": "updateTable"
-          },
-          "insertInto": {
-            "type": "string",
-            "description": "insertInto"
+            "description": "tenantId"
           }
         }
       },
@@ -8173,18 +10053,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "menuIds": {
-            "type": "string",
-            "description": "menuIds"
-          },
-          "length": {
-            "type": "string",
-            "description": "length"
-          },
-          "map": {
-            "type": "string",
-            "description": "map"
           }
         }
       },
@@ -8194,30 +10062,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "insertInto": {
-            "type": "string",
-            "description": "insertInto"
-          },
-          "roleName": {
-            "type": "string",
-            "description": "roleName"
-          },
-          "roleKey": {
-            "type": "string",
-            "description": "roleKey"
-          },
-          "dataScope": {
-            "type": "string",
-            "description": "dataScope"
-          },
-          "sortNum": {
-            "type": "string",
-            "description": "sortNum"
-          },
-          "remark": {
-            "type": "string",
-            "description": "remark"
           }
         }
       },
@@ -8227,38 +10071,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "roleId": {
-            "type": "string",
-            "description": "roleId"
-          },
-          "updateTable": {
-            "type": "string",
-            "description": "updateTable"
-          },
-          "roleName": {
-            "type": "string",
-            "description": "roleName"
-          },
-          "roleKey": {
-            "type": "string",
-            "description": "roleKey"
-          },
-          "dataScope": {
-            "type": "string",
-            "description": "dataScope"
-          },
-          "sortNum": {
-            "type": "string",
-            "description": "sortNum"
-          },
-          "status": {
-            "type": "string",
-            "description": "status"
-          },
-          "remark": {
-            "type": "string",
-            "description": "remark"
           }
         }
       },
@@ -8277,10 +10089,15 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "ids": {
+          }
+        }
+      },
+      "role_put__api_system_role_status": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
             "type": "string",
-            "description": "ids"
+            "description": "tenantId"
           }
         }
       },
@@ -8354,6 +10171,15 @@
           }
         }
       },
+      "storage_get__api_system_storage_storageId_": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
       "storage_post__api_system_storage_add": {
         "type": "object",
         "properties": {
@@ -8369,14 +10195,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "storageId": {
-            "type": "string",
-            "description": "storageId"
-          },
-          "updateTable": {
-            "type": "string",
-            "description": "updateTable"
           }
         }
       },
@@ -8416,6 +10234,19 @@
           }
         }
       },
+      "storage_delete__api_system_storage_files_remove": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          },
+          "ids": {
+            "type": "string",
+            "description": "ids"
+          }
+        }
+      },
       "storage_get__api_system_storage_list": {
         "type": "object",
         "properties": {
@@ -8431,14 +10262,19 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "ids": {
-            "type": "string",
-            "description": "ids"
           }
         }
       },
       "storage_post__api_system_storage_upload": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
+      "tenant_get__api_system_tenant_tenantId_": {
         "type": "object",
         "properties": {
           "tenantId": {
@@ -8453,38 +10289,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "insertInto": {
-            "type": "string",
-            "description": "insertInto"
-          },
-          "tenantName": {
-            "type": "string",
-            "description": "tenantName"
-          },
-          "packageId": {
-            "type": "string",
-            "description": "packageId"
-          },
-          "expireTime": {
-            "type": "string",
-            "description": "expireTime"
-          },
-          "domainName": {
-            "type": "string",
-            "description": "domainName"
-          },
-          "contactUser": {
-            "type": "string",
-            "description": "contactUser"
-          },
-          "contactPhone": {
-            "type": "string",
-            "description": "contactPhone"
-          },
-          "remark": {
-            "type": "string",
-            "description": "remark"
           }
         }
       },
@@ -8494,42 +10298,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "updateTable": {
-            "type": "string",
-            "description": "updateTable"
-          },
-          "tenantName": {
-            "type": "string",
-            "description": "tenantName"
-          },
-          "packageId": {
-            "type": "string",
-            "description": "packageId"
-          },
-          "expireTime": {
-            "type": "string",
-            "description": "expireTime"
-          },
-          "domainName": {
-            "type": "string",
-            "description": "domainName"
-          },
-          "contactUser": {
-            "type": "string",
-            "description": "contactUser"
-          },
-          "contactPhone": {
-            "type": "string",
-            "description": "contactPhone"
-          },
-          "status": {
-            "type": "string",
-            "description": "status"
-          },
-          "remark": {
-            "type": "string",
-            "description": "remark"
           }
         }
       },
@@ -8548,10 +10316,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "ids": {
-            "type": "string",
-            "description": "ids"
           }
         }
       },
@@ -8561,14 +10325,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "updateTable": {
-            "type": "string",
-            "description": "updateTable"
-          },
-          "status": {
-            "type": "string",
-            "description": "status"
           }
         }
       },
@@ -8638,6 +10394,10 @@
           "status": {
             "type": "string",
             "description": "0正常 1停用"
+          },
+          "remark": {
+            "type": "string",
+            "description": "备注"
           }
         },
         "required": [
@@ -8719,10 +10479,26 @@
           "status": {
             "type": "string",
             "description": "0正常 1停用"
+          },
+          "remark": {
+            "type": "string",
+            "description": "备注"
           }
         },
         "required": [
           "theme_id"
+        ]
+      },
+      "theme_delete__api_system_theme_remove": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "string",
+            "description": "主键 ID 数组，支持批量删除"
+          }
+        },
+        "required": [
+          "ids"
         ]
       },
       "theme_put__api_system_theme_status": {
@@ -8757,10 +10533,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "userId": {
-            "type": "string",
-            "description": "userId"
           }
         }
       },
@@ -8792,10 +10564,6 @@
           "tenantId": {
             "type": "string",
             "description": "tenantId"
-          },
-          "ids": {
-            "type": "string",
-            "description": "ids"
           }
         }
       },
@@ -8919,8 +10687,20 @@
   },
   "tags": [
     {
+      "name": "ai-model",
+      "description": "ai-model"
+    },
+    {
+      "name": "ai-usage",
+      "description": "ai-usage"
+    },
+    {
       "name": "auth",
       "description": "认证授权"
+    },
+    {
+      "name": "chat",
+      "description": "chat"
     },
     {
       "name": "config",
@@ -8957,6 +10737,10 @@
     {
       "name": "menu",
       "description": "菜单管理"
+    },
+    {
+      "name": "ops-release",
+      "description": "ops-release"
     },
     {
       "name": "package",

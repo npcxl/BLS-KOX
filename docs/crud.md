@@ -23,15 +23,16 @@ export const config = {
 };
 ```
 
-### 自动生成的 5 个端点
+### 自动生成的 6 个端点
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |------|------|------|------|
-| `GET` | `/list` | `hasPerm('{permPrefix}:list')` | 分页列表 + 关键字搜索 + 动态字段过滤 |
-| `POST` | `/add` | `hasPerm('{permPrefix}:add')` | 新增（Snowflake ID、Zod 校验、自动注入 tenant_id） |
-| `PUT` | `/edit` | `hasPerm('{permPrefix}:edit')` | 编辑（主键校验、租户隔离、Data Scope） |
-| `DELETE` | `/remove` | `hasPerm('{permPrefix}:remove')` | 批量删除（软删除/硬删除、租户隔离） |
-| `PUT` | `/status` | `hasPerm('{permPrefix}:status')` | 状态切换 |
+| `GET` | `/list` | `hasPerm('{permPrefix}:list')` | 分页列表 + 关键字搜索 + 白名单字段过滤 |
+| `GET` | `/:id` | `hasPerm('{permPrefix}:list')` | 单条详情（租户 + 软删除 + Data Scope，缺失返回 404） |
+| `POST` | `/add` | `hasPerm('{permPrefix}:add')` | 新增（Snowflake ID、Zod 校验、字段白名单、自动注入 tenant_id） |
+| `PUT` | `/edit` | `hasPerm('{permPrefix}:edit')` | 编辑（主键校验、租户隔离、Data Scope、不存在返回 404） |
+| `DELETE` | `/remove` | `hasPerm('{permPrefix}:remove')` | 批量删除（请求体 `{ ids: [] }`、软删除/硬删除、租户隔离） |
+| `PUT` | `/status` | `hasPerm('{permPrefix}:status')` | 状态切换（不存在返回 404） |
 
 ### 完整配置项
 
@@ -41,16 +42,27 @@ export const config = {
 | `pkField` | `string` | **必填** | 主键字段名（snake_case） |
 | `prefix` | `string` | 路径推导 | 路由前缀 |
 | `searchFields` | `string[]` | - | 关键字模糊搜索的字段列表 |
+| `filterFields` | `string[]` | `[]` | 允许精确过滤的 query 字段白名单；未列出的参数一律忽略（防止任意列名注入） |
+| `createFields` | `string[]` | 由 `schema.create` 推导 | 新增可写字段白名单；为空则拒绝写入 |
+| `updateFields` | `string[]` | 由 `schema.update` 推导 | 编辑可写字段白名单；主键/tenant_id/deleted 永远不可写 |
 | `tenantField` | `string` | `'tenant_id'` | 租户字段名 |
+| `globalTable` | `boolean` | `false` | 全局表（无 tenant_id）显式声明后跳过租户过滤/注入 |
 | `statusField` | `string` | `'status'` | 状态字段名 |
 | `softDelete` | `boolean` | `true` | 是否使用软删除（`deleted = 0/1`） |
+| `orderBy` | `string` | 主键倒序 | 列表默认排序字段（snake_case） |
 | `name` | `string` | - | 模块中文名（用于审计日志） |
 | `permPrefix` | `string` | - | RBAC 权限前缀，为空则跳过鉴权 |
 | `schema` | `{ create?, update? }` | - | Zod 校验 Schema |
 | `dataScope` | `false \| DataScopeColumnMapping` | `false` | 数据权限列映射配置 |
-| `onWrite` | `() => void` | - | 写入前回调（清缓存等） |
+| `onWrite` | `() => void` | - | **写入成功后**回调（清缓存等），失败时不触发 |
 | `transactional` | `boolean` | `false` | 是否使用数据库事务包裹写操作 |
-| `onTransactionCommitted` | `() => void` | - | 事务提交后回调（发送事件等） |
+| `onTransactionCommitted` | `() => void` | - | 事务**提交成功后**回调（发送事件等），回滚时不触发 |
+
+> 安全语义：
+> - 租户 / 软删除 / Data Scope 条件由 `applyScope()` 统一构造，**事务内外复用同一套条件**，不会因换连接而丢失；
+> - `tenant_id` 只取自服务端请求上下文（缺失即拒绝写入），请求体中的 `tenantId` 被忽略；
+> - 修改 / 删除 / 状态更新受影响行数为 0 时返回 **404**（不存在、已软删除或不在数据权限范围内）；
+> - 删除请求统一为 `{ "ids": ["a","b"] }`，同时兼容逗号分隔与裸数组（与 Java 后端一致）。
 
 ### 混合模式
 
@@ -78,13 +90,15 @@ CRUD 工厂在每个端点上自动注入以下安全机制：
 
 | 能力 | 实现方式 |
 |------|----------|
-| 租户隔离 | 所有查询自动附加 `WHERE tenant_id = ?` |
-| 软删除过滤 | 列表/编辑/删除自动附加 `WHERE deleted = 0` |
-| Data Scope | 基于角色 `dataScope` 属性构建数据权限 WHERE 条件 |
+| 租户隔离 | 所有读写自动附加 `WHERE tenant_id = ?`（全局表用 `globalTable: true` 显式声明） |
+| 软删除过滤 | 列表/详情/编辑/删除/状态自动附加 `WHERE deleted = 0` |
+| Data Scope | 基于角色 `dataScope` 属性构建数据权限 WHERE 条件，并作用于真正执行的查询 |
 | Snowflake ID | 新增时自动生成分布式 ID |
+| 字段白名单 | `createFields` / `updateFields` / `filterFields`，未知字段安全忽略 |
 | 字段转换 | 入参 `camelCase → snake_case`，出参 `snake_case → camelCase` |
 | Zod 校验 | 可选的输入 Schema 校验 |
-| 事务支持 | `transactional: true` 将写操作包裹在数据库事务中 |
+| 事务支持 | `transactional: true` 使用 Kysely 原生事务，提交成功后才触发回调 |
+| 404 语义 | 修改/删除/状态/详情命中 0 行时返回 404 |
 | 分页限制 | `pageSize` 上限 100 |
 
 ---

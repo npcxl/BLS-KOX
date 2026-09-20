@@ -338,15 +338,43 @@ interface RouteInfo {
   permissions?: string[];
   queryParams: ParsedField[];
   bodyParams: ParsedField[];
+  /** 路径参数（如 GET /:id 的 id） */
+  pathParams?: ParsedField[];
   // 出参：表结构字段（用于 list 路由）
   responseFields?: ParsedField[];
+}
+
+/**
+ * 从模块源码中提取「路由路径 → hasPerm 权限」映射。
+ *
+ * 运行时无法从中间件闭包反推权限标识，因此直接扫描 index.ts 源码块：
+ * 以 `router.<method>('<path>'` 为切分点，块内的 hasPerm('x') 即为该路由的权限。
+ */
+function loadPermMap(indexFile: string): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  if (!existsSync(indexFile)) return map;
+
+  const source = readFileSync(indexFile, 'utf-8');
+  const routeRe = /(?:router|publicRouter)\s*\.\s*(get|post|put|delete)\s*\(\s*['"`]([^'"`]+)['"`]/g;
+  const matches = [...source.matchAll(routeRe)];
+
+  matches.forEach((m, i) => {
+    const start = m.index ?? 0;
+    const end = i + 1 < matches.length ? (matches[i + 1].index ?? source.length) : source.length;
+    const block = source.slice(start, end);
+    const perms = [...block.matchAll(/hasPerm\(\s*['"`]([^'"`]+)['"`]\s*\)/g)].map((x) => x[1]);
+    if (perms.length) map.set(m[2], perms);
+  });
+
+  return map;
 }
 
 const routes: RouteInfo[] = [];
 
 // ====== 全局缓存 ======
 
-const tableColumnsCache = loadTableColumns(join(__dirname, '..', '..', 'sql', 'Init.sql'));
+// __dirname = <repo>/bls-server/src/scripts → 仓库根目录下的 sql/Init.sql
+const tableColumnsCache = loadTableColumns(join(__dirname, '..', '..', '..', 'sql', 'Init.sql'));
 const modelCache = new Map<string, Map<string, ParsedInterface>>();
 
 function getModelInterfaces(apiDir: string): Map<string, ParsedInterface> {
@@ -375,8 +403,9 @@ function addCrudRoutes(prefix: string, config: any, tag: string, apiDir: string)
   const zodCreateProps = config.schema?.create ? zodToProperties(config.schema.create) : null;
   const zodUpdateProps = config.schema?.update ? zodToProperties(config.schema.update) : null;
 
-  const crudDefs: { method: string; suffix: string; action: string; summary: string; isList: boolean }[] = [
+  const crudDefs: { method: string; suffix: string; action: string; summary: string; isList: boolean; isDetail?: boolean }[] = [
     { method: 'get', suffix: '/list', action: 'list', summary: '分页列表查询', isList: true },
+    { method: 'get', suffix: '/:id', action: 'list', summary: '详情查询（租户 + 软删除 + 数据权限）', isList: false, isDetail: true },
     { method: 'post', suffix: '/add', action: 'add', summary: '新增记录', isList: false },
     { method: 'put', suffix: '/edit', action: 'edit', summary: '修改记录', isList: false },
     { method: 'delete', suffix: '/remove', action: 'remove', summary: '删除记录（支持批量）', isList: false },
@@ -386,14 +415,22 @@ function addCrudRoutes(prefix: string, config: any, tag: string, apiDir: string)
   for (const def of crudDefs) {
     const queryParams: ParsedField[] = [];
     const bodyParams: ParsedField[] = [];
+    const pathParams: ParsedField[] = [];
+
+    if (def.isDetail) {
+      pathParams.push({ name: 'id', type: 'string', required: true, description: `主键 ${pk}` });
+    }
 
     if (def.isList) {
       queryParams.push(
-        { name: 'current', type: 'integer', required: false, description: '页码，默认 1' },
-        { name: 'pageSize', type: 'integer', required: false, description: '每页条数，默认 10' },
+        { name: 'pageNum', type: 'integer', required: false, description: '页码，默认 1' },
+        { name: 'pageSize', type: 'integer', required: false, description: '每页条数，默认 10，最大 100' },
       );
       if (config.searchFields?.length) {
         queryParams.push({ name: 'keyword', type: 'string', required: false, description: `关键词（${config.searchFields.join(', ')}）` });
+      }
+      for (const field of config.filterFields ?? []) {
+        queryParams.push({ name: field, type: 'string', required: false, description: '精确过滤（白名单字段）' });
       }
       // 从 model 的 Query interface 提取筛选字段
       const queryIface = interfaces.get(`${modelName}Query`);
@@ -407,7 +444,8 @@ function addCrudRoutes(prefix: string, config: any, tag: string, apiDir: string)
     }
 
     if (def.suffix === '/remove') {
-      queryParams.push({ name: 'ids', type: 'string', required: true, description: '主键ID，批量用逗号分隔' });
+      // 统一契约：请求体 { ids: string[] }（Koa / Java 双端一致）
+      bodyParams.push({ name: 'ids', type: 'string', required: true, description: '主键 ID 数组，支持批量删除' });
     }
 
     if (def.suffix === '/status') {
@@ -464,6 +502,7 @@ function addCrudRoutes(prefix: string, config: any, tag: string, apiDir: string)
       permissions: permPrefix ? [`${permPrefix}:${def.action}`] : undefined,
       queryParams,
       bodyParams,
+      pathParams,
       responseFields: def.isList ? tableCols : undefined,
     });
   }
@@ -570,6 +609,7 @@ function findMatchingInterface(
 function addRouterRoutes(prefix: string, router: any, tag: string, apiDir: string) {
   const stack = router?.stack ?? [];
   const interfaces = getModelInterfaces(apiDir);
+  const permMap = loadPermMap(join(apiDir, 'index.ts'));
 
   // 检测 Router 自身的 prefix（如 new Router({ prefix: '/system/user' })）
   const routerPrefix = router?.opts?.prefix ?? '';
@@ -586,7 +626,8 @@ function addRouterRoutes(prefix: string, router: any, tag: string, apiDir: strin
     const fullPath = layer.path === '/'
       ? effectivePrefix
       : effectivePrefix + layer.path;
-    const perms = extractPerms(layer.stack);
+    // 优先使用源码解析出的权限（中间件闭包无法反推），回退到中间件源码扫描
+    const perms = permMap.get(layer.path) ?? extractPerms(layer.stack);
 
     // 从中间件源码提取参数
     let queryFields: ParsedField[] = [];
@@ -804,16 +845,27 @@ function buildOpenApiDoc(): object {
       operation.description = `所需权限: ${r.permissions.join(', ')}`;
     }
 
-    // 入参：query parameters
-    if (r.queryParams?.length) {
-      operation.parameters = r.queryParams.map((p) => ({
+    // 入参：path + query parameters
+    const parameters: any[] = [];
+    for (const p of r.pathParams ?? []) {
+      parameters.push({
+        name: p.name,
+        in: 'path',
+        required: true,
+        schema: tsTypeToOpenApi(p.type),
+        description: p.description || p.name,
+      });
+    }
+    for (const p of r.queryParams ?? []) {
+      parameters.push({
         name: p.name,
         in: 'query',
         required: p.required,
         schema: tsTypeToOpenApi(p.type),
         description: p.description || p.name,
-      }));
+      });
     }
+    if (parameters.length) operation.parameters = parameters;
 
     // 入参：request body
     if (r.bodyParams?.length) {

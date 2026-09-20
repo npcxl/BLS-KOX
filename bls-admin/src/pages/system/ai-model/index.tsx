@@ -1,6 +1,5 @@
 import type { ProFormColumnsType } from '@ant-design/pro-components';
 import CrudTablePage from '@/components/CrudTablePage';
-import { usePermission } from '@/hooks/usePermission';
 import { useMultiDict } from '@/hooks/useDict';
 import { Tag } from 'antd';
 import { CloudOutlined, DesktopOutlined } from '@ant-design/icons';
@@ -35,7 +34,6 @@ const statusEnum = { '0': '启用', '1': '停用' };
 const isDefaultEnum = { '0': '否', '1': '是' };
 
 export default function AiModelConfigPage() {
-  const { can } = usePermission();
   const { sys_status, sys_yes_no } = useMultiDict(['sys_status', 'sys_yes_no']) as any;
   const statusFormEnum = Object.fromEntries(Object.entries(sys_status?.valueEnum ?? {}).map(([k, v]: [string, any]) => [k, v.text]));
   const yesNoFormEnum = Object.fromEntries(Object.entries(sys_yes_no?.valueEnum ?? {}).map(([k, v]: [string, any]) => [k, v.text]));
@@ -209,11 +207,11 @@ export default function AiModelConfigPage() {
       formColumns={formColumns}
       modalWidth={720}
       permissions={{
-        create: can('system:ai-model:add'),
-        edit: can('system:ai-model:edit'),
-        remove: can('system:ai-model:remove'),
-        status: can('system:ai-model:status'),
-      } as any}
+        create: 'system:ai-model:add',
+        edit: 'system:ai-model:edit',
+        remove: 'system:ai-model:remove',
+        status: 'system:ai-model:status',
+      }}
     />
   );
 }

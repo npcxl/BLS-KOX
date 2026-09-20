@@ -1,12 +1,15 @@
 import Router from 'koa-router';
 import { Context } from 'koa';
+import { z } from 'zod';
 import { getDb } from '../../../core/database';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { getCurrentTenantId, requireTenantId } from '../../../middleware/tenant';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
 import { assertTenantResource } from '../../../security/ownership';
-import { pickAllowed, toSnake } from '../../../shared/utils/mass-assignment';
+import { extractIds } from '../../../core/crud';
+import { NotFoundError, ValidationError } from '../../../core/errors';
+import { success, pageSuccess } from '../../../core/response';
 import { createStorageProvider } from './storage.factory';
 import { createDistributedLock } from '../../../distributed/lock';
 import { getRedisClient } from '../../../shared/utils/redis';
@@ -20,6 +23,7 @@ import fs from 'fs';
 import path from 'path';
 
 const router = new Router({ prefix: '/system/storage' });
+const ST = 'sys_storage_config';
 
 /** Storage 配置允许的字段 */
 const STORAGE_FIELDS = [
@@ -29,33 +33,217 @@ const STORAGE_FIELDS = [
   'isDefault', 'status', 'remark',
 ];
 
+// ====== 参数校验 ======
+
+const numish = z.union([z.number(), z.string(), z.boolean()]).transform((v) => {
+  if (typeof v === 'boolean') return v ? 1 : 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+});
+
+const jsonish = z.union([z.string(), z.record(z.string(), z.any()), z.array(z.any()), z.null()])
+  .optional()
+  .transform((v) => {
+    if (v === undefined || v === null || v === '') return null;
+    if (typeof v === 'object') return JSON.stringify(v);
+    const text = String(v).trim();
+    if (!text) return null;
+    try {
+      JSON.parse(text);
+    } catch {
+      throw new ValidationError('JSON 字段格式不合法');
+    }
+    return text;
+  });
+
+const storageCreateSchema = z.object({
+  storageName: z.string().trim().min(1, 'storageName 不能为空').max(100),
+  storageType: z.string().trim().min(1, 'storageType 不能为空').max(30),
+  endpoint: z.string().max(500).nullish(),
+  region: z.string().max(100).nullish(),
+  port: numish.optional(),
+  useSsl: numish.optional(),
+  pathStyle: numish.optional(),
+  accessKey: z.string().max(500).nullish(),
+  secretKey: z.string().max(500).nullish(),
+  publicBucket: z.string().max(100).nullish(),
+  privateBucket: z.string().max(100).nullish(),
+  publicBaseUrl: z.string().max(1000).nullish(),
+  privateBaseUrl: z.string().max(1000).nullish(),
+  configJson: jsonish,
+  policyJson: jsonish,
+  isDefault: numish.optional(),
+  status: z.enum(['0', '1']).optional(),
+  remark: z.string().max(500).nullish(),
+});
+
+const storageUpdateSchema = storageCreateSchema.partial().extend({
+  storageId: z.string().trim().min(1).max(32),
+});
+
+function parseOrThrow<T>(schema: z.ZodType<T>, input: unknown): T {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) {
+    throw new ValidationError('参数错误', parsed.error.issues.map((i) => ({
+      path: i.path.join('.'), message: i.message,
+    })));
+  }
+  return parsed.data;
+}
+
+/** 密钥脱敏：只保留首尾各 4 位 */
+function maskSecret(value: unknown): string | null {
+  if (!value) return null;
+  const text = String(value);
+  if (text.length <= 8) return '****';
+  return `${text.slice(0, 4)}****${text.slice(-4)}`;
+}
+
+function isMaskedValue(value: unknown): boolean {
+  return typeof value === 'string' && value.includes('****');
+}
+
+/** 对外返回时脱敏 access_key / secret_key */
+function maskRow(row: Record<string, any>): Record<string, any> {
+  return {
+    ...row,
+    access_key: maskSecret(row.access_key),
+    secret_key: maskSecret(row.secret_key),
+  };
+}
+
+/** 请求体 → 数据库列（白名单 + 局部更新 + 密钥保留策略） */
+function buildStorageValues(
+  body: Partial<z.infer<typeof storageCreateSchema>>,
+  opts: { isCreate: boolean; existing?: Record<string, any> },
+): Record<string, any> {
+  const values: Record<string, any> = {};
+  const assign = (col: string, value: unknown) => { if (value !== undefined) values[col] = value; };
+
+  assign('storage_name', body.storageName);
+  assign('storage_type', body.storageType);
+  assign('endpoint', body.endpoint);
+  assign('region', body.region);
+  assign('public_bucket', body.publicBucket);
+  assign('private_bucket', body.privateBucket);
+  assign('public_base_url', body.publicBaseUrl);
+  assign('private_base_url', body.privateBaseUrl);
+  assign('port', body.port);
+  assign('use_ssl', body.useSsl);
+  assign('path_style', body.pathStyle);
+  assign('status', body.status);
+  assign('remark', body.remark);
+  assign('is_default', body.isDefault === undefined ? undefined : (body.isDefault === 1 ? 1 : 0));
+  if (body.configJson !== undefined) values.config_json = body.configJson ?? null;
+  if (body.policyJson !== undefined) values.policy_json = body.policyJson ?? null;
+
+  // 密钥：未传 / 空 / 脱敏占位值 → 编辑时保留原密钥；新增时置空
+  const keyRule = (incoming: unknown, col: string) => {
+    if (incoming === undefined || incoming === null || incoming === '' || isMaskedValue(incoming)) {
+      if (!opts.isCreate) return; // 保留数据库原值
+      values[col] = null;
+      return;
+    }
+    values[col] = incoming;
+  };
+  keyRule(body.accessKey, 'access_key');
+  keyRule(body.secretKey, 'secret_key');
+
+  return values;
+}
+
+/** 保证同租户最多一个默认存储（事务内先清零再置一） */
+async function applyDefaultFlag(trx: any, tenantId: string, storageId: string, values: Record<string, any>) {
+  if (values.is_default !== 1) return;
+  await trx.updateTable(ST).set({ is_default: 0 })
+    .where('tenant_id', '=', tenantId).where('deleted', '=', 0)
+    .where('storage_id', '!=', storageId)
+    .execute();
+}
+
 router.get('/list', jwtAuth(), hasPerm('system:storage:list'), async (ctx: Context) => {
-  const tid = getCurrentTenantId();
-  ctx.body = { code: 200, data: await (await getDb()).selectFrom('sys_storage_config').selectAll()
-    .where('deleted','=',0).where('tenant_id','=',tid).orderBy('create_time','desc').execute() };
-});
-router.post('/add', jwtAuth(), hasPerm('system:storage:add'), async (ctx: Context) => {
+  const tid = requireTenantId();
   const db = (await getDb()) as any;
-  const data = pickAllowed((ctx.request.body ?? {}) as any, STORAGE_FIELDS);
-  if (Object.keys(data).length === 0) { ctx.body = { code: 400, message: '没有有效字段' }; return; }
-  await db.insertInto('sys_storage_config').values({...toSnake(data), tenant_id: requireTenantId(), deleted:0} as any).execute();
-  ctx.body = { code: 200, message: '新增成功' };
+  const q: any = ctx.query;
+  const p = Math.max(1, Number(q.pageNum) || 1);
+  const s = Math.min(100, Math.max(1, Number(q.pageSize) || 10));
+
+  let b = db.selectFrom(ST).selectAll().where('deleted', '=', 0).where('tenant_id', '=', tid);
+  if (q.storageName) b = b.where('storage_name', 'like', `%${q.storageName}%`);
+  if (q.storageType) b = b.where('storage_type', '=', String(q.storageType));
+
+  const countRow = await (b as any).clearSelect().select((eb: any) => eb.fn.countAll().as('total')).executeTakeFirst();
+  const rows = await b.orderBy('create_time', 'desc').limit(s).offset((p - 1) * s).execute();
+  pageSuccess(ctx, rows.map(maskRow), Number(countRow?.total ?? 0));
 });
+
+router.post('/add', jwtAuth(), hasPerm('system:storage:add'), async (ctx: Context) => {
+  const tid = requireTenantId();
+  const body = parseOrThrow(storageCreateSchema, ctx.request.body ?? {});
+  const db = (await getDb()) as any;
+  const storageId = generateSnowflakeId();
+  const values = buildStorageValues(body, { isCreate: true });
+
+  await db.transaction().execute(async (trx: any) => {
+    await applyDefaultFlag(trx, tid, storageId, values);
+    await trx.insertInto(ST).values({
+      storage_id: storageId,
+      tenant_id: tid,
+      deleted: 0,
+      ...values,
+    }).execute();
+  });
+
+  success(ctx, { storageId }, '新增成功');
+});
+
 router.put('/edit', jwtAuth(), hasPerm('system:storage:edit'), async (ctx: Context) => {
-  const db = (await getDb()) as any; const b: any = ctx.request.body;
-  await assertTenantResource('sys_storage_config', 'storage_id', b.storageId);
-  const data = pickAllowed(b, STORAGE_FIELDS);
-  if (Object.keys(data).length === 0) { ctx.body = { code: 400, message: '没有有效字段' }; return; }
-  const tid = getCurrentTenantId();
-  await db.updateTable('sys_storage_config').set(toSnake(data) as any).where('storage_id','=',b.storageId).where('tenant_id','=',tid).execute();
-  ctx.body = { code: 200, message: '修改成功' };
+  const tid = requireTenantId();
+  const body = parseOrThrow(storageUpdateSchema, ctx.request.body ?? {});
+  const db = (await getDb()) as any;
+
+  const existing = await db.selectFrom(ST).select(['storage_id', 'access_key', 'secret_key'])
+    .where('storage_id', '=', body.storageId)
+    .where('tenant_id', '=', tid)
+    .where('deleted', '=', 0)
+    .executeTakeFirst();
+  if (!existing) throw new NotFoundError();
+
+  const values = buildStorageValues(body, { isCreate: false, existing });
+
+  const affected = await db.transaction().execute(async (trx: any) => {
+    await applyDefaultFlag(trx, tid, body.storageId, values);
+    const result: any = await trx.updateTable(ST).set(values)
+      .where('storage_id', '=', body.storageId)
+      .where('tenant_id', '=', tid)
+      .where('deleted', '=', 0)
+      .executeTakeFirst();
+    return Number(result?.numUpdatedRows ?? 0);
+  });
+
+  if (affected === 0) throw new NotFoundError();
+  success(ctx, { storageId: body.storageId }, '修改成功');
 });
+
 router.delete('/remove', jwtAuth(), hasPerm('system:storage:remove'), async (ctx: Context) => {
-  const db = (await getDb()) as any; const ids = ((ctx.request.body as any)?.ids??[]).map(String);
-  const tid = getCurrentTenantId();
-  await db.updateTable('sys_storage_config').set({deleted:1}).where('storage_id','in',ids).where('tenant_id','=',tid).execute();
-  ctx.body = { code: 200, message: '删除成功' };
+  const tid = requireTenantId();
+  const ids = [...new Set(extractIds(ctx.request.body, ctx.query))];
+  if (ids.length === 0) throw new ValidationError('缺少 ids');
+  const db = (await getDb()) as any;
+
+  const visible: any[] = await db.selectFrom(ST).select('storage_id')
+    .where('storage_id', 'in', ids).where('tenant_id', '=', tid).where('deleted', '=', 0).execute();
+  if (visible.length !== ids.length) throw new NotFoundError();
+
+  const result: any = await db.updateTable(ST).set({ deleted: 1 })
+    .where('storage_id', 'in', ids).where('tenant_id', '=', tid).where('deleted', '=', 0)
+    .executeTakeFirst();
+  if (Number(result?.numUpdatedRows ?? 0) === 0) throw new NotFoundError();
+
+  success(ctx, { deleted: ids.length }, '删除成功');
 });
+
+/** GET /:storageId — 详情（脱敏）。必须注册在 /files 等静态路由之后，避免被通配路由遮蔽 */
 
 // 文件上传 — 导出 handler 以便测试
 export async function handleUpload(
@@ -255,6 +443,18 @@ router.get('/file/:fileId/download', jwtAuth(), hasPerm('system:file:download'),
   const tid = getCurrentTenantId();
   ctx.body = { code: 200, data: await (await getDb()).selectFrom('sys_file').selectAll()
     .where('file_id','=',ctx.params.fileId).where('tenant_id','=',tid).where('deleted','=',0).executeTakeFirst() };
+});
+
+/** GET /:storageId — 存储配置详情（access_key / secret_key 脱敏） */
+router.get('/:storageId', jwtAuth(), hasPerm('system:storage:list'), async (ctx: Context) => {
+  const tid = requireTenantId();
+  const row = await (await getDb()).selectFrom(ST).selectAll()
+    .where('storage_id', '=', ctx.params.storageId)
+    .where('tenant_id', '=', tid)
+    .where('deleted', '=', 0)
+    .executeTakeFirst();
+  if (!row) throw new NotFoundError();
+  success(ctx, maskRow(row as any), '查询成功');
 });
 
 export default router;

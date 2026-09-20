@@ -422,7 +422,22 @@ INSERT INTO `sys_menu` VALUES
 ('storage_config_add_0001','storage_config_0001','新增',NULL,NULL,'system:storage:add',NULL,'2',1,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),
 ('storage_config_edit_0001','storage_config_0001','修改',NULL,NULL,'system:storage:edit',NULL,'2',2,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),
 ('ai_usage_0001','ai_workbench_0001','AI 用量中心','/ai/usage','ai/usage','ai:usage:view','DashboardOutlined','1',3,'0','2026-07-22 00:00:00','2026-07-22 00:00:00'),
-('storage_config_remove_0001','storage_config_0001','删除',NULL,NULL,'system:storage:remove',NULL,'2',3,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),('ai_workbench_0001','000000','KOX-AI','/ai',NULL,NULL,'RobotOutlined','0',50,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_workbench_0002','ai_workbench_0001','KOX-AI','/ai/workbench','ai/workbench','ai:workbench:view','RobotOutlined','1',1,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_model_0001','ai_workbench_0001','AI 模型配置','/ai/models','system/ai-model','ai:models:view','SettingOutlined','1',2,'0','2026-07-22 00:00:00','2026-07-22 00:00:00');
+('storage_config_remove_0001','storage_config_0001','删除',NULL,NULL,'system:storage:remove',NULL,'2',3,'0','2026-06-15 08:41:37','2026-06-15 08:41:37'),('ai_workbench_0001','000000','KOX-AI','/ai',NULL,NULL,'RobotOutlined','0',50,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_workbench_0002','ai_workbench_0001','KOX-AI','/ai/workbench','ai/workbench','ai:workbench:view','RobotOutlined','1',1,'0','2026-07-19 00:00:00','2026-07-19 00:00:00'),('ai_model_0001','ai_workbench_0001','AI 模型配置','/ai/models','system/ai-model','ai:models:view','SettingOutlined','1',2,'0','2026-07-22 00:00:00','2026-07-22 00:00:00'),
+-- CRUD 完整性补齐（2026-09-20）：补齐缺失的按钮权限种子
+('000132','000130','新增',NULL,NULL,'system:user:add',NULL,'2',2,'0','2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('theme_add_0001','000180','新增',NULL,NULL,'system:theme:add',NULL,'2',3,'0','2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('theme_remove_0001','000180','删除',NULL,NULL,'system:theme:remove',NULL,'2',4,'0','2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('role_status_0001','000140','状态',NULL,NULL,'system:role:status',NULL,'2',6,'0','2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('package_status_0001','000112','状态',NULL,NULL,'system:package:status',NULL,'2',5,'0','2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('tenant_status_0001','000111','状态',NULL,NULL,'system:tenant:status',NULL,'2',5,'0','2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('pageconfig_list_0001','325883052729438208','查询',NULL,NULL,'system:pageconfig:list',NULL,'2',1,'0','2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('pageconfig_edit_0001','325883052729438208','编辑',NULL,NULL,'system:pageconfig:edit',NULL,'2',2,'0','2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('pageconfig_remove_0001','325883052729438208','删除',NULL,NULL,'system:pageconfig:remove',NULL,'2',3,'0','2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('ai_model_list_0001','ai_model_0001','查询',NULL,NULL,'system:ai-model:list',NULL,'2',1,'0','2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('ai_model_add_0001','ai_model_0001','新增',NULL,NULL,'system:ai-model:add',NULL,'2',2,'0','2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('ai_model_edit_0001','ai_model_0001','修改',NULL,NULL,'system:ai-model:edit',NULL,'2',3,'0','2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('ai_model_remove_0001','ai_model_0001','删除',NULL,NULL,'system:ai-model:remove',NULL,'2',4,'0','2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('ai_model_status_0001','ai_model_0001','状态',NULL,NULL,'system:ai-model:status',NULL,'2',5,'0','2026-09-20 00:00:00','2026-09-20 00:00:00');
 
 -- -------------------------------------------------------
 -- ai_model_config (AI 模型配置)
@@ -659,7 +674,19 @@ INSERT INTO `sys_package_menu` VALUES
 ('P100','ai_workbench_0001'),('P100','ai_workbench_0002'),('P100','ai_crud_0001'),('P100','ai_sql_0001'),
 ('P100','ai_audit_0001'),('P100','ai_config_0001'),
 ('P001','ai_model_0001'),('P001','ai_usage_0001'),
-('P100','ai_model_0001'),('P100','ai_usage_0001');
+('P100','ai_model_0001'),('P100','ai_usage_0001'),
+-- CRUD 完整性补齐（2026-09-20）：新增按钮权限纳入套餐
+('P001','000132'),('P100','000132'),
+('P001','theme_add_0001'),('P100','theme_add_0001'),
+('P001','theme_remove_0001'),('P100','theme_remove_0001'),
+('P001','role_status_0001'),('P100','role_status_0001'),
+('P001','package_status_0001'),('P001','tenant_status_0001'),
+('P001','pageconfig_list_0001'),('P001','pageconfig_edit_0001'),('P001','pageconfig_remove_0001'),
+('P001','ai_model_list_0001'),('P100','ai_model_list_0001'),
+('P001','ai_model_add_0001'),('P100','ai_model_add_0001'),
+('P001','ai_model_edit_0001'),('P100','ai_model_edit_0001'),
+('P001','ai_model_remove_0001'),('P100','ai_model_remove_0001'),
+('P001','ai_model_status_0001'),('P100','ai_model_status_0001');
 
 -- -------------------------------------------------------
 -- sys_page_column_config
@@ -925,7 +952,16 @@ INSERT INTO `sys_role_menu` VALUES
 ('100002','000160'),('100002','000161'),('000001','ai_workbench_0001'),('000001','ai_workbench_0002'),
 ('000001','ai_crud_0001'),('000001','ai_sql_0001'),('000001','ai_audit_0001'),('000001','ai_config_0001'),('000001','ai_model_0001'),('000001','ai_usage_0001'),
 ('100001','ai_workbench_0001'),('100001','ai_workbench_0002'),('100001','ai_crud_0001'),('100001','ai_sql_0001'),
-('100001','ai_audit_0001'),('100001','ai_config_0001'),('100001','ai_model_0001'),('100001','ai_usage_0001');
+('100001','ai_audit_0001'),('100001','ai_config_0001'),('100001','ai_model_0001'),('100001','ai_usage_0001'),
+-- CRUD 完整性补齐（2026-09-20）：新增按钮权限授予平台管理员与租户管理员
+('000001','000132'),('000001','theme_add_0001'),('000001','theme_remove_0001'),
+('000001','role_status_0001'),('000001','package_status_0001'),('000001','tenant_status_0001'),
+('000001','pageconfig_list_0001'),('000001','pageconfig_edit_0001'),('000001','pageconfig_remove_0001'),
+('000001','ai_model_list_0001'),('000001','ai_model_add_0001'),('000001','ai_model_edit_0001'),
+('000001','ai_model_remove_0001'),('000001','ai_model_status_0001'),
+('100001','000132'),('100001','theme_add_0001'),('100001','theme_remove_0001'),('100001','role_status_0001'),
+('100001','ai_model_list_0001'),('100001','ai_model_add_0001'),('100001','ai_model_edit_0001'),
+('100001','ai_model_remove_0001'),('100001','ai_model_status_0001');
 
 -- -------------------------------------------------------
 -- sys_search_index
@@ -1092,6 +1128,7 @@ CREATE TABLE `sys_theme_config` (
   `iconfont_url` varchar(500) DEFAULT NULL COMMENT '图标字体URL',
   `token_json` text COMMENT 'Token JSON',
   `status` char(1) NOT NULL DEFAULT '0' COMMENT '0正常 1停用',
+  `remark` varchar(500) DEFAULT NULL COMMENT '备注',
   `deleted` tinyint NOT NULL DEFAULT '0' COMMENT '逻辑删除',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

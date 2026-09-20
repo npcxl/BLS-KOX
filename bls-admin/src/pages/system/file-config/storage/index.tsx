@@ -207,7 +207,6 @@ export default function StoragePage() {
       permissions={{
         import: "system:storage:import",
         export: "system:storage:export",
-        status: "system:storage:status",
         create: "system:storage:add",
         edit: "system:storage:edit",
         remove: "system:storage:remove",

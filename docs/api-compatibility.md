@@ -98,13 +98,24 @@ public static <T> ApiResponse<T> pageSuccess(T data, long total) {
 | 角色 | 新增 | `POST /api/system/role/add` | `POST /api/system/role/add` | ✅ |
 | 角色 | 编辑 | `PUT /api/system/role/edit` | `PUT /api/system/role/edit` | ✅ |
 | 角色 | 删除 | `DELETE /api/system/role/remove` | `DELETE /api/system/role/remove` | ✅ |
+| 角色 | 状态 | `PUT /api/system/role/status` | `PUT /api/system/role/status` | ✅ |
 | 角色 | 分配菜单 | `PUT /api/system/role/:roleId/menus` | `PUT /api/system/role/{roleId}/menus` | ✅ |
 | 菜单 | 列表 | `GET /api/system/menu/list` | `GET /api/system/menu/list` | ✅ |
 | 部门 | 列表 | `GET /api/system/dept/list` | `GET /api/system/dept/list` | ✅ |
 | 字典 | 列表 | `GET /api/system/dict/data/list` | `GET /api/system/dict/data/list` | ✅ |
+| 字典 | 按类型 | `GET /api/system/dict/data/type`（需登录） | `GET /api/system/dict/data/type`（需登录） | ✅ |
 | 配置 | 列表 | `GET /api/system/config/list` | `GET /api/system/config/list` | ✅ |
+| 配置 | 详情 | `GET /api/system/config/:id` | — | Koa only |
 | 主题 | 当前主题 | `GET /api/system/theme/current` | `GET /api/system/theme/current` | ✅ |
 | 主题 | 编辑 | `PUT /api/system/theme/edit` | `PUT /api/system/theme/edit` | ✅ |
+| 租户 | 公开列表 | `GET /api/system/tenant/public-list` | `GET /api/system/tenant/public-list` | ✅（仅 tenantId/tenantName/domainName） |
+| 租户 | 状态 | `PUT /api/system/tenant/status` | `PUT /api/system/tenant/status` | ✅ |
+| 套餐 | 状态 | `PUT /api/system/package/status` | `PUT /api/system/package/status` | ✅ |
+| 页面配置 | 列表 | `GET /api/system/page-config/list` | `GET /api/system/page-config/list` | ✅（`system:pageconfig:list`） |
+| 页面配置 | 列配置 | `GET /api/system/page-config/page/:pageCode/columns` | 同左 | ✅（需登录） |
+| 页面配置 | 保存 | `POST /api/system/page-config/save` | 同左 | ✅（`system:pageconfig:edit`） |
+| 页面配置 | 删除 | `DELETE /api/system/page-config/page/:pageCode` | 同左 | ✅（`system:pageconfig:remove`） |
+| AI 模型 | CRUD | `GET/POST/PUT/DELETE /api/system/ai-model/*` | — | Koa only（Java 缺口，见遗留问题） |
 | 仪表盘 | 统计 | `GET /api/system/dashboard/stats` | `GET /api/system/dashboard/stats` | ✅ |
 | 仪表盘 | 最近日志 | `GET /api/system/dashboard/recent-logs` | `GET /api/system/dashboard/recent-logs` | ✅ |
 | 全局搜索 | 搜索 | `GET /api/system/global-search` | `GET /api/system/global-search` | ✅ |
@@ -198,7 +209,20 @@ API 请求和响应统一使用 **camelCase** 命名，两套后端均需完成 
 | 配置 | `system:config:edit` | 编辑配置 |
 | 配置 | `system:config:remove` | 删除配置 |
 | 主题 | `system:theme:list` | 查看主题列表 |
+| 主题 | `system:theme:add` | 新增主题配置 |
 | 主题 | `system:theme:edit` | 编辑主题配置 |
+| 主题 | `system:theme:remove` | 删除主题配置 |
+| 租户 | `system:tenant:status` | 修改租户状态（独立权限，不复用 edit） |
+| 套餐 | `system:package:status` | 修改套餐状态 |
+| 角色 | `system:role:status` | 修改角色状态 |
+| 页面配置 | `system:pageconfig:list` | 查看页面配置 |
+| 页面配置 | `system:pageconfig:edit` | 保存页面/列配置 |
+| 页面配置 | `system:pageconfig:remove` | 删除页面配置 |
+| AI 模型 | `system:ai-model:list` | 查看模型列表/详情 |
+| AI 模型 | `system:ai-model:add` | 新增模型 |
+| AI 模型 | `system:ai-model:edit` | 编辑模型 |
+| AI 模型 | `system:ai-model:remove` | 删除模型 |
+| AI 模型 | `system:ai-model:status` | 修改模型状态 |
 
 ## 多租户逻辑一致
 
@@ -234,7 +258,25 @@ API 请求和响应统一使用 **camelCase** 命名，两套后端均需完成 
 |------|------|--------|------|
 | `keyword` | `string` | - | 关键字模糊搜索（匹配 searchFields 配置的字段） |
 
-其他 query 参数作为精确匹配过滤条件。
+其他 query 参数仅在后端字段白名单（`filterFields`）内生效，白名单外的参数会被忽略（不会拼进 SQL）。
+
+### 批量删除请求体（统一契约）
+
+两套后端统一使用对象格式，避免「一个收数组、一个收对象」：
+
+```http
+DELETE /api/system/user/remove
+Content-Type: application/json
+
+{ "ids": ["1001", "1002"] }
+```
+
+Koa 与 Java 均兼容历史格式（裸数组 `["1001"]`、逗号分隔字符串 `"1001,1002"`），但前端固定发送对象格式。
+
+### 详情端点
+
+`defineCrudModule()` 生成的模块统一提供 `GET {prefix}/:id`（如 `GET /api/system/config/:id`），
+自动套用 JWT、租户隔离、软删除过滤与 Data Scope；不存在或不属于当前租户/数据范围时返回 **404**。
 
 ### 鉴权请求头
 

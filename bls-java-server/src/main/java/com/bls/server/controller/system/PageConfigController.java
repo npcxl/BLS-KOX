@@ -13,8 +13,11 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -28,10 +31,16 @@ public class PageConfigController {
     private final SysPageConfigMapper pageConfigMapper;
     private final SysPageColumnConfigMapper columnConfigMapper;
 
-    /** Fallback to platform tenant when no auth context (public endpoints) */
-    private String tid() {
+    /**
+     * 租户上下文必须由认证态提供（fail-closed）。
+     * 匿名请求不再回退平台租户，避免匿名写入/覆盖平台配置。
+     */
+    private String requireTenant() {
         String t = TenantContext.getTenantId();
-        return t != null ? t : "000000";
+        if (t == null || t.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "缺少租户上下文");
+        }
+        return t;
     }
 
     @Data
@@ -63,10 +72,11 @@ public class PageConfigController {
 
     @Operation(summary = "页面配置列表")
     @GetMapping("/list")
+    @PreAuthorize("hasAuthority('PERM_system:pageconfig:list')")
     public ApiResponse<List<Map<String, Object>>> list() {
         List<SysPageConfig> configs = pageConfigMapper.selectList(
                 new LambdaQueryWrapper<SysPageConfig>()
-                        .eq(SysPageConfig::getTenantId, tid())
+                        .eq(SysPageConfig::getTenantId, requireTenant())
                         .eq(SysPageConfig::getDeleted, 0));
         List<Map<String, Object>> list = configs.stream().map(c -> {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -84,7 +94,7 @@ public class PageConfigController {
         SysPageConfig config = pageConfigMapper.selectOne(
                 new LambdaQueryWrapper<SysPageConfig>()
                         .eq(SysPageConfig::getPageCode, pageCode)
-                        .eq(SysPageConfig::getTenantId, tid())
+                        .eq(SysPageConfig::getTenantId, requireTenant())
                         .eq(SysPageConfig::getDeleted, 0));
         if (config == null) return ApiResponse.success(null);
         Map<String, Object> m = new LinkedHashMap<>();
@@ -100,7 +110,7 @@ public class PageConfigController {
         List<SysPageColumnConfig> columns = columnConfigMapper.selectList(
                 new LambdaQueryWrapper<SysPageColumnConfig>()
                         .eq(SysPageColumnConfig::getPageCode, pageCode)
-                        .eq(SysPageColumnConfig::getTenantId, tid())
+                        .eq(SysPageColumnConfig::getTenantId, requireTenant())
                         .eq(SysPageColumnConfig::getDeleted, 0)
                         .orderByAsc(SysPageColumnConfig::getOrderNum));
         List<Map<String, Object>> list = columns.stream().map(c -> {
@@ -118,8 +128,24 @@ public class PageConfigController {
     @Operation(summary = "保存页面配置")
     @PostMapping("/save")
     @Transactional
+    @PreAuthorize("hasAuthority('PERM_system:pageconfig:edit')")
     public ApiResponse<Void> save(@Valid @RequestBody PageConfigSaveRequest request) {
-        String tenantId = tid();
+        String tenantId = requireTenant();
+
+        // 校验：禁止重复 dataIndex（与 Koa 保持一致）
+        if (request.getColumns() != null) {
+            Set<String> seen = new HashSet<>();
+            for (ColumnConfigItem item : request.getColumns()) {
+                String key = item.getDataIndex().trim().toLowerCase();
+                if (!seen.add(key)) {
+                    return ApiResponse.error(400, "列标识重复：" + item.getDataIndex());
+                }
+                if (item.getOrderNum() != null && item.getOrderNum() < 0) {
+                    return ApiResponse.error(400, "orderNum 非法");
+                }
+            }
+        }
+
         SysPageConfig config = pageConfigMapper.selectOne(
                 new LambdaQueryWrapper<SysPageConfig>()
                         .eq(SysPageConfig::getPageCode, request.getPageCode())
@@ -141,8 +167,10 @@ public class PageConfigController {
         }
 
         if (request.getColumns() != null) {
+            // 关键修复：必须限定 tenant_id，否则会删除其他租户的列配置
             columnConfigMapper.delete(new LambdaQueryWrapper<SysPageColumnConfig>()
-                    .eq(SysPageColumnConfig::getPageCode, request.getPageCode()));
+                    .eq(SysPageColumnConfig::getPageCode, request.getPageCode())
+                    .eq(SysPageColumnConfig::getTenantId, tenantId));
             for (ColumnConfigItem item : request.getColumns()) {
                 SysPageColumnConfig col = new SysPageColumnConfig();
                 col.setPageCode(request.getPageCode());
@@ -168,17 +196,23 @@ public class PageConfigController {
     @Operation(summary = "删除页面配置")
     @DeleteMapping("/page/{pageCode}")
     @Transactional
+    @PreAuthorize("hasAuthority('PERM_system:pageconfig:remove')")
     public ApiResponse<Void> deletePage(@PathVariable String pageCode) {
+        String tenantId = requireTenant();
         SysPageConfig config = pageConfigMapper.selectOne(
                 new LambdaQueryWrapper<SysPageConfig>()
                         .eq(SysPageConfig::getPageCode, pageCode)
-                        .eq(SysPageConfig::getTenantId, tid()));
-        if (config != null) {
-            config.setDeleted(1);
-            pageConfigMapper.updateById(config);
-            columnConfigMapper.delete(new LambdaQueryWrapper<SysPageColumnConfig>()
-                    .eq(SysPageColumnConfig::getPageCode, pageCode));
+                        .eq(SysPageConfig::getTenantId, tenantId)
+                        .eq(SysPageConfig::getDeleted, 0));
+        if (config == null) {
+            return ApiResponse.error(404, "资源不存在");
         }
+        config.setDeleted(1);
+        pageConfigMapper.updateById(config);
+        // 关键修复：必须限定 tenant_id，否则会删除其他租户的列配置
+        columnConfigMapper.delete(new LambdaQueryWrapper<SysPageColumnConfig>()
+                .eq(SysPageColumnConfig::getPageCode, pageCode)
+                .eq(SysPageColumnConfig::getTenantId, tenantId));
         return ApiResponse.success(null, "删除成功");
     }
 }

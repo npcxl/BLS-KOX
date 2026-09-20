@@ -2,6 +2,7 @@ package com.bls.server.controller.system;
 
 import com.bls.server.common.ApiResponse;
 import com.bls.server.core.BaseCrudController;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.bls.server.entity.SysPackage;
 import com.bls.server.service.system.PackageService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,7 +34,7 @@ public class PackageController extends BaseCrudController<SysPackage, PackageCon
     @Override @GetMapping("/list") @PreAuthorize("hasAuthority('PERM_system:package:list')")
     public ApiResponse<List<Map<String, Object>>> list(@RequestParam(defaultValue = "1") Integer pageNum, @RequestParam(defaultValue = "10") Integer pageSize, @RequestParam(required = false) String keyword) { return super.list(pageNum, pageSize, keyword); }
     @Override @DeleteMapping("/remove") @PreAuthorize("hasAuthority('PERM_system:package:remove')")
-    public ApiResponse<Void> remove(@RequestBody List<String> ids) { return super.remove(ids); }
+    public ApiResponse<Void> remove(@RequestBody JsonNode body) { return super.remove(body); }
 
     @Data
     public static class PkgCreateRequest {
@@ -64,6 +65,23 @@ public class PackageController extends BaseCrudController<SysPackage, PackageCon
     @GetMapping("/{packageId}/menus")
     public ApiResponse<List<String>> getMenus(@PathVariable String packageId) {
         return ApiResponse.success(packageService.getMenuIds(packageId));
+    }
+
+    @Data
+    public static class PackageStatusRequest {
+        @NotBlank private String packageId;
+        @NotBlank private String status;
+    }
+
+    /** 状态快捷切换 — 对齐 Koa PUT /api/system/package/status（system:package:status） */
+    @Operation(summary = "修改套餐状态")
+    @PutMapping("/status")
+    @PreAuthorize("hasAuthority('PERM_system:package:status')")
+    public ApiResponse<Void> status(@Valid @RequestBody PackageStatusRequest request) {
+        if (!packageService.updateStatus(request.getPackageId(), request.getStatus())) {
+            return ApiResponse.error(404, "资源不存在");
+        }
+        return ApiResponse.success(null, "状态修改成功");
     }
 
     @Override

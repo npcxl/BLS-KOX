@@ -2,6 +2,7 @@ package com.bls.server.controller.system;
 
 import com.bls.server.common.ApiResponse;
 import com.bls.server.core.BaseCrudController;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.bls.server.distributed.idempotent.Idempotent;
 import com.bls.server.distributed.lock.DistributedLock;
 import com.bls.server.entity.SysRole;
@@ -35,7 +36,7 @@ public class RoleController extends BaseCrudController<SysRole, RoleController.R
     @Override @GetMapping("/list") @PreAuthorize("hasAuthority('PERM_system:role:list')")
     public ApiResponse<List<Map<String, Object>>> list(@RequestParam(defaultValue = "1") Integer pageNum, @RequestParam(defaultValue = "10") Integer pageSize, @RequestParam(required = false) String keyword) { return super.list(pageNum, pageSize, keyword); }
     @Override @DistributedLock(key = "role:remove", waitTime = 5, leaseTime = 15) @DeleteMapping("/remove") @PreAuthorize("hasAuthority('PERM_system:role:remove')")
-    public ApiResponse<Void> remove(@RequestBody List<String> ids) { return super.remove(ids); }
+    public ApiResponse<Void> remove(@RequestBody JsonNode body) { return super.remove(body); }
 
     @Data
     public static class RoleCreateRequest {
@@ -61,6 +62,12 @@ public class RoleController extends BaseCrudController<SysRole, RoleController.R
     @Data
     public static class AssignMenuRequest {
         @NotEmpty private List<String> menuIds;
+    }
+
+    @Data
+    public static class RoleStatusRequest {
+        @NotBlank private String roleId;
+        @NotBlank private String status;
     }
 
     // ========== 自定义端点 ==========
@@ -105,5 +112,16 @@ public class RoleController extends BaseCrudController<SysRole, RoleController.R
     public ApiResponse<Void> assignMenu(@PathVariable String roleId, @Valid @RequestBody AssignMenuRequest request) {
         roleService.assignMenus(roleId, request.getMenuIds());
         return ApiResponse.success(null, "分配成功");
+    }
+
+    /** 状态快捷切换 — 对齐 Koa PUT /api/system/role/status（system:role:status） */
+    @Operation(summary = "修改角色状态")
+    @PutMapping("/status")
+    @PreAuthorize("hasAuthority('PERM_system:role:status')")
+    public ApiResponse<Void> status(@Valid @RequestBody RoleStatusRequest request) {
+        if (!roleService.updateStatus(request.getRoleId(), request.getStatus())) {
+            return ApiResponse.error(404, "资源不存在");
+        }
+        return ApiResponse.success(null, "状态修改成功");
     }
 }

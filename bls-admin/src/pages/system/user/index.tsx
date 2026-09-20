@@ -107,7 +107,7 @@ function UserPageInner() {
       title: "密码",
       dataIndex: "password",
       valueType: "password",
-      tooltip: "新增时为空则使用默认密码 123456，编辑时留空不修改",
+      tooltip: "新增时为空则使用默认密码 123456；出于安全考虑，编辑不支持改密，请使用系统中的重置密码能力",
     } as any,
     {
       title: "昵称",
@@ -202,10 +202,9 @@ function UserPageInner() {
         };
       }}
       permissions={{
-        create: "system:user:create",
+        create: "system:user:add",
         edit: "system:user:edit",
         remove: "system:user:remove",
-        status: "system:user:status",
         import: "system:user:import",
         export: "system:user:export",
       }}

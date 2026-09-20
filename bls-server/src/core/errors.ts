@@ -41,3 +41,10 @@ export class ValidationError extends AppError {
     super(message, 400, 400, details);
   }
 }
+
+/** 资源冲突（唯一约束冲突等），HTTP 409 */
+export class ConflictError extends AppError {
+  constructor(message = '资源已存在') {
+    super(message, 409, 409);
+  }
+}

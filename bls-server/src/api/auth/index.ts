@@ -51,7 +51,9 @@ export class AuthService {
        WHERE ur.user_id = :uid AND m.menu_type IN ('0','1') AND m.status = '0'
        ORDER BY m.sort_num ASC`, { uid: userId });
     const menus = buildMenuTree(menuRows);
-    return { ...user, permissions: perms.map(p => p.perms).filter(Boolean), roles, menus };
+    // permissions 与 perms 同时返回：Java/旧版前端使用 permissions，Koa hasPerm 与 bls-admin 使用 perms
+    const permissionList = perms.map(p => p.perms).filter(Boolean);
+    return { ...user, permissions: permissionList, perms: permissionList, roles, menus };
   }
 
   async loginByDomain(domainName: string, username: string, password: string, meta?: any) {

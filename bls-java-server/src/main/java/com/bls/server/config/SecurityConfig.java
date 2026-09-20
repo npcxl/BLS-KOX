@@ -73,10 +73,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/system/tenant/public-list").permitAll()
                 // Config public endpoints
                 .requestMatchers(HttpMethod.GET, "/api/system/config/public-theme", "/api/system/config/public-system").permitAll()
-                // Page config (tenant-filtered, no auth required per Koa)
-                .requestMatchers("/api/system/page-config/**").permitAll()
-                // Dict data by type (used by frontend form selects, ?dictType=xxx)
-                .requestMatchers(HttpMethod.GET, "/api/system/dict/data/type").permitAll()
+                // Page config 需登录（读取仅认证，写接口另有 system:pageconfig:* 权限）
+                // Dict data by type 需登录（与 Koa 一致，避免匿名读取平台字典）
                 // Theme (Koa auto-registers current)
                 .requestMatchers(HttpMethod.GET, "/api/system/theme/list", "/api/system/theme/current").permitAll()
                 // Config current

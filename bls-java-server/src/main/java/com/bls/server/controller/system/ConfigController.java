@@ -35,7 +35,7 @@ public class ConfigController extends BaseCrudController<SysConfig, ConfigContro
     @Override @PutMapping("/edit") @PreAuthorize("hasAuthority('PERM_system:config:edit')")
     public ApiResponse<Void> edit(@jakarta.validation.Valid @RequestBody ConfigEditRequest r) { return super.edit(r); }
     @Override @DeleteMapping("/remove") @PreAuthorize("hasAuthority('PERM_system:config:remove')")
-    public ApiResponse<Void> remove(@RequestBody List<String> ids) { return super.remove(ids); }
+    public ApiResponse<Void> remove(@RequestBody com.fasterxml.jackson.databind.JsonNode body) { return super.remove(body); }
 
     @Data
     public static class ConfigCreateRequest {

@@ -111,6 +111,7 @@ public class RoleService extends BaseCrudService<SysRole, SysRoleMapper, RoleCre
     }
 
     public List<String> getRoleMenuIds(String roleId) {
+
         return roleMenuMapper.selectList(new LambdaQueryWrapper<SysRoleMenu>().eq(SysRoleMenu::getRoleId, roleId))
                 .stream().map(SysRoleMenu::getMenuId).collect(Collectors.toList());
     }
@@ -121,5 +122,24 @@ public class RoleService extends BaseCrudService<SysRole, SysRoleMapper, RoleCre
             SysRoleMenu rm = new SysRoleMenu(); rm.setRoleId(roleId); rm.setMenuId(mid);
             roleMenuMapper.insert(rm);
         }
+    }
+
+    /**
+     * 状态快捷切换（租户隔离）。
+     * 平台租户（000000）可操作任意角色，其他租户只能操作本租户角色。
+     * @return 是否更新成功（false 表示不存在或无权访问，调用方返回 404）
+     */
+    @Transactional
+    public boolean updateStatus(String roleId, String status) {
+        SysRole role = mapper.selectById(roleId);
+        if (role == null) {
+            return false;
+        }
+        String tid = TenantContext.getTenantId();
+        if (tid != null && !"000000".equals(tid) && !tid.equals(role.getTenantId())) {
+            return false;
+        }
+        role.setStatus(status);
+        return mapper.updateById(role) > 0;
     }
 }

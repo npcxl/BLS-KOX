@@ -112,10 +112,9 @@ function ThemePageInner() {
         };
       }}
       permissions={{
-        create: "system:theme:create",
+        create: "system:theme:add",
         edit: "system:theme:edit",
         remove: "system:theme:remove",
-        status: "system:theme:status",
         import: "system:theme:import",
         export: "system:theme:export",
       }}

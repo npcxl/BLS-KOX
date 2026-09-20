@@ -14,14 +14,21 @@ const router = new Router({ prefix: '/common/excel' });
 const CT = 'sys_page_column_config';
 const MAX_EXPORT = 10000;
 
-/** metaKey → { tableName, pageCode } */
-const EXCEL_METAS: Record<string, { tableName: string; pageCode: string; tenantAware: boolean }> = {
-  'system-user': { tableName: 'sys_user', pageCode: 'system_user', tenantAware: true },
-  'system-config': { tableName: 'sys_config', pageCode: 'system_config', tenantAware: true },
-  'system-role': { tableName: 'sys_role', pageCode: 'system_role', tenantAware: true },
-  'system-dept': { tableName: 'sys_dept', pageCode: 'system_dept', tenantAware: true },
-  'system-tenant': { tableName: 'sys_tenant', pageCode: 'system_tenant', tenantAware: true },
-  'system-package': { tableName: 'sys_package', pageCode: 'system_package', tenantAware: true },
+/**
+ * metaKey → { tableName, pageCode, tenantAware, hasDeleted }
+ *
+ * tenantAware：表是否有 tenant_id 列（sys_package 是全局表，没有）
+ * hasDeleted：表是否有 deleted 列（sys_package 没有，过滤 deleted 会报 SQL 错误）
+ */
+const EXCEL_METAS: Record<string, {
+  tableName: string; pageCode: string; tenantAware: boolean; hasDeleted: boolean;
+}> = {
+  'system-user': { tableName: 'sys_user', pageCode: 'system_user', tenantAware: true, hasDeleted: true },
+  'system-config': { tableName: 'sys_config', pageCode: 'system_config', tenantAware: true, hasDeleted: true },
+  'system-role': { tableName: 'sys_role', pageCode: 'system_role', tenantAware: true, hasDeleted: true },
+  'system-dept': { tableName: 'sys_dept', pageCode: 'system_dept', tenantAware: true, hasDeleted: true },
+  'system-tenant': { tableName: 'sys_tenant', pageCode: 'system_tenant', tenantAware: true, hasDeleted: true },
+  'system-package': { tableName: 'sys_package', pageCode: 'system_package', tenantAware: false, hasDeleted: false },
 };
 
 function getMeta(metaKey: string) { return EXCEL_METAS[metaKey] ?? null; }
@@ -106,7 +113,8 @@ async function handleExport(ctx: Context) {
     const { v2l } = await loadDictMaps(exportCols);
 
     const db = await getDb() as any;
-    let qb = db.selectFrom(meta.tableName).selectAll().where('deleted', '=', 0);
+    let qb = db.selectFrom(meta.tableName).selectAll();
+    if (meta.hasDeleted) qb = qb.where('deleted', '=', 0);
     if (meta.tenantAware) qb = qb.where('tenant_id', '=', getCurrentTenantId() ?? '000000');
 
     const keyword = String(body.keyword ?? '').trim();
@@ -310,7 +318,8 @@ async function handleImport(ctx: Context) {
       if (rowErrors.length) { errors.push({ rowNumber: r, errors: rowErrors, raw: rowData }); continue; }
 
       try {
-        const insertData: any = { deleted: 0, create_time: now };
+        const insertData: any = { create_time: now };
+        if (meta.hasDeleted) insertData.deleted = 0;
         for (const [, colDef] of colMap) {
           if (rowData[colDef.data_index] !== undefined) {
             const dbField = camelToSnake(colDef.data_index);
@@ -354,7 +363,8 @@ async function handleImport(ctx: Context) {
           const exist = await db.selectFrom('sys_tenant').select('tenant_id').where('tenant_name','=',insertData.tenant_name).where('deleted','=',0).executeTakeFirst();
           if (exist) existingId = exist.tenant_id;
         } else if (meta.tableName === 'sys_package' && insertData.package_name) {
-          const exist = await db.selectFrom('sys_package').select('package_id').where('package_name','=',insertData.package_name).where('deleted','=',0).executeTakeFirst();
+          // sys_package 无 deleted 列
+          const exist = await db.selectFrom('sys_package').select('package_id').where('package_name','=',insertData.package_name).executeTakeFirst();
           if (exist) existingId = exist.package_id;
         }
 

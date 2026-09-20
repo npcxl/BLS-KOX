@@ -104,4 +104,15 @@ public class PackageService extends BaseCrudService<SysPackage, SysPackageMapper
         return packageMenuMapper.selectList(new LambdaQueryWrapper<SysPackageMenu>().eq(SysPackageMenu::getPackageId, packageId))
                 .stream().map(SysPackageMenu::getMenuId).collect(Collectors.toList());
     }
+
+    /** 状态快捷切换；返回 false 表示套餐不存在（调用方返回 404） */
+    @Transactional
+    public boolean updateStatus(String packageId, String status) {
+        SysPackage pkg = mapper.selectById(packageId);
+        if (pkg == null) {
+            return false;
+        }
+        pkg.setStatus(status);
+        return mapper.updateById(pkg) > 0;
+    }
 }

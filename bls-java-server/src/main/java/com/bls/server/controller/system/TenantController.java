@@ -95,9 +95,10 @@ public class TenantController {
         return ApiResponse.success(null, "编辑成功");
     }
 
+    /** 状态快捷切换使用独立权限（与 Koa / 前端 / sql/Init.sql 一致），不再复用 tenant:edit */
     @Operation(summary = "修改租户状态")
     @PutMapping("/status")
-    @PreAuthorize("hasAuthority('PERM_system:tenant:edit')")
+    @PreAuthorize("hasAuthority('PERM_system:tenant:status')")
     public ApiResponse<Void> status(@Valid @RequestBody TenantStatusRequest request) {
         tenantService.updateStatus(request.getTenantId(), request.getStatus());
         return ApiResponse.success(null, "操作成功");

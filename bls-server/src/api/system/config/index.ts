@@ -29,7 +29,12 @@ publicRouter.get('/current', async (ctx: Context) => {
 export const config = {
   table: 'sys_config', pkField: 'config_id',
   searchFields: ['config_key', 'config_name'],
-  name: '系统参数', permPrefix: 'system:config', softDelete: false,
+  // 精确过滤白名单：禁止任意 query 参数被当作数据库列名
+  filterFields: ['config_key', 'config_type', 'status'],
+  // 字段白名单：tenant_id/deleted/create_time 等系统字段不可写
+  createFields: ['config_key', 'config_value', 'config_name', 'config_type', 'status', 'remark'],
+  updateFields: ['config_value', 'config_name', 'config_type', 'status', 'remark'],
+  name: '系统参数', permPrefix: 'system:config',
   /** fail-closed — 缺失租户抛错，由 CRUD 框架捕获并阻止写入 */
   onWrite: () => {
     const tid = getTenantOrFail();

@@ -10,8 +10,12 @@ function normalizePermissions(value: PermissionInput): string[] {
 
 export function usePermission(required?: PermissionInput, mode: 'any' | 'all' = 'any') {
   const { initialState } = useModel('@@initialState');
-  const userPerms = initialState?.currentUser?.perms ?? [];
-  const isAdmin = String(initialState?.currentUser?.isAdmin ?? '0') === '1';
+  const currentUser = initialState?.currentUser as
+    | (API.CurrentUser & { permissions?: string[] })
+    | undefined;
+  // 后端同时返回 perms / permissions，二者取其一（兼容 Java 与历史版本）
+  const userPerms = currentUser?.perms ?? currentUser?.permissions ?? [];
+  const isAdmin = String(currentUser?.isAdmin ?? '0') === '1';
 
   const requiredPerms = useMemo(() => normalizePermissions(required), [required]);
 
