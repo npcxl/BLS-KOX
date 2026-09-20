@@ -55,7 +55,7 @@ async fn page_logs(
     for b in &binds {
         count_query = count_query.bind(b.clone());
     }
-    let total: i64 = count_query.fetch_one(&state.db).await.unwrap_or(0);
+    let total: i64 = count_query.fetch_one(&state.db).await.map_err(AppError::from)?;
 
     let page_num = q.page_num.unwrap_or(1).max(1);
     let page_size = q.page_size.unwrap_or(10).clamp(1, 100);

@@ -60,7 +60,7 @@ impl FromRequestParts<AppState> for AuthUser {
 
         let session_id = format!("acc:{}", claims.jti);
         if !SessionCenter::validate(&state, &claims.tenant_id, &claims.user_id, &session_id).await {
-            return Err(AppError::Unauthorized("?????".into()));
+            return Err(AppError::Unauthorized("会话已失效".into()));
         }
 
         let perms = if claims.tenant_id == "000000" || is_admin == "1" {

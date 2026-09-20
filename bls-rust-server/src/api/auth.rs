@@ -155,7 +155,7 @@ async fn resolve_tenant(
         return Ok(tenant_id.to_string());
     }
 
-    Err(AppError::Unauthorized("?????????".into()))
+    Err(AppError::Unauthorized("当前域名未绑定租户".into()))
 }
 
 async fn is_multi_login_enabled(state: &AppState, tenant_id: &str) -> AppResult<bool> {
@@ -196,7 +196,7 @@ async fn build_profile(state: &AppState, user_id: &str, tenant_id: &str) -> AppR
     .fetch_optional(&state.db)
     .await
     .map_err(AppError::from)?
-    .ok_or_else(|| AppError::Unauthorized("?????".into()))?;
+    .ok_or_else(|| AppError::Unauthorized("用户不存在".into()))?;
 
     let mut profile = row_to_json(&row);
 
@@ -359,13 +359,13 @@ async fn login(
     .map_err(AppError::from)?;
 
     let Some((user_id, actual_tenant_id, username, hash, algorithm, status)) = row else {
-        return Err(AppError::Unauthorized("????????".into()));
+        return Err(AppError::Unauthorized("用户名或密码错误".into()));
     };
     if !verify_password(&body.password, &hash, &algorithm) {
-        return Err(AppError::Unauthorized("????????".into()));
+        return Err(AppError::Unauthorized("用户名或密码错误".into()));
     }
     if status == "1" {
-        return Err(AppError::Unauthorized("??????".into()));
+        return Err(AppError::Unauthorized("用户已被停用".into()));
     }
 
     let profile = build_profile(&state, &user_id, &actual_tenant_id).await?;
@@ -468,7 +468,7 @@ async fn logout(
         &format!("acc:{}", user.jti),
     )
     .await?;
-    Ok(ApiResponse::message_only("????"))
+    Ok(ApiResponse::message_only("操作成功"))
 }
 
 async fn refresh(
@@ -476,14 +476,14 @@ async fn refresh(
     Json(body): Json<RefreshBody>,
 ) -> Result<ApiResponse<Value>, AppError> {
     if body.refresh_token.trim().is_empty() {
-        return Err(AppError::BadRequest("??refreshToken".into()));
+        return Err(AppError::BadRequest("缺少refreshToken".into()));
     }
 
     let claims = jwt::verify_refresh(&body.refresh_token, &state.config.jwt.secret)
-        .map_err(|_| AppError::Unauthorized("refreshToken??".into()))?;
+        .map_err(|_| AppError::Unauthorized("refreshToken无效".into()))?;
 
     if state.redis.is_none() {
-        return Err(AppError::Internal(anyhow::anyhow!("Redis???")));
+        return Err(AppError::Internal(anyhow::anyhow!("Redis不可用")));
     }
 
     let stored_hash = redis_get(&state, &refresh_key(&claims.jti)).await?;
@@ -501,7 +501,7 @@ async fn refresh(
                 None,
                 None,
                 None,
-                &format!("Refresh Token ?????{}", claims.username),
+                &format!("Refresh Token 复用检测：{}", claims.username),
                 Some(json!({
                     "userId": claims.user_id,
                     "tenantId": claims.tenant_id,
@@ -511,7 +511,7 @@ async fn refresh(
             .await;
             SessionCenter::revoke_all(&state, &claims.tenant_id, &claims.user_id).await?;
         }
-        return Err(AppError::Unauthorized("refreshToken??".into()));
+        return Err(AppError::Unauthorized("refreshToken无效".into()));
     }
 
     redis_set(
@@ -531,7 +531,7 @@ async fn refresh(
     .map_err(AppError::from)?;
 
     let Some((user_id, tenant_id, username, _nickname)) = user_row else {
-        return Err(AppError::Unauthorized("?????".into()));
+        return Err(AppError::Unauthorized("用户不存在".into()));
     };
 
     let perms = load_perms(&state, &user_id, &tenant_id).await?;

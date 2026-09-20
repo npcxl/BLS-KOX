@@ -45,7 +45,7 @@ async fn type_list(
     for b in &binds {
         count_query = count_query.bind(b.clone());
     }
-    let total: i64 = count_query.fetch_one(&state.db).await.unwrap_or(0);
+    let total: i64 = count_query.fetch_one(&state.db).await.map_err(AppError::from)?;
 
     let page_num = q.get("pageNum").and_then(|s| s.parse::<u64>().ok()).unwrap_or(1).max(1);
     let page_size = q.get("pageSize").and_then(|s| s.parse::<u64>().ok()).unwrap_or(10).clamp(1, 100);
@@ -76,7 +76,7 @@ async fn type_add(
         .bind(remark)
         .bind(&user.tenant_id)
         .execute(&state.db).await.map_err(AppError::from)?;
-    Ok(ApiResponse::success_with_message(serde_json::json!({"dictTypeId": id}), "?????"))
+    Ok(ApiResponse::success_with_message(serde_json::json!({"dictTypeId": id}), "新增成功"))
 }
 
 async fn type_edit(
@@ -97,7 +97,7 @@ async fn type_edit(
     .execute(&state.db)
     .await
     .map_err(AppError::from)?;
-    Ok(ApiResponse::message_only("??????"))
+    Ok(ApiResponse::message_only("修改成功"))
 }
 
 async fn type_remove(
@@ -120,7 +120,7 @@ async fn type_remove(
     }
     query = query.bind(&user.tenant_id);
     query.execute(&state.db).await.map_err(AppError::from)?;
-    Ok(ApiResponse::message_only("??????"))
+    Ok(ApiResponse::message_only("删除成功"))
 }
 
 async fn data_list(
@@ -145,7 +145,7 @@ async fn data_list(
     for b in &binds {
         count_query = count_query.bind(b.clone());
     }
-    let total: i64 = count_query.fetch_one(&state.db).await.unwrap_or(0);
+    let total: i64 = count_query.fetch_one(&state.db).await.map_err(AppError::from)?;
 
     let page_num = q.get("pageNum").and_then(|s| s.parse::<u64>().ok()).unwrap_or(1).max(1);
     let page_size = q.get("pageSize").and_then(|s| s.parse::<u64>().ok()).unwrap_or(10).clamp(1, 100);
@@ -187,7 +187,7 @@ async fn data_add(
         .bind(body.get("remark").and_then(Value::as_str).unwrap_or(""))
         .bind(&user.tenant_id)
         .execute(&state.db).await.map_err(AppError::from)?;
-    Ok(ApiResponse::message_only("?????"))
+    Ok(ApiResponse::message_only("新增成功"))
 }
 
 async fn data_edit(
@@ -206,7 +206,7 @@ async fn data_edit(
         .bind(body.get("dictDataId").and_then(Value::as_str).unwrap_or(""))
         .bind(&user.tenant_id)
         .execute(&state.db).await.map_err(AppError::from)?;
-    Ok(ApiResponse::message_only("??????"))
+    Ok(ApiResponse::message_only("修改成功"))
 }
 
 async fn data_remove(
@@ -229,7 +229,7 @@ async fn data_remove(
     }
     query = query.bind(&user.tenant_id);
     query.execute(&state.db).await.map_err(AppError::from)?;
-    Ok(ApiResponse::message_only("??????"))
+    Ok(ApiResponse::message_only("删除成功"))
 }
 
 fn ids_from_body(body: &Value) -> Vec<String> {

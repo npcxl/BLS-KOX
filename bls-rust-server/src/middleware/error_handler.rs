@@ -11,7 +11,7 @@ pub async fn handle_error(request: Request<Body>, next: Next) -> Response {
     }
     (
         StatusCode::NOT_FOUND,
-        axum::Json(json!({"code": 404, "message": "?????"})),
+        axum::Json(json!({"code": 404, "message": "接口不存在"})),
     )
         .into_response()
 }

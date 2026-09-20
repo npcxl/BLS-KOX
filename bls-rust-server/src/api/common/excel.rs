@@ -235,10 +235,10 @@ async fn export(
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let meta = meta_by_key(&meta_key).ok_or_else(|| AppError::BadRequest("???????".into()))?;
+    let meta = meta_by_key(&meta_key).ok_or_else(|| AppError::BadRequest("未找到导出配置".into()))?;
     let cols = load_columns(&state, meta.page_code, false).await?;
     if cols.is_empty() {
-        return Err(AppError::BadRequest("???????".into()));
+        return Err(AppError::BadRequest("没有可导出的列".into()));
     }
     let (v2l, _) = load_dict_maps(&state, &cols).await?;
 
@@ -350,11 +350,11 @@ async fn template(
     Query(q): Query<HashMap<String, String>>,
 ) -> Result<Response, AppError> {
     let meta_key = q.get("metaKey").cloned().unwrap_or_default();
-    let meta = meta_by_key(&meta_key).ok_or_else(|| AppError::BadRequest("???????".into()))?;
+    let meta = meta_by_key(&meta_key).ok_or_else(|| AppError::BadRequest("未找到模板配置".into()))?;
     let mut cols = load_columns(&state, meta.page_code, true).await?;
     cols.retain(|c| !SKIP_IMPORT.contains(&c.data_index.as_str()));
     if cols.is_empty() {
-        return Err(AppError::BadRequest("???????".into()));
+        return Err(AppError::BadRequest("没有可导入的列".into()));
     }
 
     let mut workbook = Workbook::new();
@@ -363,7 +363,7 @@ async fn template(
     let bold = Format::new().set_bold();
     for (idx, col) in cols.iter().enumerate() {
         let title = if col.required {
-            format!("{}????", col.title)
+            format!("{}不能为空", col.title)
         } else {
             col.title.clone()
         };
@@ -408,8 +408,8 @@ async fn import(
         }
     }
 
-    let meta = meta_by_key(&meta_key).ok_or_else(|| AppError::BadRequest("???????".into()))?;
-    let file_bytes = file_bytes.ok_or_else(|| AppError::BadRequest("???Excel??".into()))?;
+    let meta = meta_by_key(&meta_key).ok_or_else(|| AppError::BadRequest("未找到导入配置".into()))?;
+    let file_bytes = file_bytes.ok_or_else(|| AppError::BadRequest("请上传Excel文件".into()))?;
     let temp_dir = std::env::temp_dir();
     let file_path = temp_dir.join(format!(
         "bls-excel-import-{}.xlsx",
@@ -442,14 +442,14 @@ async fn import_xlsx(
     path: &std::path::Path,
 ) -> Result<ApiResponse<Value>, AppError> {
     let mut workbook =
-        open_workbook_auto(path).map_err(|e| AppError::BadRequest(format!("????Excel??: {e}")))?;
+        open_workbook_auto(path).map_err(|e| AppError::BadRequest(format!("无法打开Excel文件: {e}")))?;
     let sheet_name = workbook.sheet_names().first().cloned().unwrap_or_default();
     let range = workbook
         .worksheet_range(&sheet_name)
-        .map_err(|e| AppError::BadRequest(format!("???????: {e}")))?;
+        .map_err(|e| AppError::BadRequest(format!("读取工作表失败: {e}")))?;
     let rows = range.rows().collect::<Vec<_>>();
     if rows.is_empty() {
-        return Err(AppError::BadRequest("????".into()));
+        return Err(AppError::BadRequest("文件为空".into()));
     }
 
     let (_, l2v) = load_dict_maps(state, import_cols).await?;
@@ -465,7 +465,7 @@ async fn import_xlsx(
         }
     }
     if col_map.is_empty() {
-        return Err(AppError::BadRequest("????????????????".into()));
+        return Err(AppError::BadRequest("未匹配到任何列，请使用正确的模板".into()));
     }
 
     let mut errors = Vec::new();
@@ -479,7 +479,7 @@ async fn import_xlsx(
             let value = row.get(*col_idx).map(data_to_string).unwrap_or_default();
             let value = value.trim().to_string();
             if col.required && value.is_empty() {
-                row_errors.push(format!("{}????", col.title));
+                row_errors.push(format!("{}不能为空", col.title));
                 continue;
             }
             if value.is_empty() {

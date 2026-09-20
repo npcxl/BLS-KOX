@@ -253,7 +253,7 @@ async fn index_rebuild(
     let configs = rows_to_json(configs);
 
     if configs.is_empty() {
-        return Err(AppError::BadRequest("??????????".into()));
+        return Err(AppError::BadRequest("未找到可用的搜索配置".into()));
     }
 
     let mut result = serde_json::json!({
@@ -286,7 +286,7 @@ async fn index_rebuild(
             .to_string();
 
         if source_table.is_empty() {
-            record_rebuild_result(&mut result, &module_key, &module_name, 0, Some("??????"));
+            record_rebuild_result(&mut result, &module_key, &module_name, 0, Some("未配置来源表"));
             continue;
         }
 
@@ -307,7 +307,7 @@ async fn index_rebuild(
     let total_rows = result.get("totalRows").and_then(Value::as_i64).unwrap_or(0);
     Ok(ApiResponse::success_with_message(
         result,
-        format!("?????{total_rows}???"),
+        format!("重建完成：{total_rows}条索引"),
     ))
 }
 

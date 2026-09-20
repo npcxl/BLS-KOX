@@ -74,7 +74,7 @@ async fn list(
     for b in &filter_binds {
         count_query = count_query.bind(b.clone());
     }
-    let total: i64 = count_query.fetch_one(&state.db).await.unwrap_or(0);
+    let total: i64 = count_query.fetch_one(&state.db).await.map_err(AppError::from)?;
 
     let sql = format!(
         "SELECT u.*, d.dept_name {base_from}{filter_sql} ORDER BY u.create_time DESC LIMIT ? OFFSET ?"
@@ -124,7 +124,7 @@ async fn update_profile(
     sqlx::query("UPDATE sys_user SET nickname = ?, email = ?, phone = ?, avatar = ?, gender = ?, remark = ? WHERE user_id = ? AND tenant_id = ?")
         .bind(nickname).bind(email).bind(phone).bind(avatar).bind(gender).bind(remark).bind(&user.user_id).bind(&user.tenant_id)
         .execute(&state.db).await.map_err(AppError::from)?;
-    Ok(ApiResponse::message_only("??????"))
+    Ok(ApiResponse::message_only("修改成功"))
 }
 
 async fn add(
@@ -169,7 +169,7 @@ async fn add(
     .bind(dept_id).bind(real_name).bind(avatar).bind(gender).bind(phone).bind(email)
     .bind(status).bind(remark)
     .execute(&state.db).await.map_err(AppError::from)?;
-    Ok(ApiResponse::message_only("?????"))
+    Ok(ApiResponse::message_only("新增成功"))
 }
 
 async fn edit(
@@ -181,7 +181,7 @@ async fn edit(
     let user_id = body
         .get("userId")
         .and_then(Value::as_str)
-        .ok_or_else(|| AppError::BadRequest("??? userId".into()))?;
+        .ok_or_else(|| AppError::BadRequest("缺少 userId".into()))?;
     let fields = [
         ("nickname", "nickname"),
         ("realName", "real_name"),
@@ -211,7 +211,7 @@ async fn edit(
     }
     query = query.bind(user_id).bind(&user.tenant_id);
     query.execute(&state.db).await.map_err(AppError::from)?;
-    Ok(ApiResponse::message_only("??????"))
+    Ok(ApiResponse::message_only("修改成功"))
 }
 
 async fn change_password(
@@ -302,7 +302,7 @@ async fn sessions(
     .await
     .map_err(AppError::from)?;
     if target_exists.is_none() {
-        return Err(AppError::NotFound("?????".into()));
+        return Err(AppError::NotFound("用户不存在".into()));
     }
 
     let sessions = SessionCenter::list(&state, &user.tenant_id, &target_user_id).await?;
@@ -358,7 +358,7 @@ async fn kick(
         })
         .unwrap_or_default();
     if user_ids.is_empty() {
-        return Err(AppError::BadRequest("????ID".into()));
+        return Err(AppError::BadRequest("缺少用户ID".into()));
     }
 
     let placeholders = vec!["?"; user_ids.len()].join(", ");
@@ -388,6 +388,6 @@ async fn kick(
 
     Ok(ApiResponse::success(serde_json::json!({
         "kicked": kicked,
-        "message": format!("???? {kicked} ???"),
+        "message": format!("成功踢出 {kicked} 个用户"),
     })))
 }

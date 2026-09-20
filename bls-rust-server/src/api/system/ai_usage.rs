@@ -184,7 +184,7 @@ async fn stats(
             "totalCost": cost,
         })).collect::<Vec<_>>(),
         "userStats": users.into_iter().map(|(username, user_id, cnt, tk, cost)| json!({
-            "username": username.unwrap_or_else(|| "??".to_string()),
+            "username": username.unwrap_or_else(|| "未知".to_string()),
             "userId": user_id.unwrap_or_default(),
             "count": cnt,
             "totalTokens": tk,

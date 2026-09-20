@@ -31,7 +31,7 @@ async fn create(
         .get("jobData")
         .filter(|v| !v.is_null())
         .cloned()
-        .ok_or_else(|| AppError::BadRequest("??? jobData".into()))?;
+        .ok_or_else(|| AppError::BadRequest("缺少 jobData".into()))?;
     let allowed = ["export", "import", "notification", "webhook"];
     if !allowed.contains(&job_type) {
         return Err(AppError::BadRequest(format!(

@@ -29,22 +29,22 @@ const SERVICES: &[&str] = &[
 ];
 
 const RELEASE_STEPS: &[(&str, &str)] = &[
-    ("validate", "????"),
-    ("lock", "?????"),
-    ("backup", "????"),
-    ("pull_images", "????"),
-    ("update_services", "????"),
-    ("wait_services", "??????"),
-    ("health_check", "????"),
-    ("business_check", "????"),
-    ("complete", "????"),
+    ("validate", "参数校验"),
+    ("lock", "获取发布锁"),
+    ("backup", "环境备份"),
+    ("pull_images", "拉取镜像"),
+    ("update_services", "更新服务"),
+    ("wait_services", "等待服务就绪"),
+    ("health_check", "健康检查"),
+    ("business_check", "业务验证"),
+    ("complete", "发布完成"),
 ];
 
 const ROLLBACK_STEPS: &[(&str, &str)] = &[
-    ("rollback", "????"),
-    ("wait_services", "??????"),
-    ("health_check", "????"),
-    ("complete", "????"),
+    ("rollback", "回滚服务"),
+    ("wait_services", "等待服务就绪"),
+    ("health_check", "健康检查"),
+    ("complete", "回滚完成"),
 ];
 
 pub fn router() -> Router<AppState> {
@@ -77,7 +77,7 @@ fn callback_secret() -> String {
 fn verify_callback(headers: &HeaderMap, body: &str) -> Result<(), AppError> {
     let secret = callback_secret();
     if secret.is_empty() {
-        return Err(AppError::Forbidden("RELEASE_CALLBACK_SECRET ???".into()));
+        return Err(AppError::Forbidden("RELEASE_CALLBACK_SECRET 未配置".into()));
     }
     let timestamp = headers
         .get("x-release-timestamp")
@@ -92,13 +92,13 @@ fn verify_callback(headers: &HeaderMap, body: &str) -> Result<(), AppError> {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     if timestamp.is_empty() || nonce.is_empty() || signature.is_empty() {
-        return Err(AppError::Forbidden("???????".into()));
+        return Err(AppError::Forbidden("缺少签名请求头".into()));
     }
 
     let now_ms = chrono::Utc::now().timestamp_millis();
     let request_ms = timestamp.parse::<i64>().unwrap_or(0);
     if request_ms == 0 || (now_ms - request_ms).abs() > 5 * 60 * 1000 {
-        return Err(AppError::Forbidden("???????????".into()));
+        return Err(AppError::Forbidden("请求时间戳超出允许窗口".into()));
     }
 
     let payload = format!("{timestamp}\n{nonce}\n{body}");
@@ -106,7 +106,7 @@ fn verify_callback(headers: &HeaderMap, body: &str) -> Result<(), AppError> {
     mac.update(payload.as_bytes());
     let expected = hex::encode(mac.finalize().into_bytes());
     if signature != expected {
-        return Err(AppError::Forbidden("????????".into()));
+        return Err(AppError::Forbidden("回调签名验证失败".into()));
     }
     Ok(())
 }
@@ -119,7 +119,7 @@ async fn check_and_save_nonce(state: &AppState, nonce: &str) -> Result<(), AppEr
     let key = format!("{}ops:release:nonce:{nonce}", state.config.redis.key_prefix);
     let exists: Option<String> = conn.get(&key).await?;
     if exists.is_some() {
-        return Err(AppError::Conflict("Nonce ???".into()));
+        return Err(AppError::Conflict("Nonce 已使用".into()));
     }
     let _: () = conn.set_ex(&key, "1", 360).await?;
     Ok(())
@@ -142,7 +142,7 @@ async fn callback(
         .clamp(0, 100);
     let message = value.get("message").and_then(Value::as_str).unwrap_or("");
     if task_id.is_empty() || stage.is_empty() || status.is_empty() {
-        return Err(AppError::BadRequest("?? taskId/stage/status".into()));
+        return Err(AppError::BadRequest("缺少 taskId/stage/status".into()));
     }
 
     check_and_save_nonce(
@@ -156,7 +156,7 @@ async fn callback(
 
     let task = fetch_task_internal(&state, task_id).await?;
     if task.is_none() {
-        return Err(AppError::NotFound("?????".into()));
+        return Err(AppError::NotFound("任务不存在".into()));
     }
     let task = task.unwrap();
     let current_status = task
@@ -168,7 +168,7 @@ async fn callback(
         current_status.as_str(),
         "running" | "checking" | "rolling_back"
     ) {
-        return Err(AppError::BadRequest(format!("???? {current_status} ?????")));
+        return Err(AppError::BadRequest(format!("任务状态 {current_status} 不接受回调")));
     }
 
     let terminal = matches!(status, "failed" | "success" | "skipped" | "cancelled");
@@ -259,7 +259,7 @@ async fn callback(
             sqlx::query(
                 "UPDATE ops_release_task SET status='failed', error_message=?, finished_at=NOW(), update_time=NOW() WHERE task_id=? AND status='rolling_back'",
             )
-            .bind(format!("????: {message}"))
+            .bind(format!("回滚失败: {message}"))
             .bind(&source_task_id)
             .execute(&state.db)
             .await
@@ -317,7 +317,7 @@ async fn build_callback(
     let version = value.get("version").and_then(Value::as_str).unwrap_or("");
     let status = value.get("status").and_then(Value::as_str).unwrap_or("");
     if version.is_empty() || status.is_empty() {
-        return Err(AppError::BadRequest("?? version/status".into()));
+        return Err(AppError::BadRequest("缺少 version/status".into()));
     }
     let commit_hash = value.get("commitHash").and_then(Value::as_str);
     let services = value
@@ -475,9 +475,9 @@ async fn check_service(state: &AppState, name: &str) -> (bool, &'static str, Str
                 true,
                 if ok { "healthy" } else { "unhealthy" },
                 if ok {
-                    "????".to_string()
+                    "连接正常".to_string()
                 } else {
-                    "???????".to_string()
+                    "数据库连接失败".to_string()
                 },
             )
         }
@@ -497,12 +497,12 @@ async fn check_service(state: &AppState, name: &str) -> (bool, &'static str, Str
                 if ok {
                     "PONG".to_string()
                 } else {
-                    "Redis ???".to_string()
+                    "Redis 未连接".to_string()
                 },
             )
         }
         "minio" => check_http(&state.http, "http://minio:9000/minio/health/live").await,
-        _ => (false, "unknown", "????".to_string()),
+        _ => (false, "unknown", "未知服务".to_string()),
     }
 }
 
@@ -519,7 +519,7 @@ async fn check_http(client: &reqwest::Client, url: &str) -> (bool, &'static str,
             "unhealthy",
             format!("HTTP {}", resp.status().as_u16()),
         ),
-        Err(err) => (true, "unhealthy", format!("????: {err}")),
+        Err(err) => (true, "unhealthy", format!("连接失败: {err}")),
     }
 }
 
@@ -568,7 +568,7 @@ async fn detail(
     ensure_perm(&user, "ops:release:view")?;
     let task = fetch_task(&state, &user.tenant_id, &task_id)
         .await?
-        .ok_or_else(|| AppError::NotFound("?????".into()))?;
+        .ok_or_else(|| AppError::NotFound("任务不存在".into()))?;
     Ok(ApiResponse::success(task))
 }
 
@@ -580,7 +580,7 @@ async fn steps(
     ensure_perm(&user, "ops:release:view")?;
     fetch_task(&state, &user.tenant_id, &task_id)
         .await?
-        .ok_or_else(|| AppError::NotFound("?????".into()))?;
+        .ok_or_else(|| AppError::NotFound("任务不存在".into()))?;
     let rows =
         sqlx::query("SELECT * FROM ops_release_step WHERE task_id=? ORDER BY step_order ASC")
             .bind(task_id)
@@ -599,7 +599,7 @@ async fn logs(
     ensure_perm(&user, "ops:release:logs")?;
     fetch_task(&state, &user.tenant_id, &task_id)
         .await?
-        .ok_or_else(|| AppError::NotFound("?????".into()))?;
+        .ok_or_else(|| AppError::NotFound("任务不存在".into()))?;
     let limit = q
         .get("limit")
         .and_then(|s| s.parse::<i64>().ok())
@@ -642,11 +642,11 @@ async fn create_release(
 
     if !matches!(environment, "production" | "staging") {
         return Err(AppError::BadRequest(
-            "environment ??? production/staging".into(),
+            "environment 必须是 production/staging".into(),
         ));
     }
     if !is_semver(version) {
-        return Err(AppError::BadRequest("version ?????????? (x.y.z)".into()));
+        return Err(AppError::BadRequest("version 必须是合法语义化版本 (x.y.z)".into()));
     }
     if services.is_empty()
         || services.iter().any(|s| {
@@ -660,10 +660,10 @@ async fn create_release(
             .contains(&s.as_str())
         })
     {
-        return Err(AppError::BadRequest("services ?????".into()));
+        return Err(AppError::BadRequest("services 包含非法值".into()));
     }
     if reason.is_empty() || reason.chars().count() > 500 {
-        return Err(AppError::BadRequest("reason ????????? 500 ??".into()));
+        return Err(AppError::BadRequest("reason 不能为空且不能超过 500 字符".into()));
     }
 
     let built_count: i64 = sqlx::query_scalar(
@@ -674,14 +674,14 @@ async fn create_release(
     .await
     .map_err(AppError::from)?;
     if built_count == 0 {
-        return Err(AppError::BadRequest(format!("?? {version} ??????")));
+        return Err(AppError::BadRequest(format!("版本 {version} 尚未构建完成")));
     }
 
     if find_running_task(&state, &user.tenant_id, environment)
         .await?
         .is_some()
     {
-        return Err(AppError::Conflict(format!("{environment} ???????????")));
+        return Err(AppError::Conflict(format!("{environment} 环境已有发布任务进行中")));
     }
 
     let lock_key = format!(
@@ -721,13 +721,13 @@ async fn create_release(
         &task_id,
         None,
         "info",
-        &format!("??????: {environment} ? {version}"),
+        &format!("发布任务创建: {environment} → {version}"),
     )
     .await;
     let task = fetch_task(&state, &user.tenant_id, &task_id)
         .await?
-        .ok_or_else(|| AppError::NotFound("?????".into()))?;
-    Ok(ApiResponse::success_with_message(task, "???????"))
+        .ok_or_else(|| AppError::NotFound("任务不存在".into()))?;
+    Ok(ApiResponse::success_with_message(task, "发布任务已创建"))
 }
 
 async fn rollback(
@@ -738,11 +738,11 @@ async fn rollback(
     ensure_perm(&user, "ops:release:rollback")?;
     let task = fetch_task(&state, &user.tenant_id, &task_id)
         .await?
-        .ok_or_else(|| AppError::NotFound("?????".into()))?;
+        .ok_or_else(|| AppError::NotFound("任务不存在".into()))?;
     let task_status = task.get("status").and_then(Value::as_str).unwrap_or("");
     if task_status != "failed" {
         return Err(AppError::BadRequest(format!(
-            "????????????????: {task_status}"
+            "只有失败的任务才能回滚，当前状态: {task_status}"
         )));
     }
     let target_version = task
@@ -751,7 +751,7 @@ async fn rollback(
         .or_else(|| task.get("rollbackVersion").and_then(Value::as_str))
         .unwrap_or("");
     if target_version.is_empty() {
-        return Err(AppError::BadRequest("???????".into()));
+        return Err(AppError::BadRequest("无可用回滚版本".into()));
     }
     let environment = task
         .get("environment")
@@ -775,7 +775,7 @@ async fn rollback(
     .bind(task.get("targetVersion").and_then(Value::as_str).unwrap_or(""))
     .bind(target_version)
     .bind(services)
-    .bind(format!("?????? {task_id}"))
+    .bind(format!("回滚失败发布 {task_id}"))
     .bind(&user.user_id)
     .bind(&user.username)
     .bind(&task_id)
@@ -797,7 +797,7 @@ async fn rollback(
         &rollback_task_id,
         None,
         "warn",
-        &format!("?????? ? {target_version}"),
+        &format!("触发回滚任务 → {target_version}"),
     )
     .await;
 
@@ -923,7 +923,7 @@ async fn acquire_environment_lock(
 ) -> Result<String, AppError> {
     let Some(client) = &state.redis else {
         if environment == "production" {
-            return Err(AppError::Conflict("Redis ????????????".into()));
+            return Err(AppError::Conflict("Redis 不可用，禁止生产环境发布".into()));
         }
         return Ok("no-redis".to_string());
     };
@@ -940,7 +940,7 @@ async fn acquire_environment_lock(
     if result.as_deref() == Some("OK") {
         Ok(token)
     } else {
-        Err(AppError::Conflict(format!("{environment} ???????????")))
+        Err(AppError::Conflict(format!("{environment} 环境已有发布任务进行中")))
     }
 }
 

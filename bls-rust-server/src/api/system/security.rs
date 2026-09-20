@@ -120,7 +120,7 @@ async fn events(
     for b in &binds {
         count_query = count_query.bind(b.clone());
     }
-    let total: i64 = count_query.fetch_one(&state.db).await.unwrap_or(0);
+    let total: i64 = count_query.fetch_one(&state.db).await.map_err(AppError::from)?;
 
     let page_num = q
         .get("pageNum")
@@ -173,7 +173,7 @@ async fn blacklist(
     for b in &binds {
         count_query = count_query.bind(b.clone());
     }
-    let total: i64 = count_query.fetch_one(&state.db).await.unwrap_or(0);
+    let total: i64 = count_query.fetch_one(&state.db).await.map_err(AppError::from)?;
 
     let page_num = q
         .get("pageNum")
