@@ -84,7 +84,13 @@ function scanAndRegister(baseDir: string, currentDir: string, apiRouter: Router)
       else if (mod.default?.table && mod.default?.pkField) { mod.config = mod.default; hasConfig = true; }
 
       registerFunctions(prefix, mod, apiRouter);
-    } catch (e: any) { console.warn(`[router] failed to load ${indexFile}:`, e.message); }
+    } catch (e: any) {
+      // CRUD 配置错误必须让应用启动失败（带上模块路径），其他加载错误只告警
+      if (e?.name === 'CrudConfigError') {
+        throw new Error(`${prefix} 配置错误 → ${e.message}`);
+      }
+      console.warn(`[router] failed to load ${indexFile}:`, e.message);
+    }
   }
 
   for (const entry of entries) {

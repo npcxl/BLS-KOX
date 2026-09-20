@@ -1,6 +1,6 @@
 # 00 — Architecture & Request Pipeline (shared)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.1.0 · **Code version:** 1.0.0 · **Verified commit:** 60b7b37 · **Last verified:** 2026-09-20
 
 This document describes the parts of BLS-KOX that every page depends on.
 Read it once; page documents assume it.
@@ -117,12 +117,23 @@ Three registration modes:
 | Module exports | Result |
 |---|---|
 | `export default <Koa Router>` only | Custom endpoints only. Mounted under `/api/<dir>`. Response `data`/`rows` are snake→camel converted by `wrapCamel()`. |
-| `export default <Koa Router>` **and** `export const config = { table, pkField, ... }` | **Mixed mode**: custom router first, then `defineCrudModule(config)` fills the standard CRUD endpoints. |
-| `export const config = { table, pkField, ... }` (no default router) | Every other lowercase exported function is auto-registered as a route; method is inferred from the name (`getX`→GET, `addX`/`createX`/`saveX`→POST, `updateX`/`editX`→PUT, `deleteX`/`removeX`→DELETE); camelCase→kebab-case path. Then `defineCrudModule` is mounted. |
+| `export default <Koa Router>` **and** `export const config = …` | **Mixed mode**: custom router first (its matches win), then `defineCrudModule(config)` fills the standard CRUD endpoints. |
+| `export const config = …` (no default router) | Every other lowercase exported function is auto-registered as a route; method is inferred from the name (`getX`→GET, `addX`/`createX`/`saveX`→POST, `updateX`/`editX`→PUT, `deleteX`/`removeX`→DELETE); camelCase→kebab-case path. Then `defineCrudModule` is mounted. |
+
+`config` is whatever the module exports — either the legacy object literal
+(`{ table, pkField, createFields, … }`) or the value returned by `defineCrudConfig({ … })`
+(config style, §5). `wrapCamel()` is applied to the custom router **once** (a second call would
+create a second Router instance and split `routes()` from `allowedMethods()`).
 
 Auto-auth rule when auto-registering functions: a function is **public** (no `jwtAuth`) if its
 name is one of `login`, `logout`, `refresh`, or starts with `public`/`Public`. Everything else
 gets `jwtAuth()`.
+
+**A bad CRUD config aborts startup.** `defineCrudConfig()` (and `defineCrudModule()`) validate the
+module while the scanner loads it; `core/router.ts` re-throws `CrudConfigError` with the module path
+prefix instead of only logging a warning. A mis-configured module (illegal table/column identifier,
+`enum` without `values`, `add`/`edit` enabled with no writable field, unresolvable status field, …)
+therefore prevents the process from starting, and the message names the module path, table and field.
 
 `/api/v1/auth/login` is transparently rewritten to `/api/auth/login`, so versioned and
 unversioned paths behave identically. Non-`v1` `/api/*` responses carry
@@ -130,38 +141,142 @@ unversioned paths behave identically. Non-`v1` `/api/*` responses carry
 
 ---
 
-## 5. Generic CRUD factory (`bls-server/src/core/crud.ts`)
+## 5. Generic CRUD factory (`bls-server/src/core/{crud,crud-config,crud-keys}.ts`)
 
-`defineCrudModule(config)` generates:
+Two equivalent declaration styles. **Config style** (`defineCrudConfig`) makes `fields` the single
+source of truth and derives every whitelist, the search/filter behaviour, the response projection,
+the Zod validation and the OpenAPI schema; the **legacy array style** keeps working unchanged.
 
-| Method | Path | Purpose |
+> **Uncommitted-until-then notice:** the config-style parts of this section describe the working tree
+> on top of `60b7b37`. Bump `Verified commit` to the new SHA once that code is committed
+> (see `CHANGELOG.md` 1.3.0).
+
+### 5.1 Config style (recommended) — one file per standard module
+
+```ts
+// bls-server/src/api/business/product/index.ts  →  /api/business/product/*
+export const config = defineCrudConfig({
+  table: 'biz_product',
+  pkField: 'product_id',
+  name: '商品',
+  permPrefix: 'business:product',
+  fields: {
+    product_name: { type: 'string', required: true, create: true, update: true, search: true, maxLength: 100 },
+    category_id:  { type: 'string', create: true, update: true, filter: true },
+    price:        { type: 'number', required: true, create: true, update: true, min: 0 },
+    status:       { type: 'enum', values: ['0', '1'], create: true, update: true, filter: true, status: true },
+    secret_key:   { type: 'string', create: true, update: true, select: false },
+    create_time:  { type: 'datetime', select: true },
+    update_time:  { type: 'datetime', select: true },
+  },
+  createDefaults: { status: '0' },
+});
+```
+
+`fields` keys are **database column names (snake_case)**. Requests accept `snake_case` **and**
+`camelCase`; responses are always camelCase. The directory path is the API prefix — no router code
+is needed.
+
+### 5.2 What `fields` derives
+
+| Derived | From |
+|---|---|
+| `createFields` | `create: true` |
+| `updateFields` | `update: true` |
+| `searchFields` (keyword LIKE) | `search: true` |
+| `filterFields` (exact query match) | `filter: true` |
+| response projection (list + detail) | every field with `select !== false`, **plus the primary key** |
+| `statusField` | the single field with `status: true` |
+| Zod `create` / `update` | `type` + `required` + `nullable` + `min`/`max`/`minLength`/`maxLength`/`values` |
+| OpenAPI request/response fields | `fields` (+ `actions`) |
+
+### 5.3 Field options
+
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `type` | `string \| number \| integer \| boolean \| enum \| datetime \| json` | **required** | drives Zod + OpenAPI |
+| `values` | `string[]` | — | `enum` only, must be non-empty (and is rejected on other types) |
+| `required` | `boolean` | `false` | required on create |
+| `nullable` | `boolean` | `false` | explicit `null` allowed (distinct from "optional") |
+| `create` / `update` | `boolean` | `false` | write whitelists |
+| `search` / `filter` | `boolean` | `false` | keyword LIKE / exact query whitelist |
+| `select` | `boolean` | `true` | `false` ⇒ the column never appears in list/detail (secrets) |
+| `status` | `boolean` | `false` | marks the field used by `PUT /status` (at most one per module) |
+| `min` / `max` | `number` | — | `number` / `integer` range |
+| `minLength` / `maxLength` | `number` | — | `string` length |
+| `default` | `unknown` | — | server-side default applied on create (trusted config) |
+| `description` | `string` | — | OpenAPI description |
+
+### 5.4 Module options
+
+| Option | Default | Meaning |
 |---|---|---|
-| GET | `/list` | Paged list |
-| GET | `/:id` | Single row |
-| POST | `/add` | Create |
-| PUT | `/edit` | Update |
-| DELETE | `/remove` | Delete (soft by default) |
-| PUT | `/status` | Change status |
+| `table`, `pkField` | — | required; must be valid SQL identifiers |
+| `fields` | — | single field source (§5.2/§5.3) |
+| `actions` | all `true` | `{list, detail, add, edit, remove, status}` — a disabled endpoint is **not registered at all** |
+| `createDefaults` | — | `object` or `(ctx) => object`; server-trusted create defaults |
+| `unknownFields` | `'ignore'` | `'ignore'` = silently drop undeclared body keys; `'reject'` = 400 listing them |
+| `tenantField` | `tenant_id` | tenant column; `globalTable: true` opts out of tenant filtering |
+| `statusField` | `fields.status` or `status` | status column |
+| `softDelete` | `true` | remove sets `deleted = 1`; every read filters `deleted = 0` |
+| `orderBy` | pk desc | list sort column |
+| `permPrefix` | — | each action requires `${permPrefix}:${action}` via `hasPerm()` (detail reuses `:list`) |
+| `schema` | generated from `fields` | explicit Zod schemas, which win over generation |
+| `dataScope` | off | `ALL/TENANT/DEPT/DEPT_AND_CHILDREN/SELF/CUSTOM` column mapping |
+| `transactional` | `false` | wrap writes in a Kysely transaction |
+| `onWrite` / `onTransactionCommitted` | — | run only **after** a successful write (after commit when transactional) |
 
-Key config fields and security behaviour:
+Legacy array style (`createFields` / `updateFields` / `searchFields` / `filterFields` / `schema`)
+is still supported. When both styles are present the **explicit array / schema wins**, and an array
+entry that `fields` does not declare is a startup error. A config with **no** `fields` keeps the old
+behaviour (projection = `selectAll`, no generated Zod).
 
-- `table`, `pkField` — required.
-- `tenantField` (default `tenant_id`), `globalTable: true` to opt out of tenant filtering.
-- `softDelete` (default **true**) → sets `deleted = 1`; all reads filter `deleted = 0`.
-- `statusField` (default `status`), `orderBy` (default pk desc).
-- `searchFields` — keyword LIKE whitelist. `filterFields` — exact-match query whitelist
-  (no filterFields ⇒ arbitrary query params are never used as column names).
-- `createFields` / `updateFields` — write whitelists. Unknown fields are silently ignored.
-- System fields are **never** writable: `tenant_id`, `deleted`, `create_by`, `create_time`,
-  `update_by`, `update_time`.
-- `permPrefix` → each action requires `${permPrefix}:${action}` via `hasPerm()`.
-- `schema: { create, update }` — Zod schemas (also used to derive the whitelist).
-- `dataScope` — off by default; can map to `ALL/TENANT/DEPT/DEPT_AND_CHILDREN/SELF/CUSTOM`.
-- `transactional` (default false) — wrap writes in a transaction.
-- `onWrite` / `onTransactionCommitted` — run **after** a successful write (cache purge, events).
-- Tenant id is always injected server-side; `tenant_id` from the request body is deleted.
-- Affected-row count of `0` on edit/remove → **404** (not found in this tenant / data scope).
-- `error-handler.ts` maps errors to the standard envelope.
+### 5.5 Generated endpoints
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| GET | `/list` | `${permPrefix}:list` | `pageNum`/`pageSize` (max 100), `keyword` LIKE, whitelist exact filters, response projection |
+| GET | `/:id` | `${permPrefix}:list` | tenant + `deleted = 0` + data scope; 404 when absent |
+| POST | `/add` | `${permPrefix}:add` | Zod, write whitelist, Snowflake PK, server-side tenant |
+| PUT | `/edit` | `${permPrefix}:edit` | PK required, business fields partial; 0 rows → 404 |
+| DELETE | `/remove` | `${permPrefix}:remove` | body `{ ids: [] }`; every id must be visible or the whole call → 404 |
+| PUT | `/status` | `${permPrefix}:status` | value validated against the declared enum when present; 0 rows → 404 |
+
+### 5.6 Security behaviour (identical for both styles)
+
+- Tenant, soft-delete and data-scope conditions are built once by `applyScope()` and re-applied on
+  the connection that actually executes the query (transaction or not) — switching to `trx` can
+  never drop them.
+- `tenant_id` is always injected server-side from the request context; a body `tenantId` /
+  `tenant_id` is deleted, and a missing tenant context fails closed on multi-tenant tables.
+- Audit fields (`create_by`, `create_time`, `update_by`, `update_time`) are **never** writable from
+  a request body — only `createDefaults` (server-trusted) may set them.
+- `deleted` and the primary key are server-controlled on create.
+- Unknown fields are dropped (or rejected with `unknownFields: 'reject'`), so mass assignment and
+  "any query param as a column name" are both impossible.
+- 0 affected rows on edit/remove/status (and a missing row on detail) → **404**.
+- `onWrite` / `onTransactionCommitted` never run on a 404 or after a rollback.
+- `error-handler.ts` maps errors to the standard envelope (§3).
+
+### 5.7 Configuration is validated at startup
+
+`defineCrudConfig()` validates while the module is loaded (= route scan) and **fails application
+startup**; `core/router.ts` re-throws the `CrudConfigError` prefixed with the module path, so the
+log names the module, table and field. Checks include:
+
+- identifier syntax for `table`, `pkField`, `tenantField`, `statusField`, `orderBy`, every `fields`
+  key and every `createDefaults` key;
+- `enum` ⇒ non-empty `values`; no `values` on other types;
+- `min`/`max` only on `number`/`integer`, `minLength`/`maxLength` only on `string`, `min <= max`;
+- system fields (`tenant_id`, `deleted`, `create_by`, `create_time`, `update_by`, `update_time`)
+  must not be opened for `create`/`update`;
+- at most one `status: true`; `actions.status` requires a resolvable status field;
+- `actions.add` / `actions.edit` require at least one create / update field;
+- `createDefaults` may only reference declared fields or system fields.
+
+> Behaviour change: a config with no writable field (no `fields`, no `createFields`/`updateFields`)
+> used to fail at request time; since 1.3.0 it fails at startup. Declare a read-only module with
+> `actions: { add: false, edit: false, remove: false, status: false }`.
 
 ---
 
@@ -192,7 +307,7 @@ Key config fields and security behaviour:
 cd bls-admin; npm run tsc; npm run test
 
 # Koa backend
-cd bls-server; npm run lint; npm run test
+cd bls-server; npm run lint; npm run test; npm run build; npm run openapi
 
 # Java backend
 cd bls-java-server; mvn test
@@ -201,6 +316,18 @@ cd bls-java-server; mvn test
 #   -> update sql/Init.sql and check docs/ for the related document
 ```
 
+Notes:
+
+- `npm run lint` is `tsc --noEmit`; `npm run build` writes `dist/` (so `node dist/...` works when
+  `tsx` is blocked by the sandbox: `node dist/scripts/generate-openapi.js`).
+- **Node ≥ 22 is required** (`bls-server/package.json` → `engines`). On a machine whose default
+  `node` is older, put a Node 22 binary first on `PATH` before running the commands.
+- `npm run openapi` regenerates and commits `bls-server/openapi.json`; run it whenever a route,
+  parameter or permission changes.
+- Unit tests are self-contained (in-memory Kysely test double in
+  `bls-server/src/core/__tests__/fake-db.ts`); they do **not** need MySQL/Redis. Integration
+  behaviour against a real database is not covered by them.
+
 ---
 
 ## 8. Where to look next
@@ -208,6 +335,8 @@ cd bls-java-server; mvn test
 - Cross-cutting security: `00-common/01-redis.md`, `02-replay-protection.md`,
   `03-rate-limiting.md`, `04-auth-and-permissions.md`,
   `05-security-log-and-event-center.md`, `06-file-and-excel-security.md`.
-- Legacy long-form docs: `docs/index.md`, `docs/crud.md`, `docs/security.md`,
-  `docs/multi-tenant.md`, `docs/auth.md`, `docs/backend-koa.md`, `docs/backend-java.md`.
+- CRUD factory long-form reference: `docs/crud.md` (config style, field table, priority rules,
+  standard-vs-complex module boundary) and `docs/backend-koa.md`.
+- Legacy long-form docs: `docs/index.md`, `docs/security.md`,
+  `docs/multi-tenant.md`, `docs/auth.md`, `docs/backend-java.md`.
 - Database schema: `.codex/skills/bls-kox/references/database-schema.md` and `sql/Init.sql`.

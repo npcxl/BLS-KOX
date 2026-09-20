@@ -16,6 +16,8 @@
 import { readdirSync, existsSync, lstatSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import http from 'node:http';
+// 与运行时共用同一套 CRUD 配置解析（保证 OpenAPI 与实现一致）
+import { resolveCrudConfig } from '../core/crud-config';
 
 // ====== 工具函数 ======
 
@@ -403,16 +405,64 @@ function addCrudRoutes(prefix: string, config: any, tag: string, apiDir: string)
   const zodCreateProps = config.schema?.create ? zodToProperties(config.schema.create) : null;
   const zodUpdateProps = config.schema?.update ? zodToProperties(config.schema.update) : null;
 
-  const crudDefs: { method: string; suffix: string; action: string; summary: string; isList: boolean; isDetail?: boolean }[] = [
-    { method: 'get', suffix: '/list', action: 'list', summary: '分页列表查询', isList: true },
-    { method: 'get', suffix: '/:id', action: 'list', summary: '详情查询（租户 + 软删除 + 数据权限）', isList: false, isDetail: true },
-    { method: 'post', suffix: '/add', action: 'add', summary: '新增记录', isList: false },
-    { method: 'put', suffix: '/edit', action: 'edit', summary: '修改记录', isList: false },
-    { method: 'delete', suffix: '/remove', action: 'remove', summary: '删除记录（支持批量）', isList: false },
-    { method: 'put', suffix: '/status', action: 'status', summary: '切换启用/停用状态', isList: false },
+  // ---- 配置式 CRUD：复用运行时同一套解析逻辑推导字段清单 ----
+  type ResolvedLike = {
+    actions: Record<string, boolean>;
+    createFields: string[];
+    updateFields: string[];
+    searchFields: string[];
+    filterFields: string[];
+    selectFields: string[] | null;
+    statusField: string;
+  };
+  let resolved: ResolvedLike | null = null;
+  try {
+    resolved = resolveCrudConfig(config as any) as unknown as ResolvedLike;
+  } catch (error: any) {
+    console.warn(`[openapi] ${tag} CRUD 配置解析失败（回退原始配置）：${error?.message}`);
+  }
+
+  const allActions = { list: true, detail: true, add: true, edit: true, remove: true, status: true, ...(config.actions ?? {}) };
+  const actions = resolved?.actions ?? allActions;
+  const createFields: string[] = resolved?.createFields ?? config.createFields ?? [];
+  const updateFields: string[] = resolved?.updateFields ?? config.updateFields ?? [];
+  const searchFields: string[] = resolved?.searchFields ?? config.searchFields ?? [];
+  const filterFields: string[] = resolved?.filterFields ?? config.filterFields ?? [];
+  const selectFields: string[] | null = resolved?.selectFields ?? null;
+  const statusFieldName: string = resolved?.statusField ?? config.statusField ?? 'status';
+  const fieldDefs: Record<string, any> | null = config.fields ?? null;
+
+  const camelOf = (name: string) => name.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+  const fieldOpenApiType = (field: any): string => {
+    switch (field?.type) {
+      case 'number': return 'number';
+      case 'integer': return 'integer';
+      case 'boolean': return 'boolean';
+      default: return 'string';
+    }
+  };
+  /** fields 声明的字段 → OpenAPI 请求字段 */
+  const fieldToParam = (name: string, required: boolean): ParsedField => {
+    const field = fieldDefs?.[name];
+    return {
+      name: camelOf(name),
+      type: fieldOpenApiType(field),
+      required,
+      description: field?.description ?? `${name}${field?.values ? `（可选值：${field.values.join(' / ')}）` : ''}`,
+    };
+  };
+
+  const crudDefs: { method: string; suffix: string; actionKey: string; perm: string; summary: string; isList: boolean; isDetail?: boolean }[] = [
+    { method: 'get', suffix: '/list', actionKey: 'list', perm: 'list', summary: '分页列表查询', isList: true },
+    { method: 'get', suffix: '/:id', actionKey: 'detail', perm: 'list', summary: '详情查询（租户 + 软删除 + 数据权限）', isList: false, isDetail: true },
+    { method: 'post', suffix: '/add', actionKey: 'add', perm: 'add', summary: '新增记录', isList: false },
+    { method: 'put', suffix: '/edit', actionKey: 'edit', perm: 'edit', summary: '修改记录', isList: false },
+    { method: 'delete', suffix: '/remove', actionKey: 'remove', perm: 'remove', summary: '删除记录（支持批量）', isList: false },
+    { method: 'put', suffix: '/status', actionKey: 'status', perm: 'status', summary: '切换启用/停用状态', isList: false },
   ];
 
-  for (const def of crudDefs) {
+  // actions 关闭的端点不写入文档（与运行时一致：关闭即不注册）
+  for (const def of crudDefs.filter((d) => actions[d.actionKey] !== false)) {
     const queryParams: ParsedField[] = [];
     const bodyParams: ParsedField[] = [];
     const pathParams: ParsedField[] = [];
@@ -426,11 +476,11 @@ function addCrudRoutes(prefix: string, config: any, tag: string, apiDir: string)
         { name: 'pageNum', type: 'integer', required: false, description: '页码，默认 1' },
         { name: 'pageSize', type: 'integer', required: false, description: '每页条数，默认 10，最大 100' },
       );
-      if (config.searchFields?.length) {
-        queryParams.push({ name: 'keyword', type: 'string', required: false, description: `关键词（${config.searchFields.join(', ')}）` });
+      if (searchFields.length) {
+        queryParams.push({ name: 'keyword', type: 'string', required: false, description: `关键词（${searchFields.join(', ')}）` });
       }
-      for (const field of config.filterFields ?? []) {
-        queryParams.push({ name: field, type: 'string', required: false, description: '精确过滤（白名单字段）' });
+      for (const field of filterFields) {
+        queryParams.push({ name: camelOf(field), type: 'string', required: false, description: `精确过滤：${field}` });
       }
       // 从 model 的 Query interface 提取筛选字段
       const queryIface = interfaces.get(`${modelName}Query`);
@@ -450,19 +500,25 @@ function addCrudRoutes(prefix: string, config: any, tag: string, apiDir: string)
 
     if (def.suffix === '/status') {
       bodyParams.push(
-        { name: pk, type: 'string', required: true, description: '主键' },
-        { name: 'status', type: 'string', required: true, description: '状态值' },
+        { name: camelOf(pk), type: 'string', required: true, description: '主键' },
+        fieldToParam(statusFieldName, true),
       );
     }
 
-    if (def.action === 'add') {
-      // Zod schema 优先
-      if (zodCreateProps) {
+    if (def.actionKey === 'add') {
+      if (fieldDefs) {
+        // fields 是单一字段来源
+        for (const name of createFields) bodyParams.push(fieldToParam(name, fieldDefs[name]?.required === true));
+      } else if (zodCreateProps) {
         for (const [k, v] of Object.entries(zodCreateProps)) {
           bodyParams.push({ name: k, type: (v as any).type ?? 'string', required: true, description: (v as any).description ?? k });
         }
       } else if (createIface) {
         bodyParams.push(...createIface.fields);
+      } else if (createFields.length) {
+        for (const name of createFields) {
+          bodyParams.push({ name: camelOf(name), type: 'string', required: false, description: name });
+        }
       } else {
         // 从表结构取非系统字段
         for (const col of tableCols) {
@@ -473,9 +529,11 @@ function addCrudRoutes(prefix: string, config: any, tag: string, apiDir: string)
       }
     }
 
-    if (def.action === 'edit') {
-      bodyParams.push({ name: pk, type: 'string', required: true, description: '主键' });
-      if (zodUpdateProps) {
+    if (def.actionKey === 'edit') {
+      bodyParams.push({ name: camelOf(pk), type: 'string', required: true, description: '主键' });
+      if (fieldDefs) {
+        for (const name of updateFields) bodyParams.push(fieldToParam(name, false));
+      } else if (zodUpdateProps) {
         for (const [k, v] of Object.entries(zodUpdateProps)) {
           bodyParams.push({ name: k, type: (v as any).type ?? 'string', required: false, description: (v as any).description ?? k });
         }
@@ -483,6 +541,10 @@ function addCrudRoutes(prefix: string, config: any, tag: string, apiDir: string)
         const src = (updateIface ?? createIface)!;
         for (const f of src.fields) {
           if (f.name !== pk) bodyParams.push({ ...f, required: false });
+        }
+      } else if (updateFields.length) {
+        for (const name of updateFields) {
+          bodyParams.push({ name: camelOf(name), type: 'string', required: false, description: name });
         }
       } else {
         for (const col of tableCols) {
@@ -493,17 +555,28 @@ function addCrudRoutes(prefix: string, config: any, tag: string, apiDir: string)
       }
     }
 
+    const responseFields: ParsedField[] | undefined = def.isList
+      ? (selectFields
+        ? selectFields.map((name) => ({
+          name: camelOf(name),
+          type: fieldOpenApiType(fieldDefs?.[name]),
+          required: true,
+          description: fieldDefs?.[name]?.description ?? name,
+        }))
+        : tableCols)
+      : undefined;
+
     routes.push({
       method: def.method,
       path: `/api${prefix}${def.suffix}`,
       summary: `${config.name ?? tag} - ${def.summary}`,
       tag,
       needAuth: true,
-      permissions: permPrefix ? [`${permPrefix}:${def.action}`] : undefined,
+      permissions: permPrefix ? [`${permPrefix}:${def.perm}`] : undefined,
       queryParams,
       bodyParams,
       pathParams,
-      responseFields: def.isList ? tableCols : undefined,
+      responseFields,
     });
   }
 }

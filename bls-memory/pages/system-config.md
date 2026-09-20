@@ -1,6 +1,6 @@
 # Page — System Parameters (`/system/config`)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 60b7b37 · **Last verified:** 2026-09-20
 
 ## 1. Summary
 
@@ -60,6 +60,14 @@ auto-registered — `current` / `public-*` are defined on the public router expl
 
 Generated endpoints: `GET /list`, `GET /:id`, `POST /add`, `PUT /edit`, `DELETE /remove`,
 `PUT /status`.
+
+This module still uses the **legacy array style**. It can be migrated to the config style
+(`defineCrudConfig` + `fields`, see `00-common/00-architecture.md` §5) without changing any
+endpoint: every `createFields`/`updateFields` entry becomes `{ type, create/update: true }` and the
+whitelists are then derived from `fields`. Two behaviour differences to remember when migrating:
+the response would be projected to the declared `select !== false` fields (plus the PK), and a
+config with **no** writable field fails at **startup** — a read-only module must declare
+`actions: { add: false, edit: false, remove: false, status: false }`.
 
 ### Public (unauthenticated) endpoints
 
@@ -137,8 +145,11 @@ closed via `requireTenantId()`. Public reads fall back to `000000`.
 - **Add a dynamic config key**: add it to `SCHEMA` + `KEY_MAP` in
   `bls-server/src/config/dynamic-config.ts` (with type, default, min/max), seed a row in
   `sys_config`, and read it through `getDynamicConfig(tenantId)`.
-- **Add validation for a config value**: the CRUD factory supports `schema: {create, update}` —
-  add a Zod schema and remember to keep `createFields`/`updateFields` aligned.
+- **Add validation for a config value**: two options — keep the array style and add
+  `schema: { create, update }` (remember to keep `createFields`/`updateFields` aligned), or migrate
+  the module to the config style and declare the field type
+  (`config_value: { type: 'json', create: true, update: true }`), which generates the Zod schema
+  from `fields` automatically (`00-common/00-architecture.md` §5).
 - **Expose a new public setting**: add a small handler on `publicRouter` (name it
   `public<Something>` to keep future auto-registration public).
 - Update this document and the Redis key table if you add a cache.

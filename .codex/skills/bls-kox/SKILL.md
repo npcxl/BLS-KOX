@@ -80,9 +80,10 @@ java -jar target/bls-java-server-1.0.0.jar
 
 ## Koa 后端关键模式
 
-- CRUD 工厂：`defineCrudModule(config)` 自动生成 `/list`、`/:id`、`/add`、`/edit`、`/remove`、`/status`。
-- 必填配置：`table`、`pkField`；常用配置：`searchFields`、`tenantField`、`statusField`、`softDelete`、`permPrefix`、`schema`、`dataScope`、`transactional`。
-- 混合模式：导出 `router` 自定义覆盖某些端点，同时导出 `config` 让 CRUD 工厂兜底。
+- CRUD 工厂：`defineCrudConfig(config)`（或 `defineCrudModule(config)`）自动生成 `/list`、`/:id`、`/add`、`/edit`、`/remove`、`/status`。
+- 必填配置：`table`、`pkField`；推荐用 `fields` 作为单一字段来源（自动推导白名单/搜索/过滤/响应投影/Zod/OpenAPI）；常用配置：`actions`（关闭端点）、`createDefaults`（服务端默认值）、`unknownFields`、`searchFields`、`tenantField`、`statusField`、`softDelete`、`permPrefix`、`schema`、`dataScope`、`transactional`。
+- 配置错误在路由注册阶段直接抛错（应用启动失败，提示含模块/表/字段）；旧数组式配置继续兼容，显式数组/schema 优先。
+- 混合模式：导出 `router` 自定义覆盖某些端点（优先匹配），同时导出 `config` 让 CRUD 工厂兜底。
 - 鉴权组合：`jwtAuth()`、`hasPerm('system:user:list')`；租户上下文由 `tenantMiddleware` 注入。
 - 统一响应：`{ code, message, data, total }`；成功 `code=200`，分页参数 `pageNum`/`pageSize`（`pageSize` 最大 100）。
 

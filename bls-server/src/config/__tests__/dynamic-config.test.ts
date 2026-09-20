@@ -145,29 +145,14 @@ describe('Dynamic Config', () => {
     expect(simulateGetTenantOrFail('T001')).toBe('T001');
   });
 
-  // ====== 4. CRUD framework: onWrite BEFORE DB write ======
-  it('CRUD add: onWrite called BEFORE insertInto (fail-closed order)', async () => {
-    const mod = await import('../../core/crud.js');
-    const fnStr = mod.defineCrudModule.toString();
-    // Verify onWrite is before insertInto/execute in the source
-    const onWriteIdx = fnStr.indexOf('onWrite?.(');
-    const insertIdx = fnStr.indexOf('insertInto');
-    expect(onWriteIdx).toBeGreaterThan(0);
-    expect(insertIdx).toBeGreaterThan(0);
-    // onWrite comes before insertInto
-    expect(onWriteIdx).toBeLessThan(insertIdx);
-  });
-
-  it('CRUD edit: onWrite called BEFORE query execute (fail-closed order)', async () => {
-    const mod = await import('../../core/crud.js');
-    const fnStr = mod.defineCrudModule.toString();
-    // Find the edit handler section
-    const editIdx = fnStr.indexOf("router.put('/edit'");
-    const onWriteIdx2 = fnStr.indexOf('onWrite?.()', editIdx);
-    const execIdx2 = fnStr.indexOf('.execute()', onWriteIdx2);
-    expect(onWriteIdx2).toBeGreaterThan(editIdx);
-    expect(execIdx2).toBeGreaterThan(onWriteIdx2);
-  });
+  // ====== 4. CRUD 工厂 onWrite 语义 ======
+  // 说明：原先此处通过「源码字符串下标」断言 onWrite 在 insertInto 之前执行，
+  // 该方式既不验证真实行为（转译后引号/顺序均可能变化，已失效为空断言），
+  // 也与运行时语义相反（onWrite 现在只在写入成功后执行）。
+  // 真实行为断言见 src/core/__tests__/crud.test.ts：
+  //   - 「写操作失败时不触发 onWrite（非事务模式）」
+  //   - 「onWrite 在写入成功后执行（此时数据已落库）」
+  //   - 「事务提交后执行 onWrite / onTransactionCommitted」/「事务回滚时不执行回调」
 
   // ====== 5. All tests pass verification ======
   it('ConfigService exports correct methods', async () => {

@@ -1406,22 +1406,22 @@
             "description": "关键词（config_key, config_name）"
           },
           {
-            "name": "config_key",
+            "name": "configKey",
             "in": "query",
             "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "精确过滤（白名单字段）"
+            "description": "精确过滤：config_key"
           },
           {
-            "name": "config_type",
+            "name": "configType",
             "in": "query",
             "required": false,
             "schema": {
               "type": "string"
             },
-            "description": "精确过滤（白名单字段）"
+            "description": "精确过滤：config_type"
           },
           {
             "name": "status",
@@ -1430,7 +1430,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "精确过滤（白名单字段）"
+            "description": "精确过滤：status"
           }
         ]
       }
@@ -8222,7 +8222,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "精确过滤（白名单字段）"
+            "description": "精确过滤：status"
           }
         ]
       }
@@ -9488,86 +9488,62 @@
       "config_post__api_system_config_add": {
         "type": "object",
         "properties": {
-          "config_id": {
+          "configKey": {
             "type": "string",
-            "description": "参数ID"
+            "description": "config_key"
           },
-          "tenant_id": {
+          "configValue": {
             "type": "string",
-            "description": "租户ID"
+            "description": "config_value"
           },
-          "config_key": {
+          "configName": {
             "type": "string",
-            "description": "参数键名"
+            "description": "config_name"
           },
-          "config_value": {
+          "configType": {
             "type": "string",
-            "description": "参数键值"
-          },
-          "config_name": {
-            "type": "string",
-            "description": "参数名称"
-          },
-          "config_type": {
-            "type": "string",
-            "description": "sys/theme/dict"
+            "description": "config_type"
           },
           "status": {
             "type": "string",
-            "description": "0正常 1停用"
+            "description": "status"
           },
           "remark": {
             "type": "string",
-            "description": "备注"
+            "description": "remark"
           }
-        },
-        "required": [
-          "tenant_id",
-          "config_key",
-          "config_value",
-          "config_name",
-          "config_type",
-          "status"
-        ]
+        }
       },
       "config_put__api_system_config_edit": {
         "type": "object",
         "properties": {
-          "config_id": {
+          "configId": {
             "type": "string",
             "description": "主键"
           },
-          "tenant_id": {
+          "configValue": {
             "type": "string",
-            "description": "租户ID"
+            "description": "config_value"
           },
-          "config_key": {
+          "configName": {
             "type": "string",
-            "description": "参数键名"
+            "description": "config_name"
           },
-          "config_value": {
+          "configType": {
             "type": "string",
-            "description": "参数键值"
-          },
-          "config_name": {
-            "type": "string",
-            "description": "参数名称"
-          },
-          "config_type": {
-            "type": "string",
-            "description": "sys/theme/dict"
+            "description": "config_type"
           },
           "status": {
             "type": "string",
-            "description": "0正常 1停用"
+            "description": "status"
           },
           "remark": {
             "type": "string",
-            "description": "备注"
+            "description": "remark"
           }
         },
         "required": [
-          "config_id"
+          "configId"
         ]
       },
       "config_delete__api_system_config_remove": {
@@ -9585,17 +9561,17 @@
       "config_put__api_system_config_status": {
         "type": "object",
         "properties": {
-          "config_id": {
+          "configId": {
             "type": "string",
             "description": "主键"
           },
           "status": {
             "type": "string",
-            "description": "状态值"
+            "description": "status"
           }
         },
         "required": [
-          "config_id",
+          "configId",
           "status"
         ]
       },
@@ -10331,162 +10307,138 @@
       "theme_post__api_system_theme_add": {
         "type": "object",
         "properties": {
-          "theme_id": {
+          "navTheme": {
             "type": "string",
-            "description": "主题ID"
+            "description": "nav_theme"
           },
-          "tenant_id": {
+          "colorPrimary": {
             "type": "string",
-            "description": "租户ID"
-          },
-          "nav_theme": {
-            "type": "string",
-            "description": "导航主题"
-          },
-          "color_primary": {
-            "type": "string",
-            "description": "主色"
+            "description": "color_primary"
           },
           "layout": {
             "type": "string",
-            "description": "布局类型"
+            "description": "layout"
           },
-          "content_width": {
+          "contentWidth": {
             "type": "string",
-            "description": "内容宽度"
+            "description": "content_width"
           },
-          "fixed_header": {
-            "type": "integer",
-            "description": "固定头部"
-          },
-          "fix_siderbar": {
-            "type": "integer",
-            "description": "固定侧栏"
-          },
-          "color_weak": {
-            "type": "integer",
-            "description": "色弱模式"
-          },
-          "split_menus": {
-            "type": "integer",
-            "description": "自动分割菜单"
-          },
-          "sider_menu_type": {
+          "fixedHeader": {
             "type": "string",
-            "description": "侧边菜单类型"
+            "description": "fixed_header"
+          },
+          "fixSiderbar": {
+            "type": "string",
+            "description": "fix_siderbar"
+          },
+          "colorWeak": {
+            "type": "string",
+            "description": "color_weak"
+          },
+          "splitMenus": {
+            "type": "string",
+            "description": "split_menus"
+          },
+          "siderMenuType": {
+            "type": "string",
+            "description": "sider_menu_type"
           },
           "title": {
             "type": "string",
-            "description": "标题"
+            "description": "title"
           },
           "logo": {
             "type": "string",
-            "description": "Logo URL"
+            "description": "logo"
           },
-          "iconfont_url": {
+          "iconfontUrl": {
             "type": "string",
-            "description": "图标字体URL"
+            "description": "iconfont_url"
           },
-          "token_json": {
+          "tokenJson": {
             "type": "string",
-            "description": "Token JSON"
+            "description": "token_json"
           },
           "status": {
             "type": "string",
-            "description": "0正常 1停用"
+            "description": "status"
           },
           "remark": {
             "type": "string",
-            "description": "备注"
+            "description": "remark"
           }
-        },
-        "required": [
-          "tenant_id",
-          "nav_theme",
-          "layout",
-          "content_width",
-          "fixed_header",
-          "fix_siderbar",
-          "color_weak",
-          "split_menus",
-          "sider_menu_type",
-          "status"
-        ]
+        }
       },
       "theme_put__api_system_theme_edit": {
         "type": "object",
         "properties": {
-          "theme_id": {
+          "themeId": {
             "type": "string",
             "description": "主键"
           },
-          "tenant_id": {
+          "navTheme": {
             "type": "string",
-            "description": "租户ID"
+            "description": "nav_theme"
           },
-          "nav_theme": {
+          "colorPrimary": {
             "type": "string",
-            "description": "导航主题"
-          },
-          "color_primary": {
-            "type": "string",
-            "description": "主色"
+            "description": "color_primary"
           },
           "layout": {
             "type": "string",
-            "description": "布局类型"
+            "description": "layout"
           },
-          "content_width": {
+          "contentWidth": {
             "type": "string",
-            "description": "内容宽度"
+            "description": "content_width"
           },
-          "fixed_header": {
-            "type": "integer",
-            "description": "固定头部"
-          },
-          "fix_siderbar": {
-            "type": "integer",
-            "description": "固定侧栏"
-          },
-          "color_weak": {
-            "type": "integer",
-            "description": "色弱模式"
-          },
-          "split_menus": {
-            "type": "integer",
-            "description": "自动分割菜单"
-          },
-          "sider_menu_type": {
+          "fixedHeader": {
             "type": "string",
-            "description": "侧边菜单类型"
+            "description": "fixed_header"
+          },
+          "fixSiderbar": {
+            "type": "string",
+            "description": "fix_siderbar"
+          },
+          "colorWeak": {
+            "type": "string",
+            "description": "color_weak"
+          },
+          "splitMenus": {
+            "type": "string",
+            "description": "split_menus"
+          },
+          "siderMenuType": {
+            "type": "string",
+            "description": "sider_menu_type"
           },
           "title": {
             "type": "string",
-            "description": "标题"
+            "description": "title"
           },
           "logo": {
             "type": "string",
-            "description": "Logo URL"
+            "description": "logo"
           },
-          "iconfont_url": {
+          "iconfontUrl": {
             "type": "string",
-            "description": "图标字体URL"
+            "description": "iconfont_url"
           },
-          "token_json": {
+          "tokenJson": {
             "type": "string",
-            "description": "Token JSON"
+            "description": "token_json"
           },
           "status": {
             "type": "string",
-            "description": "0正常 1停用"
+            "description": "status"
           },
           "remark": {
             "type": "string",
-            "description": "备注"
+            "description": "remark"
           }
         },
         "required": [
-          "theme_id"
+          "themeId"
         ]
       },
       "theme_delete__api_system_theme_remove": {
@@ -10504,17 +10456,17 @@
       "theme_put__api_system_theme_status": {
         "type": "object",
         "properties": {
-          "theme_id": {
+          "themeId": {
             "type": "string",
             "description": "主键"
           },
           "status": {
             "type": "string",
-            "description": "状态值"
+            "description": "status"
           }
         },
         "required": [
-          "theme_id",
+          "themeId",
           "status"
         ]
       },

@@ -1,6 +1,6 @@
 # Page — Theme Configuration (`/system/theme`)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 60b7b37 · **Last verified:** 2026-09-20
 
 ## 1. Summary
 
@@ -69,6 +69,14 @@ with `public`, so it gets `jwtAuth()`).
 Generated endpoints: `GET /list`, `GET /:id`, `POST /add`, `PUT /edit`, `DELETE /remove`,
 `PUT /status`.
 
+The module still uses the **legacy array style**. Migrating it to the config style
+(`defineCrudConfig` + `fields`, see `00-common/00-architecture.md` §5) would keep every endpoint
+and every whitelist identical while adding typed validation for free — e.g.
+`token_json: { type: 'json', … }` validates the JSON, `status: { type: 'enum', values: ['0','1'],
+status: true }` validates the status toggle, and `select: false` could hide internal columns from
+the response. Remember that the projected response would then contain only the declared
+`select !== false` fields plus the PK (today it is `selectAll`).
+
 ### `GET /api/system/theme/current`
 
 - Auth: `jwtAuth()`.
@@ -131,8 +139,10 @@ to the caller's tenant with a `000000` fallback.
 
 - **Add a theme setting**: add the column to `sys_theme_config`, to `createFields`/`updateFields`,
   to the form, and to `parseThemeSettings` in `bls-admin/src/app.tsx`.
-- **Validate `token_json`**: add a Zod schema to the module config
-  (`jsonish`-style refine, see the storage module) and mirror the check on the frontend.
+- **Validate `token_json`**: add a Zod schema to the module config (`jsonish`-style refine, see the
+  storage module) — or migrate the module to `defineCrudConfig` and declare the field as
+  `{ type: 'json', create: true, update: true }`, which generates the check from `fields`
+  (`00-common/00-architecture.md` §5) — and mirror the check on the frontend.
 - **Enforce one active theme**: clear `status` on other rows when setting one to `'0'`
   (mirror `applyDefaultFlag` in the storage module) and add `onWrite` to invalidate any cache.
 - Update this document.

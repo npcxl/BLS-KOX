@@ -1,6 +1,6 @@
 # 06 — File Upload & Excel Security (shared)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
 
 Two shared mechanisms used by several pages:
 
@@ -70,6 +70,13 @@ There is **no antivirus scan**. Non-image types are accepted on extension + MIME
 
 `qiniu_kodo` and `huawei_obs` are declared in the type unions but have no provider and fall
 through to `LocalProvider`.
+
+**Environment strategy (test vs production):** test / self-hosted runs on the seeded MinIO row;
+production is intended to switch to Aliyun OSS / Tencent COS / AWS S3 fronted by a CDN, selected
+**per tenant (= per access domain)** with no code change — the only blocker is that the non-MinIO
+providers are stubs and must be implemented first. Full design, per-environment configuration
+matrix, CDN notes and the implementation checklist: `pages/file-config-storage.md` →
+**Appendix A**.
 
 ### Secret handling
 

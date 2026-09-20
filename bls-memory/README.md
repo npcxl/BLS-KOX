@@ -51,7 +51,7 @@ content was verified against, `DATE` = `YYYY-MM-DD`):
 |---|---|---|
 | `Document version` | SemVer version of **this document** | Bump on a substantive rewrite (new/removed sections, re-verified facts, restructure). `patch` = correction, `minor` = new content, `major` = restructure. |
 | `Code version` | The repo-root `VERSION` value the content was verified against | Update in **every** document when the project is released (`npm run release:patch\|minor\|major` bumps `VERSION`). |
-| `Verified commit` | The git commit (`git rev-parse --short HEAD`) whose code the content was checked against | Update in **every** document after re-verifying against a new commit. Needed because `VERSION` only changes on release — the commit is what actually identifies the verified code. |
+| `Verified commit` | The git commit (`git rev-parse --short HEAD`) whose **application code** the content was checked against | Update in **every** document after re-verifying against a new commit. Needed because `VERSION` only changes on release — the commit is what actually identifies the verified code. A commit that only touches `bls-memory/`, `.codebuddy/` or `docs/` does **not** invalidate verification, so it does not need to be recorded. |
 | `Last verified` | `YYYY-MM-DD` of the last time the content was checked against the actual code | Set to the current date whenever you touch the document. |
 
 Rules:
@@ -111,6 +111,12 @@ Pages talk to `/api/*`. Nginx (or `bls-admin/config/proxy.ts` in dev) decides wh
 |---|---|---|
 | Dashboard | `/dashboard` | [pages/dashboard.md](pages/dashboard.md) |
 | Personal settings | `/account/settings` | [pages/account-settings.md](pages/account-settings.md) |
+
+### Cross-page overlays
+
+| Page | Trigger | Memory file |
+|---|---|---|
+| Global search | `Ctrl+K` / `Cmd+K` on every authenticated page | [pages/global-search.md](pages/global-search.md) |
 
 ### System management (`/system/*`)
 
@@ -172,6 +178,12 @@ Pages talk to `/api/*`. Nginx (or `bls-admin/config/proxy.ts` in dev) decides wh
 | [00-common/04-auth-and-permissions.md](00-common/04-auth-and-permissions.md) | JWT, refresh rotation, session center, `jwtAuth`/`hasPerm`, tenant isolation, data scope |
 | [00-common/05-security-log-and-event-center.md](00-common/05-security-log-and-event-center.md) | Security event types, risk levels, risk rules, automatic actions, IP blacklist |
 | [00-common/06-file-and-excel-security.md](00-common/06-file-and-excel-security.md) | Upload validation (ext/mime/magic/size), path safety, Excel import/export endpoints |
+| [00-common/07-database.md](00-common/07-database.md) | **All database knowledge** — sources of truth, naming conventions (+ legacy exceptions), full 40-table inventory with the owning page document, seed data, migration workflow, known schema drift |
+| [00-common/08-external-api-and-service-auth.md](00-common/08-external-api-and-service-auth.md) | API surface & auth: `/api`, `/api/v1` (+ deprecation headers), `/openapi/v1` (API Key + HMAC), `/internal` (service token + IP allow-list), error formatting, HTTP metric labels, Swagger & the OpenAPI generator |
+| [00-common/09-realtime-websocket.md](00-common/09-realtime-websocket.md) | Realtime WebSocket: `/ws/realtime` protocol, broadcast payload, heartbeat, nginx upgrade, frontend `useWebSocket` / `GlobalRealtimeProvider`, the broken ops-release channel push |
+| [00-common/10-job-api-and-queue.md](00-common/10-job-api-and-queue.md) | Job API (`/api/system/jobs`) + the `sys_jobs` queue: claim/retry/dead-letter semantics, the worker, the four registered job types, status-enum drift |
+| [00-common/11-frontend-shell.md](00-common/11-frontend-shell.md) | Frontend shell: build config (utoopack), dev proxy, `routes.ts`, `getInitialState`/`layout`/`rootContainer`, access control, request pipeline & tinyint→boolean, i18n, global/style files, unrouted pages |
+| [00-common/12-frontend-data-layer.md](00-common/12-frontend-data-layer.md) | Frontend data layer: every hook, `CrudTablePage` and the shared components, the full `services/*` API surface, dict caching, dead exports, cookbooks |
 
 ---
 

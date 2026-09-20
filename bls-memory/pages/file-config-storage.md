@@ -1,6 +1,6 @@
 # Page — Storage Configuration (`/file-config/storage`)
 
-> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.1.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
 
 ## 1. Summary
 
@@ -12,6 +12,7 @@
 | Backend module | `bls-server/src/api/system/storage/index.ts` |
 | Tables | `sys_storage_config` (main), plus `sys_file`, `sys_upload_audit` for uploads |
 | Shared docs | `00-common/01-redis.md` (upload lock), `02-replay-protection.md`, `06-file-and-excel-security.md` |
+| Environment strategy | Test/self-hosted = **MinIO**; production = **Aliyun OSS / Tencent COS / AWS S3 + CDN**, switched per tenant (i.e. per access domain) — see **Appendix A** |
 
 This module also implements **file upload** (`POST /upload`) which is shared with the File Manager
 page and the avatar flow.
@@ -173,3 +174,135 @@ server-side by `buildStorageValues` and never taken from the body.
 - **Fix the download endpoint**: stream the object (or return a presigned URL) instead of the DB
   row.
 - Update this document.
+
+---
+
+## Appendix A — Environment strategy: MinIO (test environment) vs OSS / CDN (production)
+
+> Requirement in one line: **test uses MinIO; production switches to Aliyun OSS or another
+> CDN-backed resource bucket, selected by which user/domain is accessing the system.**
+
+### A.1 The switching model — how "switch by user access" works today
+
+The storage backend is **per tenant**, and the tenant is resolved from the **access domain at
+login** (`sys_tenant.domain_name` → tenant, see `pages/user-login.md` §3). At upload time
+`handleUpload` picks the tenant's storage row:
+
+```
+request domain
+   └─> sys_tenant.domain_name  → tenant_id
+          └─> sys_storage_config WHERE tenant_id = ? AND deleted = 0
+                 ├─ by explicit storageId, else
+                 ├─ the row with is_default = '1', else
+                 └─ the earliest row by create_time
+                        └─> createStorageProvider(config)   (storage.factory.ts)
+```
+
+So **per-customer / per-environment storage switching needs no code change** — each tenant (each
+domain) simply owns a `sys_storage_config` row pointing at its own bucket/CDN. What it does need
+is a real provider implementation for the non-MinIO types (see A.3).
+
+### A.2 Configuration per environment
+
+| Environment | `storage_type` | Endpoint / region | `use_ssl` / `port` | Buckets | `public_base_url` |
+|---|---|---|---|---|---|
+| Dev / Docker / test | `minio` | `minio` (docker service), region `NULL` | `0` / `9000` | `public-assets` / `private-assets` | `/files` (proxied by nginx) |
+| Production — Aliyun OSS | `aliyun_oss` | `oss-cn-hangzhou.aliyuncs.com`, region `cn-hangzhou` | `1` / `443` | e.g. `bls-public` / `bls-private` | `https://cdn.example.com` |
+| Production — Tencent COS | `tencent_cos` | `cos.ap-guangzhou.myqcloud.com`, region `ap-guangzhou` | `1` / `443` | … | `https://cdn.example.com` |
+| Production — AWS S3 (or S3-compatible) | `aws_s3` | `s3.ap-southeast-1.amazonaws.com`, region `ap-southeast-1` | `1` / `443` | … | `https://cdn.example.com` |
+
+Seeded test row (for reference) — `sql/Init.sql`, `sys_storage_config`:
+
+```sql
+('000001','000000','MinIO 对象存储','minio','minio',NULL,9000,0,'minioadmin','minioadmin',
+ 'public-assets','private-assets','/files',NULL,1, ... ,1,0,'Docker内置MinIO，生产请修改', ...)
+```
+
+Steps to switch one environment (per tenant):
+
+1. Open `/file-config/storage` → **新增** (or insert a `sys_storage_config` row) and fill
+   `storageName`, `storageType`, `endpoint`, `region`, `port`, `useSsl=1`, `accessKey`,
+   `secretKey`, `publicBucket`, `privateBucket`.
+2. Set `publicBaseUrl` to the **CDN domain** (no trailing slash). This is the field both
+   `MinioProvider` and the OSS/S3/COS stubs use first when building a public URL, so pointing it
+   at a CDN is already supported.
+3. Toggle **是否默认** (`isDefault`) on the new row — `applyDefaultFlag` keeps at most one default
+   per tenant and clears the others in the same transaction.
+4. Re-upload or migrate existing objects; existing `sys_file.url` values still point at the old
+   backend.
+
+### A.3 Blocker: non-MinIO providers are stubs (must be implemented first)
+
+`AliyunOssProvider` / `TencentCosProvider` / `AwsS3Provider` / `LocalProvider` currently:
+
+| Method | Stub behaviour |
+|---|---|
+| `upload()` | returns `{bucketName, objectName}` **without any network call** — nothing is persisted |
+| `remove()` | no-op |
+| `getPublicUrl()` | builds a string (honours `publicBaseUrl`, so CDN URLs are correct) |
+| `getPrivateUrl()` | returns the **same public URL** — no signing |
+
+`MinioProvider` is the only real implementation (`putObject`, `removeObject`, `bucketExists` /
+`makeBucket`, `presignedGetObject` for private URLs).
+
+Consequence: configuring an OSS row today makes uploads **appear to succeed** (a `sys_file` row is
+written, a URL is generated) while **no object is stored**. Do not point production at OSS before
+implementing the provider.
+
+Implementation checklist:
+
+1. Add the SDK to `bls-server/package.json` — `ali-oss` (OSS), `cos-nodejs-sdk-v5` (COS),
+   `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` (S3).
+2. Implement `upload` / `remove` / `ensureBucket?` / `getPrivateUrl` in the provider, keeping
+   `getPublicUrl` honouring `config.publicBaseUrl` (CDN) and falling back to
+   `endpoint/bucket/object`.
+3. Keep the `StorageProvider` interface and the `storage.factory.ts` switch unchanged; the
+   upload flow in `api/system/storage/index.ts` needs no change.
+4. Use `config.configJson` for provider-specific extras (custom domain, STS token, CDN auth
+   signature) — the column is already stored and passed into `StorageConfig`.
+5. Add unit tests in the style of
+   `bls-server/src/api/system/storage/__tests__/storage.test.ts` (mock the SDK, assert the
+   upload key/bucket/headers and the presigned URL).
+6. Seed a `sys_storage_type` dictionary entry for the new type (`sys_storage_type` is referenced
+   by the page config but is **not seeded** today).
+7. Update this appendix + `CHANGELOG.md`.
+
+### A.4 CDN notes
+
+- **Public files** already produce a CDN-friendly URL: `accessType=public` →
+  `provider.getPublicUrl()` → `publicBaseUrl` + `/{moduleName}/{uuid}{ext}`. Point
+  `public_base_url` at the CDN and map the CDN origin to the bucket root; the object key layout
+  (uploaded by `generateObjectKey`, see `00-common/06-file-and-excel-security.md`) is already a
+  flat `moduleName/uuid.ext`, so no rewrite rule is needed beyond stripping the origin prefix.
+- **Private files** have no CDN story: they must be served by a presigned URL
+  (`MinioProvider.getPrivateUrl`, default 300 s). `private_base_url` is **stored but never read
+  by any provider** — a CDN with signed URLs would require implementing it.
+- **nginx `/files/` is MinIO-only**: `nginx.conf` hardcodes
+  `location /files/ { proxy_pass http://minio:9000/public-assets/; }`. It is what makes the
+  seeded `public_base_url = /files` work in Docker/test. With a real CDN you either
+  (a) let clients hit the CDN directly (recommended, and what `public_base_url` is for), or
+  (b) repoint `/files/` at the CDN if you must keep a single origin.
+- **Env vars do not configure app storage**: `MINIO_USER` / `MINIO_PASSWORD` in
+  `.env.docker.example` only provision the MinIO **container**. The application always reads
+  storage settings from `sys_storage_config` — there is no `STORAGE_*` env bootstrap. If you want
+  a zero-DB-row bootstrap (e.g. a fresh production deploy before anyone logs in), add one and
+  document it here.
+
+### A.5 Fields that look configurable but are not wired up
+
+| Field | Reality |
+|---|---|
+| `policy_json` (`maxSizeMB`, `allowedExt`, `blockedExt`, `privateExpireSeconds`) | Stored, passed into `StorageConfig`, **read by nothing**. The real size limit comes from `sys_config.sys.upload.maxSize` (`getDynamicConfig().uploadLimitMB`), and the extension/MIME whitelist is hardcoded in `security/file-security.ts`. |
+| `private_base_url` | Stored, **never read** (see A.4). |
+| `config_json` | Stored and passed to the provider; unused by the MinIO provider, intended for the SDK-based providers. |
+| `region` / `port` / `use_ssl` / `path_style` | Used by `MinioProvider` (`use_ssl`, `port`, `path_style`, `region` for bucket creation). Honour them the same way in new providers. |
+
+### A.6 Recommended production setup (summary)
+
+| Concern | Recommendation |
+|---|---|
+| Test environment | Keep the seeded MinIO row (`000001`, tenant `000000`) — zero setup. |
+| Production platform tenant | One `aliyun_oss` (or COS/S3) row, `is_default = 1`, `public_base_url` = CDN domain. |
+| Per-customer isolation | Give each tenant its own row (own bucket, own CDN host or path); switching is by access domain → tenant, no code change. |
+| Private assets | Keep `private_bucket` separate from `public_bucket`; rely on presigned URLs (implement for OSS/S3, MinIO already works). |
+| Verification | There is no "test connection" action yet (gap #1) — implement `POST /api/system/storage/test-connection` before going live. |
