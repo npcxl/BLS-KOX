@@ -71,8 +71,6 @@ Document set created. Code version verified against: **1.0.0**.
 - The login flow never writes `sys_login_log`.
 - `POST /api/system/user/reset-password` has a replay rule but no route.
 - `GET /api/system/storage/file/:fileId/download` returns a DB row instead of the file.
-- Frontend permission codes `system:theme:create` / `system:user:create` do not match the
-  backend `:add` codes.
 - Log endpoints (`/api/system/log/*`) apply no tenant filter.
 - AI conversation endpoints have incomplete ownership checks.
 - The `/api/ai/chat/conversations` replay exemption is exact-match only.
@@ -84,3 +82,11 @@ Document set created. Code version verified against: **1.0.0**.
 - Documents are written in **English** so AI agents parse them reliably.
 - Redis is documented **once**, in `00-common/01-redis.md`; page documents only reference it.
 - The backend permission code is the source of truth when the frontend disagrees.
+
+### Corrections made while verifying against the code
+
+- `system:theme` and `system:user`: the frontend `permissions` prop now uses `:add` (matching the
+  backend), so the previously noted `:create` ↔ `:add` mismatch was dropped.
+- `system:user`: the batch "kick offline" action is gated by `system:user:kick` (documented).
+- `system:ai-model`: the frontend `permissions` prop holds permission strings
+  (`system:ai-model:add/edit/remove/status`) — documented as such.
