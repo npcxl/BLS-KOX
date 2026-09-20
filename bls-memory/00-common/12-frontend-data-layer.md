@@ -1,6 +1,10 @@
 # 12 — Frontend Data Layer: hooks, CrudTablePage, services
 
-> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 9b22800 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.3 · **Code version:** 1.0.0 · **Verified commit:** ff64e74 · **Last verified:** 2026-09-20
+>
+> The `CrudTablePage` props added in 1.4.0/1.4.1 (`showActions`, `onSelectionChange`,
+> `rowClickToSelect`) live in the working tree on top of `ff64e74` — re-stamp this document once that
+> code is committed.
 
 The reusable half of `bls-admin`: `src/hooks/`, the shared components that pages are built from,
 and the entire service layer. If you are writing or changing a page, this is the toolkit.
@@ -41,6 +45,9 @@ Main props:
 | `permissions` | `{create, edit, remove, status, import, export}` — each value is a permission code checked with `usePermission().can()` |
 | `excelMetaKey` | When present, renders `<ExcelToolbar metaKey={…} queryParams={lastRequestParams}/>`; **the import/export permission codes are computed but never passed to the toolbar** |
 | `showCreateButton`, `showEditAction`, `showRemoveAction`, `showFormModal`, `embedded` | Action visibility |
+| `showActions` | `false` ⇒ the whole 操作 column is **not rendered** (not merely hidden), for pages that give the table less width |
+| `onSelectionChange(rows)` | Forwards the table's `rowSelection.onChange` (row-selection state stays owned by `rowSelection`) |
+| `rowClickToSelect` | Clicking anywhere on a row **selects that row** (single — it replaces the previous selection) by driving the now-controlled `rowSelection.selectedRowKeys`; clicks inside the selection column are ignored so unticking a row still works. Used by `/system/role` (click a role ⇒ its menu permissions load on the right). The hand-rolled `onRowClick`/`isRowSelected` props (own highlight + `cursor:pointer`) were **removed** — antd renders the highlight |
 | `extraActions`, `toolbarExtra`, `tableAlertExtraRender` | Row-level extra actions, extra toolbar nodes, batch-action bar |
 | `beforeSubmit(values, current)`, `onSaved` | Payload shaping / post-save hooks (many pages use `beforeSubmit` to preserve fields the form omits) |
 | `defaultSearchMode`, `showSearchModeToggle` | Fuzzy (keyword) ⇄ exact filter switch, backed by `useCrudTable`'s `searchMode` |

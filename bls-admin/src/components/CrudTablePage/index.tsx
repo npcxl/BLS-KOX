@@ -12,7 +12,7 @@ import {
   ProTable,
 } from "@ant-design/pro-components";
 import { Button, Space, Switch, Tag, Tooltip } from "antd";
-import type { ReactNode } from "react";
+import type { Key, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { useMemo, useState } from "react";
 import ExcelToolbar from "@/components/ExcelToolbar";
 
@@ -49,6 +49,18 @@ export type CrudTablePageProps<T extends Record<string, any>> = {
   showFormModal?: boolean;
   showEditAction?: boolean;
   showRemoveAction?: boolean;
+  /**
+   * 是否渲染「操作」列（默认 true）。
+   * 为 false 时整列不渲染（不是隐藏单元格），适合右侧面板展开、列表变窄的场景。
+   */
+  showActions?: boolean;
+  /** 勾选行变化回调（选中行由表格自身的 rowSelection 维护，页面无需自己实现选中态） */
+  onSelectionChange?: (selectedRows: T[]) => void;
+  /**
+   * 点击整行 = 选中该行（单选，替换原选中项），选中态与高亮仍由 `rowSelection` 维护。
+   * 适合「点哪一行就展示哪一行明细」的主从布局（如角色管理 + 菜单权限面板）。
+   */
+  rowClickToSelect?: boolean;
   formGrid?: boolean;
   formColProps?: Record<string, any>;
   defaultSearchMode?: "fuzzy" | "exact";
@@ -126,6 +138,7 @@ export default function CrudTablePage<T extends Record<string, any>>({
   showCreateButton = true,
   showEditAction = true,
   showRemoveAction = true,
+  showActions = true,
   showFormModal = true,
   modalWidth = 640,
   pagination = { defaultPageSize: 10, showSizeChanger: true },
@@ -143,6 +156,8 @@ export default function CrudTablePage<T extends Record<string, any>>({
   permissions,
   excelMetaKey,
   tableAlertExtraRender,
+  onSelectionChange,
+  rowClickToSelect = false,
 }: CrudTablePageProps<T>) {
   const [searchMode, setSearchMode] = useState<"fuzzy" | "exact">(
     defaultSearchMode
@@ -177,6 +192,23 @@ export default function CrudTablePage<T extends Record<string, any>>({
     ? permission.can(permissions.export)
     : true;
   const statusColumnDef = columns.find((col) => col.dataIndex === statusKey);
+  const selectionEnabled =
+    (canRemove && resource.remove !== false) ||
+    Boolean(tableAlertExtraRender) ||
+    Boolean(onSelectionChange) ||
+    rowClickToSelect;
+  /** 开启「点行即选中」后 rowSelection 必须受控，否则点行无法改选中态 */
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
+  const handleSelectionChange = (keys: any, rows: T[]) => {
+    setSelectedRowKeys((keys ?? []) as Key[]);
+    onSelectionChange?.(rows);
+  };
+  const handleRowClick = (record: T, event: ReactMouseEvent<HTMLElement>) => {
+    // 勾选框所在单元格自己会切换选中，放过它的点击，避免"刚取消又立刻被选中"
+    if ((event.target as HTMLElement).closest(".ant-table-selection-column")) return;
+    setSelectedRowKeys([record[rowKey] as Key]);
+    onSelectionChange?.([record]);
+  };
   const statusValueEnum = statusColumnDef?.valueEnum as
     | Record<string, any>
     | undefined;
@@ -379,7 +411,7 @@ export default function CrudTablePage<T extends Record<string, any>>({
       <ProTable<T>
         rowKey={String(rowKey)}
         actionRef={crud.actionRef}
-        columns={[...tagColumns, actionColumn]}
+        columns={showActions ? [...tagColumns, actionColumn] : tagColumns}
         request={crud.request}
         search={{ labelWidth: 96 }}
         pagination={pagination}
@@ -423,9 +455,20 @@ export default function CrudTablePage<T extends Record<string, any>>({
           ) : null,
         ]}
         rowSelection={
-          (canRemove && resource.remove !== false) || tableAlertExtraRender
-            ? {}
+          selectionEnabled
+            ? {
+                ...(rowClickToSelect ? { selectedRowKeys } : {}),
+                onChange: handleSelectionChange,
+              }
             : false
+        }
+        onRow={
+          rowClickToSelect
+            ? (record) => ({
+                onClick: (event: ReactMouseEvent<HTMLElement>) =>
+                  handleRowClick(record, event),
+              })
+            : undefined
         }
         tableAlertOptionRender={({ selectedRows, onCleanSelected }) =>
           (canRemove && resource.remove !== false) || tableAlertExtraRender ? (

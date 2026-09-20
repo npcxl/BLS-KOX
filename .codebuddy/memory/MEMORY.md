@@ -12,18 +12,15 @@
   (Maven Central unreachable; `io.jsonwebtoken:jjwt-bom:0.12.6` missing) → `mvn compile/test` fails.
 - **Editing `sql/Init.sql` via the IDE edit tool is silently dropped** (reports success, nothing on
   disk). Write it with a shell/Node script and always verify with `git diff sql/Init.sql`.
-- PowerShell `Get-Content`/`Select-String` decode as ANSI → UTF-8 Chinese shows as mojibake; judge
-  real content by `git diff`.
-- **In PowerShell `node -e "..."` swallows quotes and treats the backtick as an escape char** — a
-  regex containing a SQL backtick silently matches nothing. Use a temp `.js` file (run, then delete)
-  or `[\x60]` instead of a backtick. `findstr` piped into other commands also fails — prefer Node or
-  the IDE search tools.
-
-- **`bls-rust-server/src/**/*.rs` contained literal `?` (byte `0x3F`) where Chinese message text
-  belonged** (introduced at `d6785e0` / `4e8a95b`; files clean at `d6785e0` can be recovered with
-  `git show d6785e0:<file>`). The `?` count equals the number of replaced characters, so Koa's text
-  can be restored 1:1. Fixed 2026-09-20: 96 strings in 12 files + 10 pagination `count` queries that
-  silently swallowed DB errors (`unwrap_or(0)` → `.map_err(AppError::from)?`).
+- PowerShell caveats: `Get-Content`/`Select-String` decode as ANSI (UTF-8 Chinese shows as mojibake —
+  judge real content by `git diff`); `node -e "..."` swallows quotes and treats the backtick as an
+  escape char (a regex containing a SQL backtick silently matches nothing — use a temp `.js` file, run
+  it and delete it, or `[\x60]`); `findstr` piped into other commands also fails. Prefer Node scripts
+  or the IDE search tools.
+- Rust sources were repaired 2026-09-20: literal `?` (`0x3F`) had replaced 96 Chinese strings in
+  `bls-rust-server/src/**/*.rs` (the `?` count equals the replaced character count, so Koa's text
+  restores 1:1; files clean at `d6785e0` can be read back with `git show d6785e0:<file>`), plus 10
+  pagination `count` queries that silently swallowed DB errors (`unwrap_or(0)` → `.map_err(AppError::from)?`).
 
 ## II. Project conventions (follow when changing code)
 
@@ -108,3 +105,21 @@
   concurrent change you notice in your reply.
 - `.codebuddy/memory/*.md` and `bls-memory/*.md` may have concurrent writers: **read the file (or
   `git show HEAD:<file>`) before overwriting** — never overwrite from session memory alone.
+- **Admin UI: prefer antd's own components over hand-rolled code.** Use the built-in selection and
+  state of the component in play (`Tree checkable` + `onCheck`, `Checkbox.Group`, the table's
+  `rowSelection`) instead of managing checkbox sets / row highlight yourself; do not write your own
+  row backgrounds or one-off layout styles — copy the patterns already in `pages/system/dept`,
+  `pages/ai/workbench` and `components/RebuildIndexModal`. Toolbar actions are **antd icon buttons**
+  (`<Button type="text" size="small" icon={...} />`, no label).
+- Keep UI refactors **minimal and literal** ("原来是竖排，改成横排"). Do not reorganise the data
+  model or invent a new grouping on your own initiative — a rejected example was turning the
+  first-level menus of the permission tree into group headings ("一级的话不是目录").
+- `/system/role` permission panel, settled after two rounds of feedback: three visual levels =
+  目录 / 页面 / 按钮; 目录+页面 are the antd `Tree` levels, the **button level is a horizontal
+  `Checkbox.Group` on its own line under the page** (each button on its own tree row is "好长不方便
+  操作"); the right `Splitter.Panel` uses a **fixed `defaultSize={480}`** (`min={360}` `max={720}`),
+  not `50%`.
+- The user watches the running app, so UI changes must stay smooth: avoid full-table re-renders on
+  every click and per-render O(n²) work (menu trees can hold hundreds of nodes).
+- Do not launch `agent-browser`/an automated browser on this machine to self-verify UI changes; the
+  user cancels it. State the change instead and let them look.

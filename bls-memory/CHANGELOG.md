@@ -23,6 +23,90 @@ Rules: see the "Version metadata & maintenance" section of [`README.md`](README.
 
 ---
 
+## [1.4.1] — 2026-09-20
+
+`/system/role` menu-permission panel: layout corrections after the first round of feedback.
+
+### Changed
+
+- **`pages/system-role.md`** (document version **1.2.0**) — the right `Splitter.Panel` is now a
+  **fixed `defaultSize={480}`** (`min={360}`, `max={720}`) instead of `50%`, and the `MenuAuthPanel`
+  description was rewritten to match the actual code (it had drifted):
+  - the panel again uses an **antd `Tree`** (the earlier "renders the tree itself, no antd `Tree`"
+    note was stale) with 目录 + 页面 as its two levels — check / uncheck / `indeterminate` are the
+    component's own parent-child linkage, no hand-maintained checked `Set`;
+  - **按钮权限 (`menu_type='2'`) are a horizontal `Checkbox.Group` on their own line under the page**
+    (third visual level). They are deliberately **not** `Tree` nodes: stacking every button vertically
+    made the tree far too long to operate;
+  - documented the two-way sync (page/目录 toggle ↔ its buttons), the load rule (only leaf pages go
+    into `checkedKeys`, buttons go to the checkbox state) and the save payload (checked nodes ∪
+    checked buttons, each extended with its ancestor chain).
+  - (document version **1.2.1**) clicking **any row** while the panel is open now switches the panel to
+    that role — `CrudTablePage` gained `rowClickToSelect`, which turns the row click into a row
+    *selection* so the antd highlight follows the panel.
+- **`00-common/12-frontend-data-layer.md`** (document version **1.0.3**) — the `CrudTablePage` props
+  table had drifted: the hand-rolled `onRowClick` / `isRowSelected` rows were removed by 1.4.0's work
+  (they no longer exist in the component) and are replaced by `onSelectionChange` + the new
+  `rowClickToSelect` (controlled `rowSelection.selectedRowKeys`, clicks inside the selection column
+  ignored so unticking still works).
+
+---
+
+## [1.4.0] — 2026-09-20
+
+Two behaviour changes plus one new frontend layout, all verified against the **working tree on top
+of `ff64e74`**.
+
+Uncommitted code this release was verified against:
+
+```
+ M bls-server/src/app.ts                                   (runtime guard at the entry point)
+?? bls-server/src/core/runtime-guard.ts
+?? bls-server/src/core/__tests__/runtime-guard.test.ts
+ M bls-admin/src/components/CrudTablePage/index.tsx        (showActions / onRowClick / isRowSelected)
+ M bls-admin/src/pages/system/role/index.tsx               (Splitter layout)
+ D bls-admin/src/pages/system/role/components/MenuAuthModal.tsx
+?? bls-admin/src/pages/system/role/components/MenuAuthPanel.tsx
+```
+
+### Added
+
+- **`bls-server/src/core/runtime-guard.ts` + `core/__tests__/runtime-guard.test.ts`** — the Koa
+  server now fails fast on an unsupported runtime instead of starting in a half-broken state.
+  Background: on Node < 20/22 the process still listened on its port while
+  `[worker] poll error { error: 'TypeError: arr.toSorted is not a function' }` and
+  `[outbox-publisher] poll error …` fired every 2-3 s (Kysely's query compiler calls
+  `Array#toSorted`) and streaming responses threw `ReferenceError: ReadableStream is not defined`.
+  The guard probes the Node major version (≥ 22) plus `Array#toSorted`/`toReversed`,
+  `Object.groupBy`, `structuredClone`, `ReadableStream`, `fetch`, prints the offending items, the
+  required version and the fix paths (`nvm use 22` / `.nvmrc` / `node:22-alpine`), then exits with
+  code 1 before the HTTP server listens. `app.ts` calls it as
+  `assertSupportedRuntime({ exit: require.main === module })`, so importing `app.ts` (tests) only
+  warns. Verified end to end by deleting the global and running `node --require … dist/app.js`
+  → prints the guidance and exits 1 (10 unit tests pass).
+
+- **`CrudTablePage` row interaction props** (`showActions`, `onRowClick`, `isRowSelected`) — see
+  `00-common/12-frontend-data-layer.md`.
+
+### Changed
+
+- **`pages/system-role.md`** (document version **1.1.0**) — the role page is now an antd `Splitter`:
+  left = role list (only panel by default → full width with the 操作 column), right = the new
+  `MenuAuthPanel`, opened by a row click or the 「菜单权限」 row action; while it is open the list
+  renders **without** the 操作 column (`showActions={!authPanelOpen}`) and 「收起」 restores it.
+  `MenuAuthModal` was replaced by `MenuAuthPanel`, which drops the antd `Tree` and renders the menu
+  tree itself: 目录/菜单 one per row (indented), **button permissions (`menu_type === '2'`, i.e.
+  增删改查) horizontally on the parent menu's row**, with the checked set driving parent/child
+  propagation (check = self + subtree + ancestors, uncheck = subtree + prune, partial = parent
+  `indeterminate`) and the same `{ menuIds }` payload as before. Also documented that
+  `Splitter.Panel` `min`/`max`/`defaultSize` only accept a number (px) or `'NN%'` — `'320px'` parses
+  to `NaN`.
+- **`00-common/00-architecture.md`** (document version **1.1.1**) — §5's "uncommitted-until-then"
+  notice replaced by the fact that the config-style factory is committed as `9b22800`; §7 documents
+  the runtime guard, the exact failure modes it prevents and where its tests live.
+
+---
+
 ## [1.3.1] — 2026-09-20
 
 Re-stamped `Verified commit` now that the CRUD-config refactor is committed, and wired the

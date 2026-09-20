@@ -1,6 +1,14 @@
 // ====== OpenTelemetry Tracing — 必须在所有其他 import 之前初始化 ======
 // 确保 mysql2 / ioredis 等模块在被 instrumentation 插件 hook 之后才加载
 import { initTracing } from './observability/tracing';
+import { assertSupportedRuntime } from './core/runtime-guard';
+
+// ====== 运行时环境守卫 — 必须最先执行 ======
+// 旧版 Node 缺少 Array#toSorted / 全局 ReadableStream 等能力时，进程仍会启动监听端口，
+// 但 worker / outbox 轮询会持续抛出难以定位的错误（假可用）。这里直接 fail-fast。
+// 被其他模块 import（如单测）时只告警不终止进程。
+assertSupportedRuntime({ exit: require.main === module });
+
 initTracing();
 
 import Koa from 'koa';

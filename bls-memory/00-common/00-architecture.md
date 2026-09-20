@@ -1,6 +1,6 @@
 # 00 — Architecture & Request Pipeline (shared)
 
-> **Document version:** 1.1.0 · **Code version:** 1.0.0 · **Verified commit:** 9b22800 · **Last verified:** 2026-09-20
+> **Document version:** 1.1.1 · **Code version:** 1.0.0 · **Verified commit:** ff64e74 · **Last verified:** 2026-09-20
 
 This document describes the parts of BLS-KOX that every page depends on.
 Read it once; page documents assume it.
@@ -147,9 +147,9 @@ Two equivalent declaration styles. **Config style** (`defineCrudConfig`) makes `
 source of truth and derives every whitelist, the search/filter behaviour, the response projection,
 the Zod validation and the OpenAPI schema; the **legacy array style** keeps working unchanged.
 
-> **Uncommitted-until-then notice:** the config-style parts of this section describe the working tree
-> on top of `60b7b37`. Bump `Verified commit` to the new SHA once that code is committed
-> (see `CHANGELOG.md` 1.3.0).
+> The config-style factory described here is committed as **`9b22800`** (`core/crud-config.ts`,
+> `core/crud-keys.ts`, `core/crud.ts`, `core/router.ts`, `scripts/generate-openapi.ts`,
+> `openapi.json`). See `CHANGELOG.md` 1.3.0/1.3.1.
 
 ### 5.1 Config style (recommended) — one file per standard module
 
@@ -320,8 +320,19 @@ Notes:
 
 - `npm run lint` is `tsc --noEmit`; `npm run build` writes `dist/` (so `node dist/...` works when
   `tsx` is blocked by the sandbox: `node dist/scripts/generate-openapi.js`).
-- **Node ≥ 22 is required** (`bls-server/package.json` → `engines`). On a machine whose default
-  `node` is older, put a Node 22 binary first on `PATH` before running the commands.
+- **Node ≥ 22 is required** (`bls-server/package.json` → `engines`, repo-root `.nvmrc`, `Dockerfile`
+  `node:22-alpine`, `kysely` 0.29 `engines`). On a machine whose default `node` is older, put a
+  Node 22 binary first on `PATH` before running the commands.
+- **The server fails fast on an unsupported runtime.** `core/runtime-guard.ts` runs
+  `assertSupportedRuntime()` at the top of `app.ts` and probes the Node major version plus the
+  globals the stack actually needs (`Array#toSorted`/`toReversed`, `Object.groupBy`,
+  `structuredClone`, `ReadableStream`, `fetch`). On an old Node the process printed only
+  `TypeError: arr.toSorted is not a function` from the worker/outbox poll loops (Kysely's query
+  compiler uses `toSorted`) and `ReferenceError: ReadableStream is not defined`, while still
+  listening on its port — now it prints an actionable message (module + required version + `nvm use`
+  / Docker fix) and exits with code 1 **before** the HTTP server listens. `exit` is `true` only when
+  the module is the process entry point, so importing `app.ts` (tests) never kills the runner.
+  Tests: `core/__tests__/runtime-guard.test.ts`.
 - `npm run openapi` regenerates and commits `bls-server/openapi.json`; run it whenever a route,
   parameter or permission changes.
 - Unit tests are self-contained (in-memory Kysely test double in

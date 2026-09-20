@@ -19,6 +19,31 @@
 | JWT | jsonwebtoken | latest |
 | 可观测 | OpenTelemetry + Prometheus | latest |
 
+### 运行环境：必须 Node ≥ 22（启动即校验）
+
+`bls-server` 依赖 Node 22+ 才具备的运行时能力：Kysely 0.29 的查询编译器使用 `Array#toSorted`
+（Node 20+），流式响应依赖全局 `ReadableStream`（Node 18+），另外还用到 `Object.groupBy`、
+`structuredClone`、`fetch`。`package.json` 的 `engines`、仓库根 `.nvmrc`、`Dockerfile`
+（`node:22-alpine`）三处都固定为 22。
+
+在更旧的 Node 上进程**仍会启动并监听端口**，但后台任务会持续报错，表现为"服务看似已起、实际不可用"：
+
+```
+[ERROR] [worker] poll error { error: 'TypeError: arr.toSorted is not a function' }
+[ERROR] [outbox-publisher] poll error { error: 'TypeError: arr.toSorted is not a function' }
+[ERROR] Unhandled application error { error: 'ReferenceError: ReadableStream is not defined' }
+```
+
+因此入口 `src/app.ts` 最前面会调用 `assertSupportedRuntime()`（`src/core/runtime-guard.ts`）：
+探测 Node 主版本与上述能力，不满足时打印修复指引并以状态码 `1` 退出（**在 HTTP 服务监听之前**），
+不再留下"假可用"的进程。`exit` 只在作为进程入口时为 `true`，被单测 import 时仅告警；
+单测见 `src/core/__tests__/runtime-guard.test.ts`。
+
+```powershell
+node -v          # 必须 >= v22，且与执行 npm run dev / node dist/app.js 的终端是同一个 Node
+nvm use 22       # 仓库根 .nvmrc 已固定为 22
+```
+
 ## 目录结构
 
 ```
