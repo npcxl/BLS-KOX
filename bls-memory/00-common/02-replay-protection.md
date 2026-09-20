@@ -1,6 +1,6 @@
 # 02 — Replay Protection (shared)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
 
 Replay protection stops an attacker from capturing a valid request (timestamp, body,
 token) and re-sending it later.

@@ -1,6 +1,6 @@
 # Page — AI Model Configuration (`/ai/models`)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
 
 ## 1. Summary
 
@@ -118,9 +118,10 @@ Secrets: `INTERNAL_SECRET = process.env.INTERNAL_SECRET`; masking helpers `maskK
 
 1. The **status toggle is disabled** in the UI (`resource.status === false`) even though the
    backend implements `PUT /status`; enable it or remove the endpoint.
-2. `system:ai-model:*` permission codes are referenced by the backend and the page, but
-   `sql/Init.sql` only seeds the menu `ai:models:view`. In practice this works only because
-   platform tenants (`000000`) and `*` holders bypass `hasPerm`. Seed the button permissions.
+2. The `system:ai-model:*` button permissions are now seeded in `sql/Init.sql`
+   (`ai_model_list_0001` / `add` / `edit` / `remove` / `status`, added 2026-09-20, all children of
+   menu `ai_model_0001`), so the buttons no longer depend on the platform-tenant bypass. Grant
+   them to new roles explicitly.
 3. The page does not gate the `list` action on `system:ai-model:list`.
 4. There is **no connection test** — a wrong `baseUrl`/`apiKey` is only discovered at chat time.
 5. `GET /internal-list` returns the plaintext `api_key`. It is secret-gated, but consider

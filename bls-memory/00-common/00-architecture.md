@@ -1,6 +1,6 @@
 # 00 — Architecture & Request Pipeline (shared)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
 
 This document describes the parts of BLS-KOX that every page depends on.
 Read it once; page documents assume it.

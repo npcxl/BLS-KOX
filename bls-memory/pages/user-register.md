@@ -1,6 +1,6 @@
 # Page — Register & Register Result (`/user/register`, `/user/register-result`)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
 
 ## 1. Summary
 

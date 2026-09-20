@@ -1,6 +1,6 @@
 # 01 — Redis (single source of truth)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
 
 > This is the **one and only** Redis document. Page documents never repeat Redis details;
 > they only say "uses Redis via `<subsystem>`" and link here.

@@ -1,6 +1,6 @@
 # Page — Storage Configuration (`/file-config/storage`)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
 
 ## 1. Summary
 
@@ -37,7 +37,11 @@ JSON-stringifies `configJson`/`policyJson`.
 
 There is **no "test connection"** feature anywhere (frontend or backend). The page has
 `resource.status = false` and no `excelMetaKey`, so there is no status toggle and no Excel
-toolbar (the declared `system:storage:import/export/status` permissions are unused).
+toolbar. Its `permissions` prop declares only
+`{import:'system:storage:import', export:'system:storage:export', create:'system:storage:add',
+edit:'system:storage:edit', remove:'system:storage:remove'}` — none of which is actually
+enforced, because `ExcelToolbar` is not rendered and the backend module only checks `jwtAuth` +
+`hasPerm`.
 
 ---
 
@@ -147,7 +151,9 @@ server-side by `buildStorageValues` and never taken from the body.
    user sees JSON. This is a real bug — see `pages/file-config-files.md`.
 4. Delete does not check whether files still reference the storage backend
    (`sys_file.storage_id`), so a storage config can be deleted while files point to it.
-5. `system:storage:import/export/status` permissions are declared but unused.
+5. The frontend declares `system:storage:import/export` but nothing enforces them (no Excel
+   toolbar is rendered and the shared Excel module only checks `jwtAuth`). A `status` permission
+   key was removed from the page on 2026-09-20 together with the disabled status toggle.
 6. `sys_storage_type` is referenced by the page config but is **not seeded** in `sql/Init.sql`,
    so the storage-type select can be empty until a dictionary is added.
 

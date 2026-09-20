@@ -1,6 +1,6 @@
 # Page — Webhook Management (`/system/webhook`)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
 
 ## 1. Summary
 
@@ -142,9 +142,9 @@ Key security properties:
 3. `GET /webhooks` has no pagination (`pagination={false}`) and returns raw snake_case
    `webhook_id`; the page defensively accepts both forms. Prefer the `wrapCamel` convention.
 4. `status` is only editable via the edit modal (no inline toggle).
-5. The page config key passed to `usePageConfig` is `'system:webhook:list'` while the seeded
-   `sys_page_config.page_code` is `PC_WEBHOOK` — verify the page code matches your seeded data,
-   otherwise the columns fall back to the component defaults.
+5. The page config key passed to `usePageConfig` is `system:webhook:list`. Verified against
+   `sql/Init.sql`: the `sys_page_config` row with **id** `PC_WEBHOOK` carries exactly that
+   `page_code`, with columns `PCC_WH_01..05`. Keep id and `page_code` in sync if you rename it.
 6. Delivery logs are recorded by both the API (`logDeliveryLocal`, for test sends) and the job
    (`logDelivery`); make sure a change keeps both paths consistent.
 

@@ -1,6 +1,6 @@
 # BLS-KOX Page Memory
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
 
 This folder is the **page-by-page operating memory** of the BLS-KOX SaaS platform.
 
@@ -40,33 +40,42 @@ page document first, then follow the shared documents in `00-common/` for cross-
 ## Version metadata & maintenance
 
 Every document starts with a machine-readable metadata line right under its H1
-(`x.y.z` = document version, `V` = the repo-root `VERSION` value, `DATE` = `YYYY-MM-DD`):
+(`x.y.z` = document version, `V` = the repo-root `VERSION` value, `SHA` = the git commit the
+content was verified against, `DATE` = `YYYY-MM-DD`):
 
 ```markdown
-> **Document version:** <x.y.z> · **Code version:** <V> · **Last verified:** <DATE>
+> **Document version:** <x.y.z> · **Code version:** <V> · **Verified commit:** <SHA> · **Last verified:** <DATE>
 ```
 
 | Field | Meaning | When to change |
 |---|---|---|
 | `Document version` | SemVer version of **this document** | Bump on a substantive rewrite (new/removed sections, re-verified facts, restructure). `patch` = correction, `minor` = new content, `major` = restructure. |
 | `Code version` | The repo-root `VERSION` value the content was verified against | Update in **every** document when the project is released (`npm run release:patch\|minor\|major` bumps `VERSION`). |
+| `Verified commit` | The git commit (`git rev-parse --short HEAD`) whose code the content was checked against | Update in **every** document after re-verifying against a new commit. Needed because `VERSION` only changes on release — the commit is what actually identifies the verified code. |
 | `Last verified` | `YYYY-MM-DD` of the last time the content was checked against the actual code | Set to the current date whenever you touch the document. |
 
 Rules:
 
 1. **Metadata is part of the document.** A document whose `Code version` is behind the current
-   repo `VERSION` must be treated as *unverified* — re-check it against the code before relying
-   on it.
+   repo `VERSION`, or whose `Verified commit` is not reachable from the current `HEAD`, must be
+   treated as *unverified* — re-check it against the code before relying on it.
 2. Every document-level change gets an entry in [`CHANGELOG.md`](CHANGELOG.md)
    (Keep a Changelog style, same convention as the project `CHANGELOG.md`).
-3. Find stale documents with (replace `1.0.0` with the current `VERSION`):
-
-   ```
-   rg "Code version:\*\* 1.0.0" bls-memory
-   ```
-
-4. These files are tracked by git — `git log -- bls-memory/` is the authoritative history; the
+3. These files are tracked by git — `git log -- bls-memory/` is the authoritative history; the
    metadata line is the fast, per-file signal.
+
+### Re-verifying after new commits
+
+```bash
+# 1. which documents are behind?
+rg "Verified commit:\*\* <old-sha>" bls-memory
+
+# 2. what changed since they were verified?
+git diff --stat <old-sha> HEAD -- bls-admin bls-server bls-java-server sql
+
+# 3. re-check only the affected documents, fix them, then update the metadata line of
+#    every re-verified document and add a CHANGELOG entry.
+```
 
 ---
 

@@ -9,16 +9,74 @@ Versioning: [Semantic Versioning](https://semver.org/) applied to the **document
 Each document also carries its own metadata line:
 
 ```markdown
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
 ```
 
 - `Document version` — SemVer of that single document.
 - `Code version` — the repo-root `VERSION` the content was verified against.
+- `Verified commit` — the git commit whose code the content was checked against.
 - `Last verified` — date of the last check against the code.
 
 Rules: see the "Version metadata & maintenance" section of [`README.md`](README.md).
 
 > The application changelog lives in the repo root `CHANGELOG.md`.
+
+---
+
+## [1.0.1] — 2026-09-20
+
+Aligned the whole document set with the code as committed on 2026-09-20
+(`HEAD = 0fc7c43`, `VERSION = 1.0.0`).
+
+Scope of the review: the two commits of that day
+(`fd1b4aa` — *fix(权限): 统一权限校验与租户隔离*, `0fc7c43` — document metadata). The changed
+code surface was: `bls-server/src/core/{crud,router,errors}.ts`,
+`bls-server/src/middleware/permission.ts`, `bls-server/src/api/auth/index.ts`,
+`bls-server/src/api/common/excel/index.ts`, the system modules
+(`ai-model, config, dept, dict, menu, package, page-config, role, storage, tenant, theme, user`),
+`sql/Init.sql` + `bls-server/migrations/20260920_012_crud_completeness.sql`,
+`bls-admin/src/hooks/usePermission.ts` and four admin pages, plus the Java backend and
+`bls-server/openapi.json`.
+
+### Added
+
+- **`Verified commit`** field in the metadata line of all 34 documents, and a matching row /
+  "Re-verifying after new commits" procedure in `README.md`.
+- Java-side note kept in sync with the same permission codes as Koa (no document change needed).
+
+### Fixed
+
+- `pages/ai-model.md` — the `system:ai-model:list/add/edit/remove/status` button permissions are
+  now seeded in `sql/Init.sql` (`ai_model_*_0001`, children of menu `ai_model_0001`); the previous
+  note that only `ai:models:view` existed was removed.
+- `pages/file-config-storage.md` — the page's `permissions` prop is
+  `{import, export, create, edit, remove}`; the `status` key was removed when the status toggle was
+  disabled. Also clarified that none of these keys is enforced (no Excel toolbar is rendered).
+- `pages/system-webhook.md` — verified that `sys_page_config` row **id** `PC_WEBHOOK` carries
+  `page_code = system:webhook:list`, which matches `usePageConfig`; the previous "verify it
+  matches" caveat was replaced with the confirmed fact.
+
+### Verified (no change required)
+
+- Permission codes for every documented endpoint, cross-checked against `hasPerm(...)` in
+  `bls-server/src/api/**` and `releasePermission(...)` in `ops-release/release-permission.ts`.
+- `bls-admin` `permissions` props on user / theme / tenant / package / config / role / ai-model /
+  storage / files / log-login pages.
+- Replay rule table (`config/replay-protection.ts`) and rate-limit rule table
+  (`security/rate-limit/rules.ts`) — both files were untouched by the day's commits.
+- `core/crud.ts` semantics documented in `00-common/00-architecture.md`
+  (`SYSTEM_FIELDS`, `permit()` → `${permPrefix}:${action}`, `softDelete ?? true`,
+  `statusField ?? 'status'`, `globalTable`), `middleware/permission.ts` dual-field permission
+  compatibility, `AuthService.profile()` returning both `perms` and `permissions`,
+  `usePermission()` reading `perms ?? permissions` with the `isAdmin === '1'` short-circuit.
+- Excel module `hasDeleted` / `tenantAware` behaviour in `00-common/06-file-and-excel-security.md`.
+- `core/router.ts` auto-registration modes, `GET /:id` + 0-rows → 404, and the
+  `filterFields`/`createFields`/`updateFields` whitelists on `system/config` and `system/theme`.
+- `CrudTablePage` still computes `canImport`/`canExport` but renders
+  `ExcelToolbar` only when `excelMetaKey` is set (so the declared import/export permissions remain
+  unenforced — still listed as a known gap).
+- Confirmed still-missing seed data: dictionary types `sys_storage_type` and
+  `sys_bucket_access_type` are referenced by page column configs but not seeded.
 
 ---
 
