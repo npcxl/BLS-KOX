@@ -1,6 +1,6 @@
 # 12 — Frontend Data Layer: hooks, CrudTablePage, services
 
-> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 60b7b37 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 9b22800 · **Last verified:** 2026-09-20
 
 The reusable half of `bls-admin`: `src/hooks/`, the shared components that pages are built from,
 and the entire service layer. If you are writing or changing a page, this is the toolkit.

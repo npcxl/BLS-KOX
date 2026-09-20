@@ -1,42 +1,114 @@
-# BLS-KOX 长期记忆（跨会话）
+# BLS-KOX — Long-term Memory (cross-session)
 
-> 只记录稳定、跨会话有用的事实。日常细节写入 `YYYY-MM-DD.md`。
+> Stable, cross-session facts only. Day-to-day detail goes into `YYYY-MM-DD.md`.
+> Merge note (2026-09-20): sections I & II originate from the code-side session, sections III & IV
+> from the documentation-side session; both were kept, de-duplicated, and translated to English
+> so AI agents parse them reliably.
 
-## 环境
+## I. Environment & tooling gotchas
 
-- 默认 `node` 是 v16，项目要求 ≥22。可用 Node 22：
-  `C:\Users\18569\.workbuddy\binaries\node\versions\22.22.2\node.exe`（把该目录前置到 PATH 后 `npm` 即可用）。
-- JDK 21：`C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot`；默认 `mvn` 跑在 JDK 8 上必须改 `JAVA_HOME`。
-- `bls-java-server` 的 Maven 依赖在本机拉不齐（Maven Central 不可达，缺 `io.jsonwebtoken:jjwt-bom:0.12.6`），
-  `mvn compile/test` 目前无法执行。
-- **写 `sql/Init.sql` 必须用 shell/脚本直写**：IDE 编辑工具对该文件的写入会被静默丢弃（报成功但未落盘）。
-  改完务必 `git diff sql/Init.sql` 复核。
-- PowerShell 的 `Get-Content`/`Select-String` 默认按 ANSI 解码，UTF-8 中文会显示乱码；判断内容用 `git diff`。
+- The default `node` on this machine is v16; the project requires **≥22**. A usable Node 22 is at
+  `C:\Users\18569\.workbuddy\binaries\node\versions\22.22.2\node.exe`
+  (prepend that directory to `PATH` and `npm` works).
+- JDK 21: `C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot`. The default `mvn` runs on
+  JDK 8, so `JAVA_HOME` must be set explicitly.
+- `bls-java-server` dependencies cannot be fetched on this machine (Maven Central unreachable,
+  missing `io.jsonwebtoken:jjwt-bom:0.12.6`), so `mvn compile/test` cannot run here.
+- **Writing `sql/Init.sql` must be done via shell/script.** Writes through the IDE edit tool are
+  silently dropped for that file (reports success, nothing lands on disk). Always verify with
+  `git diff sql/Init.sql` afterwards.
+- PowerShell `Get-Content` / `Select-String` decode as ANSI by default, so UTF-8 Chinese shows as
+  mojibake; use `git diff` to judge real content.
+- **In PowerShell, `node -e "..."` swallows quotes and the backtick is an escape character** — a
+  regex containing a SQL backtick silently matches nothing (this once produced a false
+  "`Init.sql` has 0 tables" result). Reliable alternatives: write a temporary `.js` file, run it
+  and delete it; or use `[\x60]` instead of a backtick. `findstr` piped into other commands also
+  fails — prefer Node or the IDE search tools.
 
-## 项目约定（改代码时遵守）
+## II. Project conventions (follow when changing code)
 
-- 权限码以后端为准；前端 `permissions` 与 SQL 种子必须与后端 `hasPerm('...')` 完全一致
-  （常见坑：前端写 `:create` 而后端/SQL 是 `:add`）。
-- `ctx.state.user` 同时提供 `perms` 与 `permissions`（`AuthService.profile` 双写），`hasPerm` 兼容两者。
-- Koa CRUD 工厂（`core/crud.ts`）契约：
-  - 6 个端点 `GET /list`、`GET /:id`、`POST /add`、`PUT /edit`、`DELETE /remove`、`PUT /status`；
-  - 推荐用 `defineCrudConfig({ table, pkField, fields, actions, createDefaults })`：`fields` 是单一字段来源，
-    自动推导 createFields/updateFields/searchFields/filterFields/响应投影/Zod/statusField；
-  - `actions` 关闭的端点不注册；显式数组与显式 `schema` 优先于 `fields` 派生；无 `fields` 的旧配置保持旧行为；
-  - 配置非法（标识符/枚举/范围/系统字段开放写入/无可用 add|edit 字段/status 缺字段）在**路由注册阶段抛错** → 应用启动失败；
-  - 审计字段（create_by/create_time/update_by/update_time）永不可由请求体写入，只能由 `createDefaults` 提供；
-  - `select:false` 的字段不进入 list/detail 响应；响应投影始终包含主键；
-  - 字段白名单 `createFields` / `updateFields` / `filterFields`，系统字段（主键/tenant_id/deleted/审计字段）不可写；
-  - 租户、软删除、Data Scope 由 `applyScope()` 统一构造，事务内外必须复用（不要在事务里重建查询）；
-  - 修改/删除/状态/详情命中 0 行 → 404；批量删除统一请求体 `{ ids: [] }`（Koa 与 Java 均兼容裸数组/逗号串）。
-- 全局表（无 `tenant_id`）：`sys_menu`、`sys_package`、`sys_package_menu`、`sys_role_menu`、`sys_user_role`。
-  其中 `sys_menu` / `sys_package` / `sys_package_menu` / `sys_role_menu` **没有 `deleted` 列**，不要写入该字段。
-- 多租户表的 `tenant_id` 只能来自服务端请求上下文，请求体不可覆盖。
-- 改页面行为或接口时同步更新 `docs/crud.md`、`docs/backend-koa.md`、`docs/api-compatibility.md`
-  与 `sql/Init.sql`；已部署库用 `bls-server/migrations/` 增量脚本（`npm run db:migrate`）。
-- **`bls-memory/` 必须同步**（用户明确要求「改逻辑就要更新」）：该目录是按页面的「前端操作 → 后端校验」
-  AI 记忆库（英文，26 个页面文档 + `00-common/` 共享文档）。改逻辑后要更新对应 `pages/*.md` 与受影响的
-  `00-common/*.md`，并在 `bls-memory/CHANGELOG.md` 追加条目（Keep a Changelog + 文档集 SemVer）。
-  每个文档头部元信息行格式：`> **Document version:** x.y.z · **Code version:** V · **Verified commit:** SHA · **Last verified:** DATE`；
-  `Verified commit` 记录「应用代码」所在提交，仅改 `bls-memory/`/`docs/`/`.codebuddy/` 的提交不使验证失效。
-  代码未提交但已验证时：元信息行保留当前 HEAD，并在正文加一行 uncommitted 提示。
+- The **backend is the source of truth for permission codes**; the frontend `permissions` prop and
+  the SQL seed must match `hasPerm('...')` exactly (common bug: frontend writes `:create` while the
+  backend/SQL uses `:add`).
+- `ctx.state.user` exposes both `perms` and `permissions` (`AuthService.profile` duplicates them);
+  `hasPerm` accepts either.
+- Koa CRUD factory (`core/crud.ts` + `core/crud-config.ts`) contract:
+  - 6 endpoints: `GET /list`, `GET /:id`, `POST /add`, `PUT /edit`, `DELETE /remove`, `PUT /status`;
+  - preferred declaration is `defineCrudConfig({ table, pkField, fields, actions, createDefaults })`
+    where `fields` is the **single field source** and automatically derives
+    createFields / updateFields / searchFields / filterFields / response projection / Zod / statusField;
+  - endpoints disabled via `actions` are not registered; explicit arrays and an explicit `schema`
+    take precedence over what `fields` derives; legacy configs without `fields` keep the old behaviour;
+  - an invalid config (bad identifier, bad enum/range, a system field opened for writing, no usable
+    add|edit field, missing status field) **throws during route registration → the application fails
+    to start**;
+  - audit fields (`create_by`, `create_time`, `update_by`, `update_time`) can never be written from
+    a request body — only via `createDefaults`;
+  - fields with `select: false` are omitted from list/detail responses; the projection always
+    contains the primary key;
+  - write whitelists are `createFields` / `updateFields` / `filterFields`; system fields
+    (PK, `tenant_id`, `deleted`, audit fields) are never writable;
+  - tenant, soft-delete and Data Scope conditions are built once by `applyScope()` and must be
+    reused inside transactions (never rebuild the query inside a transaction);
+  - 0 affected rows on edit / remove / status / detail → 404; batch delete always takes
+    `{ ids: [] }` (Koa and Java also accept a bare array or a comma-separated string).
+- Global tables (no `tenant_id`): `sys_menu`, `sys_package`, `sys_package_menu`, `sys_role_menu`,
+  `sys_user_role`. Of these, `sys_menu`, `sys_package`, `sys_package_menu` and `sys_role_menu`
+  have **no `deleted` column** — never write that field for them.
+- `tenant_id` of a multi-tenant table may only come from the server-side request context; the
+  request body can never override it.
+- When changing page behaviour or an API, also update `docs/crud.md`, `docs/backend-koa.md`,
+  `docs/api-compatibility.md` and `sql/Init.sql`; already-deployed databases use the incremental
+  scripts in `bls-server/migrations/` (`npm run db:migrate`).
+- **`bls-memory/` must be kept in sync** (user requirement: "changing logic means updating it").
+  It is the per-page AI memory library (English). After a logic change, update the matching
+  `pages/*.md` and the affected `00-common/*.md`, and append an entry to
+  `bls-memory/CHANGELOG.md` (Keep a Changelog + SemVer for the document set). See section III.
+- Architecture quick reference: frontend `bls-admin` (UmiJS Max + Ant Design Pro 6, port 9000);
+  main backend `bls-server` (Koa 3, 6001 / Docker 7001); `bls-ai-service` 7201;
+  `bls-event-service` 7101; the Java and Rust backends are compatible alternatives — only one
+  backend runs at a time. **The frontend bundler is `utoopack` (`@utoo/pack`), not mfsu/esbuild**;
+  **the schema has no foreign-key constraints**; the platform tenant id is the string `'000000'`;
+  business responses use `{code, message, data, total}` with pagination `pageNum` / `pageSize`
+  (max 100).
+
+## III. Documentation & memory system (the most important convention here)
+
+- **`bls-memory/` is the single entry point for page-level memory**, and the repo-root `AGENTS.md`
+  points at it.
+  - `bls-memory/README.md` = page index + usage guide + version-metadata rules + page template.
+  - `bls-memory/pages/*.md` = one file per page (frontend action → service function → HTTP endpoint
+    → backend handler & validation → permission codes → tenant isolation → replay/rate-limit →
+    frontend-only validation → known gaps → extension steps).
+  - `bls-memory/00-common/00..12-*.md` = 13 cross-cutting documents (architecture, redis,
+    replay-protection, rate-limiting, auth-and-permissions, security-log-and-event-center,
+    file-and-excel-security, database, external-api-and-service-auth, realtime-websocket,
+    job-api-and-queue, frontend-shell, frontend-data-layer).
+  - `bls-memory/CHANGELOG.md` = changelog of the document set.
+- **Sync obligation after changing code**: update the memory document → refresh the metadata line
+  under its H1 (`Document version` / `Code version` = repo-root `VERSION` / `Verified commit` /
+  `Last verified`) → add an entry to `bls-memory/CHANGELOG.md`.
+  `Verified commit` records only commits that **changed application code**; documentation-only
+  commits (touching just `bls-memory/`, `docs/`, `.codebuddy/`) do not invalidate verification.
+  If code is verified but not yet committed, keep the current HEAD in the metadata line, add an
+  "uncommitted" note in the body, and re-stamp `Verified commit` once it is committed. Never
+  re-stamp a document that was not actually re-read.
+- **Redis is documented once**: any new Redis key must be added to the namespace table in
+  `00-common/01-redis.md`.
+- **The database is documented once**: a new table/column must be added to
+  `00-common/07-database.md`, plus `sql/Init.sql` and a new file in `bls-server/migrations/`.
+- **`.codex/skills/bls-kox/references/database-schema.md` is stale** (covers only 18 of the 40
+  tables, and `sys_job` → really `sys_jobs`, `sys_file_config` → really `sys_storage_config`).
+  Historical reference only; the schema authority is `00-common/07-database.md` and `sql/Init.sql`.
+
+## IV. Collaboration preferences
+
+- Diagnose first, then give precise commands and explain their impact — never do sweeping
+  destructive cleanups (the user has rejected a bulk force-remove command before).
+- **Never run `git commit` unless explicitly asked.** When done, report the change list and a
+  suggested commit message.
+- Reply in Simplified Chinese; documents written for AI (`bls-memory/`, `AGENTS.md`, this file)
+  are in English so models parse them reliably.
+- Several sessions may be working in this workspace in parallel (this happened repeatedly):
+  check `git status` before editing, do not overwrite another session's uncommitted work, and call
+  out any concurrent change you notice in your reply.

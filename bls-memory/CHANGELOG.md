@@ -23,6 +23,42 @@ Rules: see the "Version metadata & maintenance" section of [`README.md`](README.
 
 ---
 
+## [1.3.1] — 2026-09-20
+
+Re-stamped `Verified commit` now that the CRUD-config refactor is committed, and wired the
+memory set into the repo-root agent rules.
+
+### Changed
+
+- The working tree that **1.3.0** was verified against is now committed as **`9b22800`**
+  (`docs(memory): 同步 CRUD 配置式改造与 memory 文档集`), which also committed this document set
+  (including the P2/P3 documents `00-common/07..12` + `pages/global-search.md`) and
+  `bls-server/src/core/crud-config.ts` / `crud-keys.ts`.
+- `Verified commit: 60b7b37` → **`9b22800`** in the five documents touched by 1.3.0:
+  `00-common/00-architecture.md`, `00-common/08-external-api-and-service-auth.md`,
+  `00-common/12-frontend-data-layer.md`, `pages/system-config.md`, `pages/system-theme.md`.
+  `Last verified` stays `2026-09-20` and the document versions are unchanged — only the commit
+  that identifies the verified code changed.
+- **`AGENTS.md`** (repo root) rewritten **in English** (like the rest of the agent-facing memory):
+  `bls-memory/` is now the first thing an agent is told to read (index → page document →
+  `00-common/*`), with a table of all 13 shared documents, the post-change sync obligations
+  (metadata line + `CHANGELOG.md`, Redis keys → `01-redis.md`, tables/columns → `07-database.md` +
+  `sql/Init.sql` + migrations), and an explicit warning that
+  `.codex/skills/bls-kox/references/database-schema.md` is stale (18 of 40 tables, two tables
+  misnamed) with a `rg` recipe to read exact DDL instead.
+
+### Note on `Verified commit` semantics
+
+Documents are only re-stamped to a commit that was actually re-checked against. The CRUD-config
+commit (`9b22800`) only touched `core/crud.ts`, `core/crud-config.ts`, `core/crud-keys.ts`,
+`core/router.ts`, `scripts/generate-openapi.ts` and `openapi.json`, so documents about the
+database, Redis, replay protection, rate limiting, auth, the file/Excel pipeline, the WebSocket
+protocol, the job queue and the frontend shell keep their earlier `Verified commit` — they are
+**not** stale, they simply were not affected. Re-stamp a document when you re-read it against a
+newer commit.
+
+---
+
 ## [1.3.0] — 2026-09-20
 
 Re-verified the document set against the **config-style CRUD factory** and resolved the

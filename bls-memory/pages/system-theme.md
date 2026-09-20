@@ -1,6 +1,6 @@
 # Page — Theme Configuration (`/system/theme`)
 
-> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 60b7b37 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 9b22800 · **Last verified:** 2026-09-20
 
 ## 1. Summary
 

@@ -1,6 +1,6 @@
 # 08 — API Surface, Versioning & Service Auth (shared)
 
-> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 60b7b37 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 9b22800 · **Last verified:** 2026-09-20
 
 How every request can reach the Koa backend, and how each entry point is authenticated.
 Also covers error formatting, HTTP metrics labels, Swagger and the OpenAPI generator.
