@@ -4,6 +4,7 @@ import { join, relative } from "node:path";
 import { jwtAuth } from "../middleware/auth";
 import type { Context } from "koa";
 import { metricsRegistry } from "../observability/metrics";
+import { env } from "../config/env";
 
 function camelToKebab(name: string): string {
   return name.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase());
@@ -121,11 +122,12 @@ function scanAndRegister(baseDir: string, currentDir: string, apiRouter: Router)
     }
   }
 
-  if (!indexFile) {
-    for (const entry of entries) {
-      const fullPath = join(currentDir, entry);
-      try { if (lstatSync(fullPath).isDirectory() && !entry.startsWith(".") && !entry.startsWith("_")) scanAndRegister(baseDir, fullPath, apiRouter); } catch { /* skip */ }
-    }
+  // 子目录始终递归：允许「自身 index.ts（CRUD / 函数路由）+ 子目录（自定义 Router）」共存，
+  // 例如 src/api/auth/index.ts 与 src/api/auth/captcha/index.ts。
+  for (const entry of entries) {
+    if (entry === "index.ts" || entry === "index.js") continue;
+    const fullPath = join(currentDir, entry);
+    try { if (lstatSync(fullPath).isDirectory() && !entry.startsWith(".") && !entry.startsWith("_")) scanAndRegister(baseDir, fullPath, apiRouter); } catch { /* skip */ }
   }
 }
 
@@ -155,6 +157,12 @@ export function createRouter(): Router {
   const router = new Router({ prefix: "/api" });
   router.get("/health", (ctx) => { ctx.body = { status: "ok" }; });
   router.get("/metrics", async (ctx) => {
+    // 阶段七：生产环境默认关闭匿名 metrics（改由 /internal/metrics 提供，需服务鉴权）
+    if (!env.security.metricsPublic) {
+      ctx.status = 404;
+      ctx.body = { code: 404, message: '接口不存在' };
+      return;
+    }
     ctx.set('Content-Type', metricsRegistry.contentType);
     ctx.body = await metricsRegistry.metrics();
   });

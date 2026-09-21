@@ -24,7 +24,10 @@
     "db:backup": "tsx src/scripts/backup.ts",
     "db:restore": "tsx src/scripts/restore.ts",
     "openapi": "tsx src/scripts/generate-openapi.ts",
-    "openapi:serve": "tsx src/scripts/generate-openapi.ts --serve"
+    "openapi:check": "tsx src/scripts/check-openapi-drift.ts",
+    "openapi:serve": "tsx src/scripts/generate-openapi.ts --serve",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "secrets:rotate": "tsx src/scripts/rotate-secrets.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.5.0",

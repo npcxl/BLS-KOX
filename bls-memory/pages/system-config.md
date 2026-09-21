@@ -1,17 +1,21 @@
 # Page — System Parameters (`/system/config`)
 
-> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 9b22800 · **Last verified:** 2026-09-20
+> **Document version:** 1.2.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
+>
+> *Uncommitted note:* the “登录人机验证” panel and the `sys.login.captcha.*` keys were verified
+> against `61aaf9a` + uncommitted captcha changes.
 
 ## 1. Summary
 
 | Item | Value |
 |---|---|
 | Route | `/system/config` (name 系统参数) |
-| Component | `bls-admin/src/pages/system/config/index.tsx` (renders `CrudTablePage`) |
-| Purpose | Tenant-scoped `sys_config` key/value CRUD + one-click global-search index rebuild |
+| Component | `bls-admin/src/pages/system/config/index.tsx` (renders `CrudTablePage`) + `pages/system/config/components/CaptchaSettingPanel.tsx` |
+| Purpose | Tenant-scoped `sys_config` key/value CRUD + one-click global-search index rebuild + the “登录人机验证” switch/advanced panel |
 | Backend module | `bls-server/src/api/system/config/index.ts` (**mixed mode**) |
 | Tables | `sys_config`, `sys_page_column_config` |
 | Shared docs | `00-common/01-redis.md` (config cache), `03-rate-limiting.md`, `06-file-and-excel-security.md` |
+| Captcha | [pages/login-captcha.md](login-captcha.md) |
 
 This module uses **mixed mode**: `export default publicRouter` + `export const config` (so
 `defineCrudModule` also runs). Because mixed mode returns early in the router scanner, the other
@@ -35,10 +39,20 @@ auto-registered — `current` / `public-*` are defined on the public router expl
 | Refresh layout settings after certain saves | `refreshGlobalSettings()` → `themeCurrent()` + `systemCurrent()` | GET | `/api/system/theme/current` + `/api/system/config/current` |
 | Page columns | `usePageConfig('system_config')` | GET | `/api/system/page-config/page/system_config/columns` |
 | Dicts | `useMultiDict(['sys_status','sys_config_type'])` | GET | `/api/system/dict/data/type?dictType=...` |
+| **登录人机验证 panel** — load the 9 `sys.login.captcha.*` rows | `CaptchaSettingPanel` → `listResource` | GET | `/api/system/config/list?pageNum=1&pageSize=200` (filtered client-side) |
+| panel — toggle 开启/关闭 | `editResource` / `addResource` (`sys.login.captcha.enabled`) | PUT / POST | `/api/system/config/edit` · `/add` |
+| panel — save 高级配置 | `editResource` / `addResource` ×8 keys | PUT / POST | `/api/system/config/edit` · `/add` |
 
-`handleSaved` only refreshes global settings when the saved `configKey` is one of:
+`CaptchaSettingPanel` (mounted above the table, gated by `system:config:edit` **or**
+`system:config:add` via `usePermission`) reads the same `sys_config` rows and writes them back with
+the same endpoints, so the table and the panel stay consistent. Rows are created on demand
+(`add`) when a tenant has never customised them. Every save triggers the CRUD `onWrite` hook →
+`invalidateConfigCache(tid)`, so the new values take effect immediately.
+
+`handleSaved` refreshes global settings when the saved `configKey` is one of:
 `theme.default`, `sys.app.name`, `sys.demo.enabled`, `sys.upload.maxSize`, `sys.version`,
-`sys.user.defaultPassword`.
+`sys.user.defaultPassword`; for any `sys.login.captcha.*` key it only shows
+“登录人机验证配置已更新，立即生效” (the login page re-reads the public captcha config on every visit).
 
 ---
 
@@ -88,9 +102,36 @@ config with **no** writable field fails at **startup** — a read-only module mu
 ### Caching
 
 `bls-server/src/config/dynamic-config.ts` caches raw `sys_config` rows in Redis at
-`config:{tenantId}` for **60 s**, with a strict typed view (`multiLogin`, `uploadLimitMB`,
-`demoEnabled`, `appName`). Any config write deletes the key. If Redis is unavailable the cache
-falls back to the DB. See `00-common/01-redis.md` §3.6.
+`config:{tenantId}` for **60 s**, with a strict typed view. Any config write deletes the key. If
+Redis is unavailable the cache falls back to the DB. See `00-common/01-redis.md` §3.6.
+
+Managed keys (`MANAGED_CONFIG_KEYS`) and their validation:
+
+| Key | Type | Validation | Typed field |
+|---|---|---|---|
+| `sys.login.multiDevice` | bool | `1/true/0/false` | `multiLogin` |
+| `sys.upload.maxSize` | number | 1–500 | `uploadLimitMB` |
+| `sys.demo.enabled` | bool | `1/true/0/false` | `demoEnabled` |
+| `sys.app.name` | string | — | `appName` |
+| `sys.login.captcha.enabled` | bool | `1/true/0/false` | `captchaEnabled` |
+| `sys.login.captcha.mode` | **enum** | `off` \| `adaptive` \| `always` | `captchaMode` |
+| `sys.login.captcha.silentThreshold` | number | 0–100 | `captchaSilentThreshold` |
+| `sys.login.captcha.forceAfterFailures` | number | 1–100 | `captchaForceAfterFailures` |
+| `sys.login.captcha.challengeTtlSeconds` | number | 30–900 | `captchaChallengeTtlSeconds` |
+| `sys.login.captcha.tokenTtlSeconds` | number | 30–600 | `captchaTokenTtlSeconds` |
+| `sys.login.captcha.secondaryTypes` | **csv subset** | `slider`, `rotate` (unknown items dropped) | `captchaSecondaryTypes` |
+| `sys.login.captcha.maxAttempts` | number | 1–20 | `captchaMaxAttempts` |
+| `sys.login.captcha.provider` | **enum** | `builtin` | `captchaProvider` |
+
+An invalid value (wrong type / out of range / unknown enum member / a CSV list that loses every
+item) is **replaced by the declared default** and logged as
+`[dynamic-config] invalid … , using default`; it is never silently coerced. Numbers must match
+`^-?\d+(\.\d+)?$` (so `12abc` is rejected). `toPublicCaptchaConfig()` projects only
+`{enabled, mode, secondaryTypes}` for the public endpoint.
+
+Seed rows for the 9 captcha keys (tenant `000000`): `sql/Init.sql` (`000406`–`000414`, lines 68–76)
+for fresh installs **and** `bls-server/migrations/20260922_017_login_captcha.sql` for already
+deployed databases. No DDL in either (pure seed).
 
 ---
 
@@ -115,6 +156,9 @@ closed via `requireTenantId()`. Public reads fall back to `000000`.
 
 - `configName`, `configKey`, `configValue` required.
 - `configType` default `'sys'`; `status` default `'0'`.
+- `CaptchaSettingPanel`: numeric ranges mirror the backend schema (threshold 0-100, force 1-100,
+  challenge TTL 30-900, token TTL 30-600, attempts 1-20); at least one `secondaryTypes` value must
+  be selected. The panel only offers `builtin` as the provider.
 
 ## 6. Backend-only rules
 
@@ -123,6 +167,8 @@ closed via `requireTenantId()`. Public reads fall back to `000000`.
 - **No uniqueness check** on `config_key` — duplicates are possible.
 - No length caps on `config_value`.
 - `config_key` cannot be edited after creation.
+- Values consumed through Dynamic Config **are** type/range/enum validated at read time (see the
+  table in §3) — that validation is the last line of defence if a bad value is written anyway.
 
 ---
 

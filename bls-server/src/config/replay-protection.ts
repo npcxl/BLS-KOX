@@ -24,8 +24,8 @@ export interface ReplayRule {
   nonceTtlSeconds?: number;
   /** 是否启用幂等 */
   idempotent?: boolean;
-  /** 幂等 Key Redis TTL（秒），默认 3600 */
-  idempotentTtlSeconds?: number;
+  /** 幂等 Key Redis TTL（秒），默认 3600 */ 
+  idempotentTtlSeconds?: number
 }
 
 export const defaultReplayRules: ReplayRule[] = [

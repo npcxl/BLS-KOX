@@ -24,6 +24,7 @@ vi.mock('../../../../middleware/tenant', () => ({
 vi.mock('../../../../middleware/auth', () => ({ jwtAuth: () => async (_ctx: any, next: any) => next() }));
 vi.mock('../../../../middleware/permission', () => ({ hasPerm: () => async (_ctx: any, next: any) => next() }));
 
+import { decryptSecret } from '../../../../shared/utils/secret-crypto';
 import router from '../index';
 import { FakeDb } from '../../../../core/__tests__/fake-db';
 import { makeCtx, callRoute as call } from '../../../../core/__tests__/test-kit';
@@ -95,11 +96,15 @@ describe('ai-model 编辑密钥策略', () => {
     expect(h.db.rows(T).find((r: any) => r.config_id === 'M2').api_key).toBe('sk-t1-abcdefghijklmnop');
   });
 
-  it('传入新 apiKey → 更新', async () => {
+  it('传入新 apiKey → 以密文落库（数据库中不存在明文）', async () => {
     await call(router, 'put', '/system/ai-model/edit', makeCtx({
       request: { body: { configId: 'M2', apiKey: 'sk-brand-new-key' } },
     }));
-    expect(h.db.rows(T).find((r: any) => r.config_id === 'M2').api_key).toBe('sk-brand-new-key');
+    const stored = h.db.rows(T).find((r: any) => r.config_id === 'M2').api_key;
+    expect(stored).not.toBe('sk-brand-new-key');
+    expect(stored.startsWith('enc:v1:')).toBe(true);
+    expect(stored).not.toContain('sk-brand-new-key');
+    expect(decryptSecret(stored)).toBe('sk-brand-new-key');
   });
 
   it('跨租户编辑 → 404 且数据未变', async () => {

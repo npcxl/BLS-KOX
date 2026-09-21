@@ -2,6 +2,7 @@ import Router from 'koa-router';
 import { Context } from 'koa';
 import { z } from 'zod';
 import { getDb } from '../../../core/database';
+import { encryptSecret, decryptSecret } from '../../../shared/utils/secret-crypto';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
 import { requireTenantId } from '../../../middleware/tenant';
@@ -24,13 +25,23 @@ function maskKey(key: unknown): string | null {
   return `${value.slice(0, 4)}****${value.slice(-4)}`;
 }
 
+/** 阶段五：DB 中是 AES-256-GCM 密文，展示前先解密（解密失败不暴露任何内容） */
+function safeDecrypt(value: unknown): string | null {
+  if (!value) return null;
+  try {
+    return decryptSecret(String(value));
+  } catch {
+    return null;
+  }
+}
+
 /** 判断是否为脱敏占位值（编辑时不应写回数据库） */
 function isMaskedValue(value: unknown): boolean {
   return typeof value === 'string' && value.includes('****');
 }
 
 function maskRow(row: Record<string, any>): Record<string, any> {
-  return { ...row, api_key: maskKey(row.api_key) };
+  return { ...row, api_key: maskKey(safeDecrypt(row.api_key)) };
 }
 
 function getUserId(ctx: Context): string {
@@ -105,7 +116,9 @@ router.get('/internal-list', async (ctx: Context) => {
   if (tenantId) q = q.where('tenant_id', '=', tenantId);
 
   const rows = await q.orderBy('sort_num', 'asc').execute();
-  ctx.body = { code: 200, data: rows, total: rows.length, message: '操作成功' };
+  // 内部服务（bls-ai-service）需要真实密钥：解密后返回，仅在内部鉴权成功后
+  const decrypted = rows.map((row: any) => ({ ...row, api_key: safeDecrypt(row.api_key) }));
+  ctx.body = { code: 200, data: decrypted, total: rows.length, message: '操作成功' };
 });
 
 /** GET /list — 分页列表（api_key 脱敏） */
@@ -151,7 +164,7 @@ router.post('/add', jwtAuth(), hasPerm('system:ai-model:add'), async (ctx: Conte
     model_type: body.modelType,
     provider: body.provider,
     model_id: body.modelId,
-    api_key: body.apiKey ?? null,
+    api_key: encryptSecret(body.apiKey ?? null),
     base_url: body.baseUrl ?? null,
     temperature: body.temperature ?? 0.3,
     max_tokens: body.maxTokens ?? 4096,
@@ -213,7 +226,7 @@ router.put('/edit', jwtAuth(), hasPerm('system:ai-model:edit'), async (ctx: Cont
   const incomingKey = body.apiKey;
   const keepExistingKey = incomingKey === undefined || incomingKey === null
     || incomingKey === '' || isMaskedValue(incomingKey);
-  if (!keepExistingKey) updateData.api_key = incomingKey;
+  if (!keepExistingKey) updateData.api_key = encryptSecret(incomingKey);
 
   const affected = await db.transaction().execute(async (trx: any) => {
     if (updateData.is_default === '1') {

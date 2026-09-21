@@ -23,7 +23,7 @@ interface OrCond {
 interface State {
   filters: Pred[];
   sets: Row | null;
-  values: Row | null;
+  values: Row | Row[] | null;
   selectAll: boolean;
   projection: string[] | null;
   count: boolean;
@@ -46,6 +46,14 @@ function matchCond(row: Row, cond: Cond): boolean {
   switch (cond.op) {
     case '=': return String(value) === String(cond.val);
     case '!=': return String(value) !== String(cond.val);
+    case 'is':
+      return cond.val === null || cond.val === undefined
+        ? value === null || value === undefined
+        : String(value) === String(cond.val);
+    case '>': return value !== null && value !== undefined && String(value) > String(cond.val);
+    case '<': return value !== null && value !== undefined && String(value) < String(cond.val);
+    case '>=': return value !== null && value !== undefined && String(value) >= String(cond.val);
+    case '<=': return value !== null && value !== undefined && String(value) <= String(cond.val);
     case 'in': return Array.isArray(cond.val) && cond.val.map(String).includes(String(value));
     case 'like': {
       const pattern = String(cond.val).replace(/%/g, '');
@@ -204,7 +212,7 @@ export class FakeBuilder {
     return this.clone({ offset: n });
   }
 
-  values(values: Row): FakeBuilder {
+  values(values: Row | Row[]): FakeBuilder {
     return this.clone({ values });
   }
 
@@ -240,14 +248,22 @@ export class FakeBuilder {
 
   async execute(): Promise<Row[]> {
     if (this.op === 'insert') {
-      const values = { ...(this.state.values ?? {}) };
+      const list: Row[] = Array.isArray(this.state.values)
+        ? this.state.values
+        : [this.state.values ?? {}];
       const target = this.db.rows(this.table);
-      const pkLike = Object.keys(values).find((k) => k.endsWith('_id'));
-      if (pkLike && target.some((r) => String(r[pkLike]) === String(values[pkLike]))) {
-        throw new Error('Duplicate entry');
+      const inserted: Row[] = [];
+      for (const raw of list) {
+        const values = { ...raw };
+        // 复合键 = 全部非空 *_id 列（单主键表→主键；关联表→复合主键），与真实 DB 的唯一约束近似
+        const idKeys = Object.keys(values).filter((k) => k.endsWith('_id') && values[k] !== null && values[k] !== undefined);
+        if (idKeys.length > 0 && target.some((r) => idKeys.every((k) => String(r[k]) === String(values[k])))) {
+          throw new Error('Duplicate entry');
+        }
+        target.push(values);
+        inserted.push(values);
       }
-      target.push(values);
-      return [values];
+      return inserted;
     }
 
     if (this.op === 'update') {

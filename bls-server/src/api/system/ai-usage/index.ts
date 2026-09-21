@@ -5,6 +5,8 @@ import { jwtAuth } from '../../../middleware/auth';
 import { getCurrentTenantId } from '../../../middleware/tenant';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { logger } from '../../../core/logger';
+import { quotaService } from '../../../services/quota-service';
+import { QUOTA_KEYS } from '../../../shared/constants/entitlements';
 
 const router = new Router({ prefix: '/system/ai-usage' });
 
@@ -47,7 +49,33 @@ router.post('/report', async (ctx: Context) => {
       error_msg: b.errorMsg || null,
       stream_mode: b.streamMode ? 1 : 0,
     }).execute();
-    ctx.body = { code: 200, data: {}, message: 'ok' };
+
+    // 阶段三：AI tokens / 成本配额
+    // 上报属于“记账”，模型调用已经发生，因此超限不阻塞写入；
+    // 但会把 quotaExceeded 回给 AI 服务，由其停止后续调用。
+    let quotaExceeded: { quotaKey: string; limit: number | null; used: number } | null = null;
+    const tenantId = String(b.tenantId ?? '');
+    const totalTokens = Number(b.totalTokens ?? 0);
+    const estimatedCost = Number(b.estimatedCost ?? 0);
+    if (tenantId) {
+      const consumes: Array<[string, number]> = [];
+      if (totalTokens > 0) consumes.push([QUOTA_KEYS.MAX_AI_TOKENS_MONTHLY, totalTokens]);
+      if (estimatedCost > 0) consumes.push([QUOTA_KEYS.MAX_AI_COST_MONTHLY, estimatedCost]);
+      for (const [key, delta] of consumes) {
+        try {
+          await quotaService.consume(tenantId, key, delta, { reason: 'ai.usage' });
+        } catch (quotaErr: any) {
+          quotaExceeded = {
+            quotaKey: key,
+            limit: quotaErr?.details?.limit ?? null,
+            used: quotaErr?.details?.used ?? 0,
+          };
+          logger.warn('[AI-Usage] quota exceeded', { tenantId, quotaKey: key, delta });
+        }
+      }
+    }
+
+    ctx.body = { code: 200, data: { quotaExceeded }, message: 'ok' };
   } catch (err: any) {
     logger.error('[AI-Usage] report error: %s', err.message);
     ctx.status = 500;

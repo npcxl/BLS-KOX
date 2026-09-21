@@ -178,23 +178,34 @@ describe('Webhook', () => {
 
   // ====== 2. hasPerm 中间件真实调用 ======
 
-  it('hasPerm: 超管(000000) → next 通过', async () => {
+  it('hasPerm: 平台超级管理员（000000 + isAdmin + admin 角色）→ next 通过', async () => {
     const mw = hasPermMw('system:webhook:add');
     let called = false;
     const ctx = makeCtx({
       path: '/system/webhooks', method: 'POST',
-      state: { user: { userId: 'u0', tenantId: '000000', username: 'admin', perms: [] } },
+      state: { user: { userId: 'u0', tenantId: '000000', username: 'admin', isAdmin: '1', perms: [], roles: [{ roleKey: 'admin' }] } },
     });
     await mw(ctx, async () => { called = true; });
     expect(called).toBe(true);
   });
 
-  it('hasPerm: * 权限 → next 通过', async () => {
+  it('hasPerm: 平台租户普通用户不再自动绕过 → 403（阶段二）', async () => {
     const mw = hasPermMw('system:webhook:add');
     let called = false;
     const ctx = makeCtx({
       path: '/system/webhooks', method: 'POST',
-      state: { user: { userId: 'u1', tenantId: 'T001', username: 'super', perms: ['*'] } },
+      state: { user: { userId: 'u9', tenantId: '000000', username: 'ops', isAdmin: '0', perms: ['system:user:list'], roles: [{ roleKey: 'operator' }] } },
+    });
+    await expect(mw(ctx, async () => { called = true; })).rejects.toThrow();
+    expect(called).toBe(false);
+  });
+
+  it('hasPerm: 平台超级管理员 + * 权限 → next 通过', async () => {
+    const mw = hasPermMw('system:webhook:add');
+    let called = false;
+    const ctx = makeCtx({
+      path: '/system/webhooks', method: 'POST',
+      state: { user: { userId: 'u1', tenantId: '000000', username: 'super', isAdmin: '1', perms: ['*'], roles: [] } },
     });
     await mw(ctx, async () => { called = true; });
     expect(called).toBe(true);

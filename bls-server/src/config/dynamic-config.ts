@@ -2,7 +2,8 @@
  * Dynamic Configuration Center
  *
  * Strict schema enforced on both Redis cache and DB reads.
- * Numbers/booleans: strict parsing, no loose coercion.
+ * Numbers/booleans/enums/CSV: strict parsing, no loose coercion — an invalid value falls back to
+ * the declared default and logs a warning, it is never silently coerced.
  * Injectable deps for testability.
  */
 import { getDb as defaultGetDb } from '../core/database';
@@ -12,20 +13,71 @@ import { logger } from '../core/logger';
 export const CACHE_PREFIX = 'config:';
 export const CACHE_TTL = 60;
 
+/** 登录人机验证模式 */
+export type CaptchaMode = 'off' | 'adaptive' | 'always';
+export const CAPTCHA_MODES: readonly CaptchaMode[] = ['off', 'adaptive', 'always'];
+
+/** 二级人机验证类型（第一版） */
+export type CaptchaSecondaryType = 'slider' | 'rotate';
+export const CAPTCHA_SECONDARY_TYPES: readonly CaptchaSecondaryType[] = ['slider', 'rotate'];
+
+/** 人机验证提供方（第一版仅内置实现） */
+export const CAPTCHA_PROVIDERS: readonly string[] = ['builtin'];
+
 export interface DynamicConfig {
   multiLogin: boolean;
   uploadLimitMB: number;
   demoEnabled: boolean;
   appName: string;
+  // ===== 登录人机验证（sys.login.captcha.*）=====
+  /** 是否开启登录人机验证 */
+  captchaEnabled: boolean;
+  /** off | adaptive | always */
+  captchaMode: CaptchaMode;
+  /** 静默验证通过阈值（0-100） */
+  captchaSilentThreshold: number;
+  /** 同一账号近期连续登录失败达到该值 → 强制二级验证 */
+  captchaForceAfterFailures: number;
+  /** challenge 有效期（秒） */
+  captchaChallengeTtlSeconds: number;
+  /** captchaToken 有效期（秒） */
+  captchaTokenTtlSeconds: number;
+  /** 允许的二级验证类型 */
+  captchaSecondaryTypes: CaptchaSecondaryType[];
+  /** 单个 challenge 允许的最大验证次数 */
+  captchaMaxAttempts: number;
+  /** 提供方（builtin） */
+  captchaProvider: string;
 }
 
 type RedisLike = { get(k: string): Promise<string | null>; set(k: string, v: string, mode: string, ttl: number): Promise<any>; del(k: string): Promise<number> };
 
-const SCHEMA: Record<string, { type: 'bool' | 'number' | 'string'; default: any; min?: number; max?: number }> = {
+type ConfigFieldType = 'bool' | 'number' | 'string' | 'enum' | 'csv';
+
+interface ConfigSchemaEntry {
+  type: ConfigFieldType;
+  default: any;
+  min?: number;
+  max?: number;
+  /** enum / csv 的允许值 */
+  values?: readonly string[];
+}
+
+const SCHEMA: Record<string, ConfigSchemaEntry> = {
   'sys.login.multiDevice': { type: 'bool', default: true },
   'sys.upload.maxSize': { type: 'number', default: 20, min: 1, max: 500 },
   'sys.demo.enabled': { type: 'bool', default: false },
   'sys.app.name': { type: 'string', default: 'BLS-KOX' },
+  // ===== 登录人机验证 =====
+  'sys.login.captcha.enabled': { type: 'bool', default: true },
+  'sys.login.captcha.mode': { type: 'enum', default: 'adaptive', values: CAPTCHA_MODES },
+  'sys.login.captcha.silentThreshold': { type: 'number', default: 70, min: 0, max: 100 },
+  'sys.login.captcha.forceAfterFailures': { type: 'number', default: 3, min: 1, max: 100 },
+  'sys.login.captcha.challengeTtlSeconds': { type: 'number', default: 180, min: 30, max: 900 },
+  'sys.login.captcha.tokenTtlSeconds': { type: 'number', default: 120, min: 30, max: 600 },
+  'sys.login.captcha.secondaryTypes': { type: 'csv', default: ['slider', 'rotate'], values: CAPTCHA_SECONDARY_TYPES },
+  'sys.login.captcha.maxAttempts': { type: 'number', default: 5, min: 1, max: 20 },
+  'sys.login.captcha.provider': { type: 'enum', default: 'builtin', values: CAPTCHA_PROVIDERS },
 };
 
 const KEY_MAP: Record<string, keyof DynamicConfig> = {
@@ -33,36 +85,117 @@ const KEY_MAP: Record<string, keyof DynamicConfig> = {
   'sys.upload.maxSize': 'uploadLimitMB',
   'sys.demo.enabled': 'demoEnabled',
   'sys.app.name': 'appName',
+  'sys.login.captcha.enabled': 'captchaEnabled',
+  'sys.login.captcha.mode': 'captchaMode',
+  'sys.login.captcha.silentThreshold': 'captchaSilentThreshold',
+  'sys.login.captcha.forceAfterFailures': 'captchaForceAfterFailures',
+  'sys.login.captcha.challengeTtlSeconds': 'captchaChallengeTtlSeconds',
+  'sys.login.captcha.tokenTtlSeconds': 'captchaTokenTtlSeconds',
+  'sys.login.captcha.secondaryTypes': 'captchaSecondaryTypes',
+  'sys.login.captcha.maxAttempts': 'captchaMaxAttempts',
+  'sys.login.captcha.provider': 'captchaProvider',
 };
 
+/** 全部受管的 sys_config 键（供文档 / 系统参数页使用） */
+export const MANAGED_CONFIG_KEYS: readonly string[] = Object.keys(SCHEMA);
+
+/** 人机验证相关配置键 */
+export const CAPTCHA_CONFIG_KEYS: readonly string[] = Object.keys(SCHEMA).filter((k) => k.startsWith('sys.login.captcha.'));
+
+const DEFAULT_CONFIG: DynamicConfig = {
+  multiLogin: true,
+  uploadLimitMB: 20,
+  demoEnabled: false,
+  appName: 'BLS-KOX',
+  captchaEnabled: true,
+  captchaMode: 'adaptive',
+  captchaSilentThreshold: 70,
+  captchaForceAfterFailures: 3,
+  captchaChallengeTtlSeconds: 180,
+  captchaTokenTtlSeconds: 120,
+  captchaSecondaryTypes: ['slider', 'rotate'],
+  captchaMaxAttempts: 5,
+  captchaProvider: 'builtin',
+};
+
+/** 解析单个字段（严格校验：类型 → 范围 → 枚举） */
+function parseField(key: string, schema: ConfigSchemaEntry, val: unknown): { ok: boolean; value: any } {
+  if (val === undefined || val === null) return { ok: true, value: schema.default };
+
+  if (schema.type === 'bool') {
+    const s = String(val).trim().toLowerCase();
+    if (s === '1' || s === 'true') return { ok: true, value: true };
+    if (s === '0' || s === 'false') return { ok: true, value: false };
+    logger.warn('[dynamic-config] invalid bool, using default', { key, val });
+    return { ok: false, value: schema.default };
+  }
+
+  if (schema.type === 'number') {
+    const s = String(val).trim();
+    // 严格数字：拒绝 "12abc" / "0x10" / "" 这类宽松转换
+    if (!/^-?\d+(\.\d+)?$/.test(s)) {
+      logger.warn('[dynamic-config] invalid number, using default', { key, val });
+      return { ok: false, value: schema.default };
+    }
+    const n = Number(s);
+    if (!Number.isFinite(n)) { logger.warn('[dynamic-config] invalid number', { key, val }); return { ok: false, value: schema.default }; }
+    if (schema.min !== undefined && n < schema.min) { logger.warn('[dynamic-config] out of range', { key, val, min: schema.min }); return { ok: false, value: schema.default }; }
+    if (schema.max !== undefined && n > schema.max) { logger.warn('[dynamic-config] out of range', { key, val, max: schema.max }); return { ok: false, value: schema.default }; }
+    return { ok: true, value: n };
+  }
+
+  if (schema.type === 'enum') {
+    const s = String(val).trim();
+    if (!schema.values || schema.values.includes(s)) return { ok: true, value: s };
+    logger.warn('[dynamic-config] invalid enum, using default', { key, val, allowed: schema.values });
+    return { ok: false, value: schema.default };
+  }
+
+  if (schema.type === 'csv') {
+    const raw = String(val).split(',');
+    const allowed = new Set((schema.values ?? []) as readonly string[]);
+    const picked: string[] = [];
+    for (const item of raw) {
+      const v = item.trim();
+      if (!v) continue;
+      if (allowed.size > 0 && !allowed.has(v)) {
+        logger.warn('[dynamic-config] invalid csv item dropped', { key, item: v, allowed: schema.values });
+        continue;
+      }
+      if (!picked.includes(v)) picked.push(v);
+    }
+    if (picked.length === 0) {
+      logger.warn('[dynamic-config] csv empty after validation, using default', { key, val });
+      return { ok: false, value: schema.default };
+    }
+    return { ok: true, value: picked };
+  }
+
+  return { ok: true, value: String(val) };
+}
+
 export function parseConfigValue(raw: Record<string, any>): DynamicConfig {
-  const out: DynamicConfig = { multiLogin: true, uploadLimitMB: 20, demoEnabled: false, appName: 'BLS-KOX' };
+  const out: DynamicConfig = { ...DEFAULT_CONFIG, captchaSecondaryTypes: [...DEFAULT_CONFIG.captchaSecondaryTypes] };
   for (const [key, schema] of Object.entries(SCHEMA)) {
     const prop = KEY_MAP[key];
     if (!prop) continue;
-    const val = raw[key];
     try {
-      if (val === undefined || val === null) {
-        (out as any)[prop] = schema.default;
-      } else if (schema.type === 'bool') {
-        const s = String(val).trim().toLowerCase();
-        if (s === '1' || s === 'true') (out as any)[prop] = true;
-        else if (s === '0' || s === 'false') (out as any)[prop] = false;
-        else logger.warn('[dynamic-config] invalid bool, using default', { key, val });
-      } else if (schema.type === 'number') {
-        const n = Number(val);
-        if (!Number.isFinite(n)) { logger.warn('[dynamic-config] invalid number', { key, val }); continue; }
-        if (schema.min !== undefined && n < schema.min) { logger.warn('[dynamic-config] out of range', { key, val, min: schema.min }); continue; }
-        if (schema.max !== undefined && n > schema.max) { logger.warn('[dynamic-config] out of range', { key, val, max: schema.max }); continue; }
-        (out as any)[prop] = n;
-      } else {
-        (out as any)[prop] = String(val);
-      }
+      const parsed = parseField(key, schema, raw[key]);
+      (out as any)[prop] = parsed.value;
     } catch (err) {
       logger.warn('[dynamic-config] parse error', { key, error: String(err) });
     }
   }
   return out;
+}
+
+/** 从 DynamicConfig 中提取公共（可下发前端）的人机验证配置 */
+export function toPublicCaptchaConfig(cfg: DynamicConfig): { enabled: boolean; mode: CaptchaMode; secondaryTypes: CaptchaSecondaryType[] } {
+  return {
+    enabled: cfg.captchaEnabled && cfg.captchaMode !== 'off',
+    mode: cfg.captchaMode,
+    secondaryTypes: [...cfg.captchaSecondaryTypes],
+  };
 }
 
 // injectable deps for testability

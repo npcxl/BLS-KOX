@@ -120,15 +120,34 @@ async function runUp(pool: mysql.Pool) {
   const conn = await pool.getConnection();
   let applied = 0;
   let failed = 0;
+
+  // 阶段七：MySQL advisory lock —— 多实例同时启动时只有一个能执行迁移
+  const LOCK_NAME = 'bls_kox_migration';
+  const LOCK_TIMEOUT_SECONDS = Number(process.env.MIGRATION_LOCK_TIMEOUT ?? 60) || 60;
+  let lockAcquired = false;
   try {
+    const [lockRows] = await conn.query('SELECT GET_LOCK(?, ?) AS acquired', [LOCK_NAME, LOCK_TIMEOUT_SECONDS]);
+    lockAcquired = Number((lockRows as any[])[0]?.acquired ?? 0) === 1;
+    if (!lockAcquired) {
+      console.error(`[migrate] 无法获取迁移锁（${LOCK_NAME}），可能有其他实例正在执行迁移；本次跳过。`);
+      return;
+    }
+    console.log(`[migrate] advisory lock acquired: ${LOCK_NAME}`);
+
+    // 拿到锁后重新读取已应用列表，避免并发实例之间的竞态
+    const freshDone = await getExecuted(pool);
+
     for (const f of files) {
-      if (done.has(f)) { console.log(`  ⏭ ${f} (already applied)`); continue; }
+      if (freshDone.has(f)) { console.log(`  ⏭ ${f} (already applied)`); continue; }
       const sql = readFileSync(join(MIGRATIONS_DIR, f), 'utf-8');
       console.log(`   ${f} ...`);
       const err = await applyOne(conn, f, sql);
       if (err) { console.error(err); failed++; } else { applied++; }
     }
   } finally {
+    if (lockAcquired) {
+      await conn.query('SELECT RELEASE_LOCK(?)', [LOCK_NAME]).catch(() => {});
+    }
     conn.release();
   }
 

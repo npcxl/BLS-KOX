@@ -23,6 +23,96 @@ Rules: see the "Version metadata & maintenance" section of [`README.md`](README.
 
 ---
 
+## [1.6.0] — 2026-09-21
+
+**Login captcha — the last missing piece of the authentication loop.** Two-stage human
+verification (silent behaviour scoring → slider / rotate) with a one-shot, binding-scoped
+`captchaToken` consumed by `POST /api/auth/login`. Verified against the **working tree on top of
+`61aaf9a`** (uncommitted).
+
+### Added
+
+- **`pages/login-captcha.md`** (new, 1.0.0) — the complete memory for the mechanism: the two
+  stages and their state machines, all five public endpoints, the silent scoring table, the
+  force-second-stage policy, the `captchaToken` format / bindings / one-shot consumption, the
+  eight `CAPTCHA_*` audit event types, the 9 `sys.login.captcha.*` parameters, the Redis key
+  namespaces, the frontend flow, and the known gaps (Koa-only, `builtin` only, PoW not required,
+  SVG images can still be template-matched).
+- **README** — new row in the page index pointing at `pages/login-captcha.md`.
+
+### Changed
+
+- **`pages/user-login.md`** (1.0.0 → 1.1.0) — captcha steps in the frontend flow, `captchaToken`
+  in the request body, the captcha gate as step 0 of the backend flow, the captcha rate-limit /
+  audit table rows, and a rewritten "known gaps" section (the `sys_login_log` /
+  brute-force gaps are now closed, "no captcha" is gone, and captcha is Koa-only).
+- **`pages/system-config.md`** (1.0.1 → 1.2.0) — the “登录人机验证” panel
+  (`pages/system/config/components/CaptchaSettingPanel.tsx`), the full managed-key validation
+  table (bool / number ranges / enum / CSV subset) and the seed locations.
+- **`00-common/00-architecture.md`** (1.2.0 → 1.3.0) — error codes `40010`–`40013` / `50301`,
+  `details.errorCode`, and the router scanner now recursing into sub-directories (how
+  `api/auth/captcha` is mounted).
+- **`00-common/01-redis.md`** (1.1.0 → 1.2.0) — nine `captcha:*` namespaces with TTLs and the
+  captcha-specific fail-closed rule; the captcha rate-limit pressure read-back; the new `device`
+  rate-limit dimension and the `account` fallback.
+- **`00-common/03-rate-limiting.md`** (1.0.0 → 1.1.0) — `device` dimension, `account` fallback,
+  nine new captcha rules (rules 6–14, the table renumbered) and updated cheat sheet / notes.
+- **`00-common/04-auth-and-permissions.md`** (1.1.0 → 1.2.0) — the five captcha endpoints, the
+  captcha gate as step 0 of the login flow, and the failure-counter reset/record behaviour.
+- **`00-common/05-security-log-and-event-center.md`** (1.0.0 → 1.1.0) — the eight `CAPTCHA_*`
+  event types + risk mapping, the restricted audit payload contract, the
+  `rule_captcha_token_abuse` rule, and the `sys_login_log` / `sys_security_log` drift items marked
+  as fixed.
+- **`00-common/07-database.md`** (1.1.0 → 1.2.0) — migration `20260922_017_login_captcha.sql`
+  (seed only, **no DDL**, identical to the `sql/Init.sql` rows `000406`–`000414`), the `sys_config`
+  description updated, and §5 now states explicitly that **seed data still ships with a migration**
+  because `Init.sql` only serves fresh installs.
+
+---
+
+## [1.5.0] — 2026-09-21
+
+**SaaS baseline hardening (phases 1–7).** Large behaviour change across tenancy, authorisation,
+entitlements/quotas, authentication, auditing, secret storage, the partner API and CI. Verified
+against the **working tree on top of `61aaf9a`** (uncommitted).
+
+### Added
+
+- **`00-common/04-auth-and-permissions.md`** — new §8 covering:
+  - §8.1 tenant lifecycle enforcement (transactional `provisionTenant()`, `Idempotency-Key`,
+    real datetime validation, disable → `revokeAllForTenant`, asynchronous offboarding,
+    Host-scoped anonymous `public-list`);
+  - §8.2 the corrected authorisation model (`isPlatformSuperAdmin()`, no more "platform tenant
+    bypasses every permission", package = permission ceiling, `rolePermissions ∩ packagePermissions`);
+  - §8.3 the closed authentication loop (MD5→Argon2id upgrade on login, one-shot reset tokens
+    stored as SHA-256, admin reset, immediate revocation, login logs + brute-force rule,
+    explicit "email sender is a placeholder" note);
+  - §8.4 `EntitlementService` / `QuotaService` (feature keys, quota keys, atomicity,
+    idempotency, downgrade semantics, enforcement table, `GET /api/system/quota/my`).
+- **`00-common/00-architecture.md`** — `operationLogMiddleware` added to the middleware order,
+  new error codes `40301` (entitlement) and `40905` (quota), and a new **§6b Production startup
+  guards** (Redis required in production, `SECRET_ENCRYPTION_KEY`, `METRICS_PUBLIC`,
+  `API_DOCS_ENABLED`, lazy DB pools so unit tests never connect, migration advisory lock,
+  backup checksum/retention/verify).
+- **`00-common/01-redis.md`** — four new key namespaces: `session-tenant-index:{tenantId}`,
+  `tenant:provision:idem:{key}`, `quota:idem:{tenantId}:{key}`, `openapi:nonce:{nonce}`
+  (plus the note that these two fail **closed** while most others fail open).
+- **`00-common/07-database.md`** — inventory now **45** tables (+`sys_package_feature`,
+  `sys_package_quota`, `sys_tenant_quota_usage`, `sys_password_reset_token`, `sys_api_key`),
+  `sys_api_key` recorded as a naming exception (`created_at`/`updated_at`),
+  migrations 013–016 documented, and drift items 1/2/4 marked **fixed**.
+- **`00-common/08-external-api-and-service-auth.md`** — §4 rewritten: the partner API is now
+  functional (`sys_api_key`, management API, one-time secret, scope checks, timingSafeEqual,
+  fail-closed nonce, tenant context injection); known gaps 2/3/4 marked fixed and docs/metrics
+  production switches documented.
+
+### Changed
+
+- `sql/Init.sql` now also creates the five new tables and seeds the phase 3/4/6 features,
+  quotas and permission codes, matching migrations `20260921_013`–`016`.
+
+---
+
 ## [1.4.1] — 2026-09-20
 
 `/system/role` menu-permission panel: layout corrections after the first round of feedback.

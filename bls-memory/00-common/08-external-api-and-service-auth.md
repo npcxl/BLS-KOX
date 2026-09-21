@@ -1,6 +1,9 @@
 # 08 — API Surface, Versioning & Service Auth (shared)
 
-> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 9b22800 · **Last verified:** 2026-09-20
+> **Document version:** 1.2.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
+>
+> *Uncommitted note:* the `/api/auth/captcha/*` public endpoints were verified against `61aaf9a` +
+> uncommitted captcha changes.
 
 How every request can reach the Koa backend, and how each entry point is authenticated.
 Also covers error formatting, HTTP metrics labels, Swagger and the OpenAPI generator.
@@ -32,6 +35,17 @@ Plus unauthenticated infrastructure routes on the main router
 and the docs routes (`app.ts`): `GET /api/docs` (Swagger UI HTML) and
 `GET /api/openapi.json` (serves `bls-server/openapi.json`; 404 body
 `{error:'openapi.json not found. Run: npm run openapi'}` when absent).
+
+Unauthenticated **business** routes (public by name or by being mounted on a custom public router):
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/auth/login` / `logout` / `refresh` | public by function name |
+| GET | `/api/auth/captcha/config` | login captcha public config (`enabled`/`mode`/`secondaryTypes` only) |
+| POST | `/api/auth/captcha/challenge` · `/silent/verify` · `/secondary/verify` | login captcha; rate-limited by IP + account + device, `Cache-Control: no-store` |
+| GET | `/api/auth/captcha/image/:imageId` | challenge SVG, `no-store` |
+| GET | `/api/system/config/public-system` · `/public-theme` · `/current` | public system/theme config subset |
+| GET | `/api/system/tenant/public-list` | Host-scoped tenant options |
 
 ---
 
@@ -116,23 +130,32 @@ Flow:
   `BODY = ctx.request.rawBody ?? JSON.stringify(ctx.request.body ?? '')`,
   hashed with `HMAC-SHA256(apiSecret)` as hex, compared with plain `!==`.
 
-### ⚠ Blocking defect
+### ✅ Resolved 2026-09-21 (phase 6) — the external API now works
 
-**There is no `sys_api_key` table, no model and no management endpoints anywhere in the repo.**
-`sql/Init.sql` and every file in `bls-server/migrations/` were checked. The only references are
-the query in `openapi-auth.ts` and the Rust port. Consequently step 4 throws
-(`table doesn't exist` → caught, logged `[openapi-auth] db query failed`, `secret` stays `null`),
-so **every** `/openapi/v1/*` request ends as `403 Invalid API Key`.
+The blocking defect below (no `sys_api_key` table) is fixed. Current behaviour:
 
-Related dead code: `SecurityEventType.API_KEY_CREATED` / `API_KEY_REVOKED` and their risk-level
-entries exist in `core/security-audit.ts` but are **never emitted**.
+| Topic | Implementation |
+|---|---|
+| Table | `sys_api_key` (`20260921_016_api_key.sql`): `tenant_id`, `name`, `key_id`, `key_hash`, `encrypted_secret` (AES-256-GCM), `scopes`, `status`, `expire_at`, `revoked_at`, `last_used_at`, `created_by`, `created_at`, `updated_at`, `deleted`. |
+| Management API | `/api/system/api-key/*` — `GET /list`, `POST /add`, `POST /:apiKeyId/revoke`, `PUT /status`, `DELETE /remove`, permission codes `system:apikey:list/add/remove/status`, gated additionally by `feature.openapi` and `max_api_keys`. |
+| Secret handling | `POST /add` returns `{ keyId, secret, apiKey }` **exactly once**. Only the AES-256-GCM ciphertext, a `secret_preview` and `sha256("<keyId>.<secret>")` are stored. No list/detail response ever returns a usable secret. |
+| `X-Api-Key` | Either the bare `keyId` or the full `<keyId>.<secret>`; the full form is additionally verified against `key_hash` (constant time). |
+| Checks | `openApiAuth()` verifies key status, `revoked_at`, `expire_at`, tenant availability (`assertTenantActive`), the HMAC signature (`timingSafeEqual`) and the required scope. |
+| Scopes | `read` (GET/HEAD/OPTIONS), `write` (everything else), `*`. `hasPerm()` honours the scope instead of role permissions for `/openapi/v1` requests. |
+| Nonce | `SET openapi:nonce:{nonce} NX EX 300`. **Redis unavailable → `503`, never fail-open.** |
+| Tenant context | The tenant comes from the `sys_api_key` row and is pushed into the request context — a client-supplied `tenantId` is ignored. |
+| Audit | `API_KEY_CREATED` / `API_KEY_REVOKED` are now actually emitted, plus `SIGNATURE_INVALID` / `NONCE_REPLAY` / `PERMISSION_DENIED`. |
+| `/api/*` reuse | `jwtAuth()` short-circuits when `ctx.state.openApi` is set, so the same route handlers serve both the browser and the partner API. |
 
-To make the external API usable you must: create the `sys_api_key` table
-(`api_key`, `api_secret`, `tenant_id`, `name`, `status`, `expire_at`, …), add CRUD endpoints with
-a new permission code (`system:apikey:*`), seed the permission, emit
-`API_KEY_CREATED` / `API_KEY_REVOKED` on create/revoke, and document the client-side signing
-recipe (`METHOD:PATH:TIMESTAMP:NONCE:BODY`) — which is **different** from the browser replay
-canonical string used internally.
+Client signing recipe (unchanged): `HMAC-SHA256(secret, "${METHOD}:${PATH}:${TIMESTAMP}:${NONCE}:${BODY}")`
+hex-encoded, where `PATH` is the original `/openapi/v1/...` path.
+
+### Historical defect (fixed)
+
+**There was no `sys_api_key` table, no model and no management endpoints** — every
+`/openapi/v1/*` request ended as `403 Invalid API Key` because the lookup threw
+(`table doesn't exist` → caught → `secret` stayed `null`). `SecurityEventType.API_KEY_CREATED` /
+`API_KEY_REVOKED` were dead code. Both are fixed by the phase-6 work above.
 
 ---
 
@@ -223,18 +246,19 @@ npm run openapi:serve   # serve a mock spec + Swagger UI on OPENAPI_PORT (defaul
 
 ## 8. Known gaps
 
-1. **`/openapi/v1` is unusable** — no `sys_api_key` table (`403 Invalid API Key` for all calls);
-   `API_KEY_CREATED` / `API_KEY_REVOKED` are never emitted. See §4.
-2. **`/api/metrics` is unauthenticated** and exposes the same data as the auth-protected
-   `/internal/metrics`. Consider protecting it or dropping it.
-3. **Non-constant-time comparisons** in `internalAuth` (sha256 digest `!==`) and `openApiAuth`
-   (signature `!==`). Use `crypto.timingSafeEqual` if the threat model requires it.
-4. **IP allow-list is prefix string matching**, not CIDR — `10.` also matches `10.1.2.3` *and*
-   would match a hostname-ish string starting with `10.`. Acceptable for container networks,
-   not for hostile networks.
+1. ~~**`/openapi/v1` is unusable**~~ — **fixed** in phase 6 (§4).
+2. ~~**`/api/metrics` is unauthenticated**~~ — **fixed**: `env.security.metricsPublic` defaults to
+   `false` in production, so `/api/metrics` returns 404 there; use the service-authenticated
+   `/internal/metrics` (or set `METRICS_PUBLIC=true` behind a protected proxy).
+3. ~~**Non-constant-time comparisons**~~ — **fixed**: `internalAuth` compares SHA-256 digests with
+   `timingSafeEqual` and `openApiAuth` compares signatures the same way.
+4. ~~**IP allow-list is prefix string matching**~~ — **fixed**: `shared/utils/ip-cidr.ts` implements
+   real CIDR matching; invalid entries abort startup.
 5. `Deprecation` / `Sunset` headers are attached to every non-`/api/v1` `/api/*` response,
    including `/api/docs`, `/api/metrics`, `/api/health`.
 6. `apiVersion()` never rejects an unknown prefix — it silently reports `'v1'`.
+7. **`/api/docs` and `/api/openapi.json`** now default to **disabled in production**
+   (`env.security.apiDocsEnabled`); set `API_DOCS_ENABLED=true` to expose them.
 
 ---
 

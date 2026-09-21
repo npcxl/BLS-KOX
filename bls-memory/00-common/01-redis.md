@@ -1,6 +1,9 @@
 # 01 — Redis (single source of truth)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.2.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
+>
+> *Uncommitted note:* the `captcha:*` namespaces were verified against `61aaf9a` + uncommitted
+> captcha changes.
 
 > This is the **one and only** Redis document. Page documents never repeat Redis details;
 > they only say "uses Redis via `<subsystem>`" and link here.
@@ -16,7 +19,7 @@ Config comes from `bls-server/src/config/env.ts`:
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `REDIS_ENABLED` | `true` | If `false`, `getRedisClient()` returns `null` and **every subsystem fails open** (no rate limit / no replay dedup / no cache). |
+| `REDIS_ENABLED` | `true` | If `false`, `getRedisClient()` returns `null` and most subsystems fail open (no rate limit / no replay dedup / no cache). **阶段七：production requires `REDIS_ENABLED=true` — the process refuses to start otherwise.** Quota idempotency and the partner-API nonce check are the exceptions: they fail **closed** regardless of environment. |
 | `REDIS_HOST` | `127.0.0.1` | |
 | `REDIS_PORT` | `6379` | |
 | `REDIS_USERNAME` / `REDIS_PASSWORD` | empty | Password is required in production. |
@@ -27,7 +30,10 @@ Command duration and error metrics are collected by wrapping `client.call()`
 
 **Fail-open philosophy**: Redis being down never blocks normal business traffic
 (`RateLimitService` returns `allowed: true`, nonce dedup is skipped, cache falls back to DB).
-The only exception is `mode: 'signature'` replay rules, which **fail closed**.
+The only exceptions that **fail closed** are `mode: 'signature'` replay rules, the partner-API
+nonce check (`openapi:nonce:*`) and the **login captcha** (`captcha:*` — every store operation
+raises `CAPTCHA_SERVICE_UNAVAILABLE` / HTTP 503 when Redis is missing or errors, so verification
+can never be skipped).
 
 `closeRedis()` is called on graceful shutdown.
 
@@ -55,6 +61,19 @@ All keys below are logical names; the physical key has the `bls:` prefix.
 | `ops:release:nonce:{nonce}` | window + 60 s | `ops-release` callback | Anti-replay for GitHub Actions callbacks (HMAC mechanism, **not** the generic replay middleware). |
 | `storage:upload` (distributed lock) | lease 30 s, wait 5 s | `api/system/storage/index.ts` | Serialises uploads; busy → HTTP 409. Degrades (runs anyway) if Redis is unavailable. |
 | `ops:release:version-cache` (via `VERSION_CACHE_TTL=60000`) | 60 s | `ops-release` | Built-version list cache. |
+| `session-tenant-index:{tenantId}` | 7 days | `security/session/session-center.ts` | Set of `userId`s that currently have sessions — lets `revokeAllForTenant()` revoke **every** session of a tenant without `KEYS` (阶段一：停用/过期租户立即失效). |
+| `tenant:provision:idem:{idempotencyKey}` | 15 min (processing) / 24 h (result) | `api/system/tenant/provisioning.ts` | Tenant provisioning idempotency (`SET NX`); repeat call with the same key returns the first result, concurrent call → `40903`. |
+| `quota:idem:{tenantId}:{idempotencyKey}` | 24 h | `services/quota-service.ts` | One-shot quota consumption guard (`SET NX`); released on failure so the caller can retry. |
+| `openapi:nonce:{nonce}` | 300 s | `middleware/openapi-auth.ts` | Partner-API nonce dedup (`SET NX`). **Redis unavailable → 503, fail-closed** (never degrades to allow). |
+| `captcha:challenge:{challengeId}` | `sys.login.captcha.challengeTtlSeconds` (30–900, default 180) | `security/captcha/store.ts` | JSON challenge record: stage, secondary type, bindings (tenant/domain/username/IP/UA hashes), nonce, **the correct answer** (`x` for slider, `angle` for rotate). Never sent to the client. |
+| `captcha:challenge-attempts:{challengeId}` | same as the challenge | `security/captcha/store.ts` | Atomic `INCR` verification counter; `> maxAttempts` invalidates the challenge. |
+| `captcha:nonce:{nonce}` | same as the challenge | `security/captcha/store.ts` | `SET NX EX` claim that makes a challenge nonce single-use (replay ⇒ force stage 2). |
+| `captcha:token:{sha256(token)}` | `sys.login.captcha.tokenTtlSeconds` (30–600, default 120) | `security/captcha/store.ts` | captchaToken **record** (bindings only — the raw token is never stored). |
+| `captcha:token-used:{sha256(token)}` | `tokenTtlSeconds + 300` | `security/captcha/store.ts` | One-shot consumption marker (`SET NX EX`); readable ⇒ `CAPTCHA_REPLAYED`, missing payload ⇒ `CAPTCHA_EXPIRED`. |
+| `captcha:image:{imageId}` | same as the challenge | `security/captcha/store.ts` | Generated challenge SVG served by `GET /api/auth/captcha/image/:imageId` (`no-store`). |
+| `captcha:fail:account:{tenantId}:{usernameHash}` | 900 s | `security/captcha/store.ts` | Consecutive login failures per account (drives `forceAfterFailures`); cleared on a successful login. |
+| `captcha:fail:ip:{ipHash}` | 900 s | `security/captcha/store.ts` | Login failures per IP hash (risk signal). |
+| `captcha:ip-accounts:{ipHash}` | 900 s | `security/captcha/store.ts` | Set of username hashes a single IP tried (≥ 3 ⇒ force stage 2). |
 
 > The `redis.keys('security:blocked_ip:*')` call in `api/system/security/index.ts` (`/stats`)
 > counts temporarily blocked IPs. It is the only `KEYS` usage and it is on a small key space.
@@ -96,7 +115,11 @@ See `00-common/02-replay-protection.md`. Redis responsibilities:
 See `00-common/03-rate-limiting.md`. Atomic Lua `INCR` + `EXPIRE` on
 `rate:{dims}:{dimension}:{routeKey}`; window resets on first increment.
 Dimension values: `ip` (client IP), `user` (userId or `anonymous`),
-`tenant` (tenantId or `000000`), `account` (`sha256(lower(trim(username)))[0:16]`).
+`tenant` (tenantId or `000000`), `account` (`sha256(lower(trim(username)))[0:16]`, falling back to
+`ip:{sha256(ip)[0:16]}` when the body has no `username`), `device`
+(`sha256(user-agent)[0:16]`).
+
+The login captcha reads back `rate:ip:{ip}:/api/auth/login` as a risk signal (rate-limit pressure).
 
 ### 3.5 IP blocking
 
@@ -119,6 +142,23 @@ Any write to `sys_config` triggers `invalidateConfigCache(tenantId)`.
 
 `uploadLimitMB` (from `sys.upload.maxSize`, default 20, range 1–500) is the dynamic file
 upload limit — see `00-common/06-file-and-excel-security.md`.
+
+### 3.6.1 Login captcha (`security/captcha/store.ts`)
+
+Two-stage login captcha — full description in
+[`pages/login-captcha.md`](../pages/login-captcha.md).
+
+- **Challenge**: `captcha:challenge:{id}` (JSON, TTL = `challengeTtlSeconds`) holds the bindings and
+  **the only copy of the correct answer**. Images live in `captcha:image:{id}`.
+- **Attempts**: `captcha:challenge-attempts:{id}` uses `INCR` (+ first-hit `EXPIRE`); the
+  `(maxAttempts+1)`-th verification deletes the challenge.
+- **One-shot token**: signed with `CAPTCHA_SECRET` (HMAC-SHA256) but the server keeps only
+  `sha256(token)`. Consumption is `SET captcha:token-used:{hash} NX EX ...` followed by `GETDEL`
+  of `captcha:token:{hash}` — atomic, no Lua (with a `MULTI/EXEC GET+DEL` fallback).
+- **Risk counters**: `captcha:fail:account:*`, `captcha:fail:ip:*`, `captcha:ip-accounts:*`
+  (900 s), all written by the login handler / challenge creation.
+- **Fail closed**: a missing client or any Redis error becomes HTTP 503
+  `CAPTCHA_SERVICE_UNAVAILABLE`. There is no "allow on error" branch.
 
 ### 3.7 Release lock & callback nonce
 

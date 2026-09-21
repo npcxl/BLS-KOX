@@ -13,6 +13,12 @@ function accountKey(raw?: string): string | undefined {
   return createHash('sha256').update(raw.trim().toLowerCase(), 'utf8').digest('hex').slice(0, 16);
 }
 
+/** 设备维度：以 User-Agent 指纹近似（不含任何可识别个人信息） */
+export function deviceKey(userAgent?: string): string {
+  if (!userAgent) return 'unknown';
+  return createHash('sha256').update(userAgent.trim(), 'utf8').digest('hex').slice(0, 16);
+}
+
 export function rateLimitMiddleware() {
   return async (ctx: Context, next: Next) => {
     const svc = getService();
@@ -54,7 +60,9 @@ function getDimKey(dim: string, reqCtx: any, ip: string, ctx: Context): string {
     case 'ip': return ip;
     case 'user': return reqCtx?.userId ?? 'anonymous';
     case 'tenant': return reqCtx?.tenantId ?? '000000';
-    case 'account': return accountKey((ctx.request.body as any)?.username) ?? 'anon';
+    // 账号维度：缺失 username 时回退到 IP，避免所有匿名请求共享同一个 'anon' 桶（可被用来互相挤占配额）
+    case 'account': return accountKey((ctx.request.body as any)?.username) ?? `ip:${accountKey(ip) ?? 'unknown'}`;
+    case 'device': return deviceKey(ctx.get('user-agent') || undefined);
     default: return ip;
   }
 }

@@ -19,9 +19,15 @@ env:
   DB_NAME: bls_test
   REDIS_HOST: 127.0.0.1
   REDIS_PORT: 6379
-  REDIS_PASSWORD: ci_test_pw
+  # CI 的 redis service 未启用密码
+  REDIS_PASSWORD: ''
   JWT_SECRET: ci_test_jwt_secret_at_least_32_chars_long
   INTERNAL_SECRET: ci_test_internal_secret
+  SECRET_ENCRYPTION_KEY: Y2lfdGVzdF9lbmNyeXB0aW9uX2tleV8zMmJ5dGVzX2xvbmc=
+  API_SIGN_SECRET: ci_test_api_sign_secret_value_32_chars
+  CAPTCHA_SECRET: ci_test_captcha_secret_value_32_chars
+  METRICS_PUBLIC: 'true'
+  API_DOCS_ENABLED: 'true'
   OTEL_TRACES_ENABLED: false
 
 jobs:
@@ -42,7 +48,16 @@ jobs:
           --health-cmd="mysqladmin ping -h localhost"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=5
+          --health-retries=10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -56,6 +71,26 @@ jobs:
         env:
           CI: true
       - run: npm run build
+      - run: npm run openapi
+      - name: OpenAPI drift check
+        run: npm run openapi:check
+      - name: Wait for MySQL
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 -uroot -pci_test_pw --silent; then exit 0; fi
+            sleep 2
+          done
+          echo "MySQL not ready"; exit 1
+      - name: Initialize schema (sql/Init.sql)
+        run: mysql -h 127.0.0.1 -uroot -pci_test_pw bls_test < ../sql/Init.sql
+        working-directory: bls-server
+      - name: Apply incremental migrations
+        run: npm run db:migrate up
+      - name: Integration tests (real MySQL + Redis)
+        run: npm run test:integration
+        env:
+          CI: true
+          INTEGRATION_TEST: 'true'
 
   admin:
     runs-on: ubuntu-latest

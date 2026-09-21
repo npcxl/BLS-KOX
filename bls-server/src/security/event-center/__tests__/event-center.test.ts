@@ -8,8 +8,20 @@ import { SecurityEventType, RiskLevel } from '../../../core/security-audit';
 describe('Security Event Center', () => {
   // ====== Risk Rules Engine ======
 
-  it('DEFAULT_RULES has 6 rules', () => {
-    expect(DEFAULT_RULES.length).toBe(6);
+  it('DEFAULT_RULES 包含全部内置基础风险规则', () => {
+    const ids = DEFAULT_RULES.map((r) => r.id);
+    for (const base of [
+      'rule_login_brute_force',
+      'rule_refresh_reuse',
+      'rule_cross_tenant',
+      'rule_signature_invalid',
+      'rule_replay_attack',
+      'rule_rate_limit',
+    ]) {
+      expect(ids).toContain(base);
+    }
+    // 允许后续新增规则（例如验证码滥用），因此只断言下界
+    expect(DEFAULT_RULES.length).toBeGreaterThanOrEqual(6);
   });
 
   it('each rule has required fields', () => {

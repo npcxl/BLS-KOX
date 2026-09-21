@@ -48,3 +48,71 @@ export class ConflictError extends AppError {
     super(message, 409, 409);
   }
 }
+
+/**
+ * 套餐权益不足（阶段三），HTTP 403 / code 40301。
+ * 前端据此提示“当前套餐不包含该功能，请升级套餐”。
+ */
+export class EntitlementError extends AppError {
+  constructor(message = '当前套餐不包含该功能，请升级套餐', details?: unknown) {
+    super(message, 403, 40301, details);
+    this.name = 'EntitlementError';
+  }
+}
+
+/**
+ * 配额超限（阶段三），HTTP 409 / code 40905。
+ * 与 replay 的 40901-40904 区分，便于前端区分“配额不足”和“重复提交”。
+ */
+export class QuotaExceededError extends AppError {
+  constructor(message = '资源配额已用尽，请升级套餐或释放资源', details?: unknown) {
+    super(message, 409, 40905, details);
+    this.name = 'QuotaExceededError';
+  }
+}
+
+// ==================== 登录人机验证（captcha）====================
+// 业务码段 40010-40019 / 50301，前端据此区分错误并驱动验证码流程。
+
+/** 已开启人机验证但请求未携带 captchaToken，HTTP 400 / code 40010 */
+export class CaptchaRequiredError extends AppError {
+  constructor(message = '请先完成人机验证') {
+    super(message, 400, 40010, { errorCode: 'CAPTCHA_REQUIRED' });
+    this.name = 'CaptchaRequiredError';
+  }
+}
+
+/** captchaToken 无效（签名错误 / 绑定信息不匹配 / challenge 不匹配），HTTP 400 / code 40011 */
+export class CaptchaInvalidError extends AppError {
+  constructor(message = '人机验证凭证无效，请重新验证') {
+    super(message, 400, 40011, { errorCode: 'CAPTCHA_INVALID' });
+    this.name = 'CaptchaInvalidError';
+  }
+}
+
+/** captchaToken / challenge 已过期，HTTP 400 / code 40012 */
+export class CaptchaExpiredError extends AppError {
+  constructor(message = '人机验证已过期，请重新验证') {
+    super(message, 400, 40012, { errorCode: 'CAPTCHA_EXPIRED' });
+    this.name = 'CaptchaExpiredError';
+  }
+}
+
+/** captchaToken 已被消费（重放），HTTP 400 / code 40013 */
+export class CaptchaReplayedError extends AppError {
+  constructor(message = '人机验证凭证已被使用，请重新验证') {
+    super(message, 400, 40013, { errorCode: 'CAPTCHA_REPLAYED' });
+    this.name = 'CaptchaReplayedError';
+  }
+}
+
+/**
+ * 验证服务不可用（生产环境 Redis 不可用时 fail closed）。
+ * HTTP 503 / code 50301 —— 明确拒绝，绝不绕过验证。
+ */
+export class CaptchaUnavailableError extends AppError {
+  constructor(message = '人机验证服务暂不可用，请稍后重试') {
+    super(message, 503, 50301, { errorCode: 'CAPTCHA_SERVICE_UNAVAILABLE' });
+    this.name = 'CaptchaUnavailableError';
+  }
+}

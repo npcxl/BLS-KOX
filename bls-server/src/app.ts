@@ -31,12 +31,14 @@ import { blockedIpMiddleware } from './security/event-center/ip-block-middleware
 import { apiVersion } from './middleware/api-version';
 import { openApiAuth } from './middleware/openapi-auth';
 import { internalAuth } from './middleware/internal-auth';
+import { operationLogMiddleware } from './middleware/operation-log';
 import { attachRealtimeWs } from './api/system/realtime/realtime.ws';
 import { worker } from './queue/worker';
 import { exportJob } from './queue/jobs/export.job';
 import { importJob } from './queue/jobs/import.job';
 import { notificationJob } from './queue/jobs/notification.job';
 import { webhookJob } from './queue/jobs/webhook.job';
+import { tenantOffboardJob } from './queue/jobs/tenant-offboard.job';
 import { outboxPublisher } from './outbox/outbox-publisher';
 import { registerOutboxSubscribers } from './outbox/subscribers';
 
@@ -83,6 +85,8 @@ export function createApp(): Koa {
   app.use(replayProtectionMiddleware());
   app.use(blockedIpMiddleware());
   app.use(rateLimitMiddleware());
+  // 阶段五：所有写操作自动写 sys_operation_log（在安全中间件之后，避免记录被拦截的噪音）
+  app.use(operationLogMiddleware());
 
   // ====== API Versioning ======
 
@@ -120,6 +124,12 @@ export function createApp(): Koa {
   const KoaRouter = require('koa-router');
   const docsRouter = new KoaRouter();
   docsRouter.get('/api/docs', (ctx: any) => {
+    // 阶段七：生产环境默认关闭 API 文档（可用 API_DOCS_ENABLED=true 显式打开）
+    if (!env.security.apiDocsEnabled) {
+      ctx.status = 404;
+      ctx.body = { code: 404, message: '接口不存在' };
+      return;
+    }
     ctx.type = 'html';
     ctx.body = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -160,6 +170,11 @@ export function createApp(): Koa {
 </html>`;
   });
   docsRouter.get('/api/openapi.json', (ctx: any) => {
+    if (!env.security.apiDocsEnabled) {
+      ctx.status = 404;
+      ctx.body = { code: 404, message: '接口不存在' };
+      return;
+    }
     const filePath = pathJoin(__dirname, '..', 'openapi.json');
     if (existsSync(filePath)) {
       ctx.type = 'json';
@@ -229,6 +244,20 @@ if (require.main === module) {
       issues.push('API_SIGN_SECRET must not be a CHANGE_TO_* placeholder (replay protection is enabled)');
     }
 
+    // 登录人机验证：生产环境必须配置强 CAPTCHA_SECRET，且禁止开发绕过
+    const captchaSecret = process.env.CAPTCHA_SECRET?.trim() ?? '';
+    if (!captchaSecret) {
+      issues.push('CAPTCHA_SECRET is missing (required in production for login captcha token signing)');
+    } else {
+      if (captchaSecret.length < 32) issues.push('CAPTCHA_SECRET must be at least 32 characters');
+      if (WEAK_SECRETS.some(w => captchaSecret.toLowerCase().includes(w)) || captchaSecret.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) {
+        issues.push('CAPTCHA_SECRET is too weak (no common passwords or CHANGE_TO_* placeholder)');
+      }
+    }
+    if ((process.env.CAPTCHA_DEV_BYPASS ?? 'false') === 'true') {
+      issues.push('CAPTCHA_DEV_BYPASS=true is a development-only switch and must not be enabled in production');
+    }
+
     if (issues.length > 0) {
       console.error('[security] Production startup blocked due to weak configuration:');
       for (const issue of issues) console.error('  - ' + issue);
@@ -246,7 +275,8 @@ if (require.main === module) {
   });
 
   // 注册并启动 Worker
-  worker.register(exportJob).register(importJob).register(notificationJob).register(webhookJob).start();
+  worker.register(exportJob).register(importJob).register(notificationJob).register(webhookJob)
+    .register(tenantOffboardJob).start();
 
   // 注册订阅者并启动 Outbox Publisher
   registerOutboxSubscribers();

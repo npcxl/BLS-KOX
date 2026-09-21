@@ -1,6 +1,9 @@
 # 03 — Rate Limiting (shared)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.1.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
+>
+> *Uncommitted note:* the `device` dimension, the `account` fallback and the captcha rules were
+> verified against `61aaf9a` + uncommitted captcha changes.
 
 Implementation:
 
@@ -19,7 +22,8 @@ Implementation:
 | `ip` | request client IP (`::ffff:` stripped) | used for login by IP |
 | `user` | `userId` from the request context, else `anonymous` | default dimension |
 | `tenant` | `tenantId` from the request context, else `000000` | |
-| `account` | `sha256(trim(lowercase(body.username)))[0:16]` | used for login by account |
+| `account` | `sha256(trim(lowercase(body.username)))[0:16]`, **falling back to `ip:{sha256(ip)[0:16]}`** when the body has no `username` | used for login / captcha by account. The fallback prevents every anonymous caller from sharing one `anon` bucket (which could be used to exhaust it for others) |
+| `device` | `sha256(user-agent)[0:16]` | coarse device dimension used by the captcha endpoints |
 
 ---
 
@@ -62,10 +66,21 @@ All matching rules for a path are evaluated; exact path rules beat wildcard rule
 | 3 | `/api/common/excel/export` | POST | `user` | 5 | 60 s |
 | 4 | `/api/common/excel/export` | POST | `tenant` | 200 | 3600 s |
 | 5 | `/api/system/storage/upload` | POST | `user` | 30 | 60 s |
-| 6 | `/api/**` | POST/PUT/PATCH/DELETE | `user` | 300 | 60 s |
-| 7 | `/api/**` | GET/HEAD/OPTIONS | `user` | 600 | 60 s |
+| 6 | `/api/auth/captcha/challenge` | POST | `ip` | 30 | 60 s |
+| 7 | `/api/auth/captcha/challenge` | POST | `account` | 10 | 300 s |
+| 8 | `/api/auth/captcha/challenge` | POST | `device` | 20 | 300 s |
+| 9 | `/api/auth/captcha/silent/verify` | POST | `ip` | 60 | 60 s |
+| 10 | `/api/auth/captcha/silent/verify` | POST | `account` | 20 | 300 s |
+| 11 | `/api/auth/captcha/secondary/verify` | POST | `ip` | 30 | 60 s |
+| 12 | `/api/auth/captcha/secondary/verify` | POST | `account` | 15 | 300 s |
+| 13 | `/api/auth/captcha/secondary/verify` | POST | `device` | 30 | 300 s |
+| 14 | `/api/auth/captcha/config` | GET | `ip` | 120 | 60 s |
+| 15 | `/api/**` | POST/PUT/PATCH/DELETE | `user` | 300 | 60 s |
+| 16 | `/api/**` | GET/HEAD/OPTIONS | `user` | 600 | 60 s |
 
-Rules 1+2 are both applied to login (two independent counters), and rules 3+4 to export.
+Rules 1+2 are both applied to login (two independent counters), 3+4 to export, and every captcha
+path expands to 1–3 counters (see the captcha page document). The captcha limits exist mainly to
+stop unlimited challenge creation from burning Redis memory and CPU.
 
 ### Page authors' cheat sheet
 
@@ -76,6 +91,10 @@ Rules 1+2 are both applied to login (two independent counters), and rules 3+4 to
 | File upload `POST /api/system/storage/upload` | 30 / min / user |
 | Excel export `POST /api/common/excel/export` | 5 / min / user **and** 200 / hour / tenant |
 | Login | 20 / min / IP **and** 5 / 5 min / account |
+| Captcha challenge | 30 / min / IP + 10 / 5 min / account + 20 / 5 min / device |
+| Captcha silent verify | 60 / min / IP + 20 / 5 min / account |
+| Captcha secondary verify | 30 / min / IP + 15 / 5 min / account + 30 / 5 min / device |
+| Captcha public config | 120 / min / IP |
 
 Notes:
 
@@ -86,8 +105,11 @@ Notes:
   `/api/ai/chat/completions` and `/api/ai/ocr/recognize`. nginx additionally applies
   `limit_req zone=api burst=30 nodelay` on `/api/ai/`.
 - Rate limits are keyed by an already-authenticated `userId`; for unauthenticated requests the
-  bucket degenerates to `anonymous` and is effectively shared — this is why login has a
-  dedicated `ip` dimension.
+  `user` bucket degenerates to `anonymous` and is effectively shared — this is why login has a
+  dedicated `ip` dimension and why the captcha endpoints additionally use `account` and `device`.
+- `account` no longer collapses to a single `anon` bucket: when the body carries no `username` the
+  key becomes `ip:{sha256(ip)[0:16]}`, so one anonymous caller cannot exhaust the bucket for
+  everybody else.
 
 ---
 

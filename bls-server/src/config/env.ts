@@ -49,6 +49,47 @@ const apiSignSecret = process.env.API_SIGN_SECRET?.trim() ?? '';
 if (isProduction && replayEnabled && !apiSignSecret) throw new Error('API_SIGN_SECRET is required when replay protection is enabled in production');
 if (isProduction && replayEnabled && apiSignSecret.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) throw new Error('API_SIGN_SECRET must not be a CHANGE_TO_* placeholder');
 
+/**
+ * 登录人机验证密钥。
+ * - 生产环境：缺失 / 过短 / CHANGE_TO_* 占位符 → 启动失败（fail closed）。
+ * - CAPTCHA_DEV_BYPASS 只允许在非生产环境使用，生产环境出现该值直接阻止启动。
+ */
+const captchaSecret = process.env.CAPTCHA_SECRET?.trim() ?? '';
+const captchaDevBypass = (process.env.CAPTCHA_DEV_BYPASS ?? 'false') === 'true';
+const CAPTCHA_DEV_SECRET = 'dev_captcha_secret_not_for_production_use';
+if (isProduction) {
+  if (isProduction && captchaDevBypass) throw new Error('CAPTCHA_DEV_BYPASS must not be enabled in production');
+  if (!captchaSecret) throw new Error('CAPTCHA_SECRET is required in production');
+  if (captchaSecret.length < 32) throw new Error('CAPTCHA_SECRET must be at least 32 characters');
+  if (captchaSecret.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) throw new Error('CAPTCHA_SECRET must not be a CHANGE_TO_* placeholder');
+}
+
+/**
+ * 阶段七：生产环境必须启用 Redis。
+ * Session 中心、nonce 防重放、限流、幂等键、租户 provisioning 全部依赖 Redis；
+ * 关闭 Redis 会让这些保护静默失效，因此在生产环境直接阻止启动。
+ */
+const redisEnabled = (process.env.REDIS_ENABLED ?? 'true') === 'true';
+if (isProduction && !redisEnabled) {
+  throw new Error('REDIS_ENABLED must be true in production (sessions, nonce, rate limiting and idempotency all require Redis)');
+}
+
+/**
+ * 阶段七：/api/metrics、/api/docs、/api/openapi.json 的生产开关。
+ * 生产环境默认**关闭**，需要显式打开（或改由反向代理 + 鉴权保护）。
+ */
+const metricsPublic = (process.env.METRICS_PUBLIC ?? (isProduction ? 'false' : 'true')) === 'true';
+const apiDocsEnabled = (process.env.API_DOCS_ENABLED ?? (isProduction ? 'false' : 'true')) === 'true';
+
+/** 阶段五：敏感数据信封加密主密钥（生产必须显式配置，且不得写入数据库/日志） */
+const secretEncryptionKey = process.env.SECRET_ENCRYPTION_KEY?.trim() ?? '';
+if (isProduction) {
+  if (!secretEncryptionKey) throw new Error('SECRET_ENCRYPTION_KEY is required in production');
+  if (secretEncryptionKey.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) {
+    throw new Error('SECRET_ENCRYPTION_KEY must not be a CHANGE_TO_* placeholder');
+  }
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   isProduction,
@@ -80,8 +121,14 @@ export const env = {
     port: numberEnv('REDIS_PORT', 6379),
     username: process.env.REDIS_USERNAME ?? '',
     password: process.env.REDIS_PASSWORD ?? '',
-    enabled: (process.env.REDIS_ENABLED ?? 'true') === 'true',
+    enabled: redisEnabled,
     keyPrefix: process.env.REDIS_KEY_PREFIX ?? 'bls:',
+  },
+  security: {
+    /** /api/metrics 是否匿名可访问 */
+    metricsPublic,
+    /** /api/docs 与 /api/openapi.json 是否对外开放 */
+    apiDocsEnabled,
   },
   db: {
     host: process.env.DB_HOST ?? '127.0.0.1',
@@ -98,5 +145,13 @@ export const env = {
     nonceTtlSeconds: numberEnv('REPLAY_NONCE_TTL_SECONDS', 180),
     defaultMode: (process.env.REPLAY_DEFAULT_MODE ?? 'nonce') as 'off' | 'timestamp' | 'nonce' | 'signature',
     protectedMethods: (process.env.REPLAY_PROTECTED_METHODS ?? 'POST,PUT,PATCH,DELETE').split(',').map((s) => s.trim().toUpperCase()),
+  },
+  captcha: {
+    /** 生产环境必须显式配置；开发环境使用固定兜底值以便本地联调 */
+    secret: captchaSecret || CAPTCHA_DEV_SECRET,
+    configured: !!captchaSecret,
+    /** 仅开发环境允许：跳过人机验证（生产环境会阻止启动） */
+    devBypass: captchaDevBypass && !isProduction,
+    devSecret: CAPTCHA_DEV_SECRET,
   },
 };

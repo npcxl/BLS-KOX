@@ -65,6 +65,15 @@ INSERT INTO `sys_config` VALUES
 ('000403','000000','sys.demo.enabled','true','演示模式开关','sys','0','是否开启演示数据',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
 ('000404','000000','sys.upload.maxSize','20','文件上传限制(MB)','sys','0','文件上传大小限制',0,'2026-06-11 00:58:56','2026-06-17 03:08:19'),
 ('000405','000000','sys.version','2.0.0','版本号','sys','0','系统版本',0,'2026-06-11 00:58:56','2026-07-09 09:26:33'),
+('000406','000000','sys.login.captcha.enabled','true','登录人机验证开关','sys','0','是否开启登录人机验证',0,'2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('000407','000000','sys.login.captcha.mode','adaptive','登录人机验证模式','sys','0','off/adaptive/always',0,'2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('000408','000000','sys.login.captcha.silentThreshold','70','静默验证通过阈值','sys','0','静默行为评分通过阈值 0-100',0,'2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('000409','000000','sys.login.captcha.forceAfterFailures','3','连续失败强制二级次数','sys','0','同账号近期连续登录失败达到该值强制二级验证',0,'2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('000410','000000','sys.login.captcha.challengeTtlSeconds','180','验证挑战有效期(秒)','sys','0','challenge 有效期 30-900',0,'2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('000411','000000','sys.login.captcha.tokenTtlSeconds','120','登录验证凭证有效期(秒)','sys','0','captchaToken 有效期 30-600',0,'2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('000412','000000','sys.login.captcha.secondaryTypes','slider,rotate','二级验证类型','sys','0','slider=滑块拼图,rotate=图像旋转',0,'2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('000413','000000','sys.login.captcha.maxAttempts','5','单挑战最大尝试次数','sys','0','同一 challenge 超过该次数立即失效 1-20',0,'2026-09-20 00:00:00','2026-09-20 00:00:00'),
+('000414','000000','sys.login.captcha.provider','builtin','人机验证提供方','sys','0','第一版仅内置实现 builtin',0,'2026-09-20 00:00:00','2026-09-20 00:00:00'),
 ('100401','100000','sys.app.name','默认租户工作台','系统名称','sys','0','默认租户展示名称',0,'2026-06-11 00:58:56','2026-06-11 00:58:56');
 
 -- -------------------------------------------------------
@@ -995,7 +1004,7 @@ CREATE TABLE `sys_search_index` (
 -- -------------------------------------------------------
 DROP TABLE IF EXISTS `sys_security_log`;
 CREATE TABLE `sys_security_log` (
-  `id` varchar(32) NOT NULL,
+  `log_id` varchar(32) NOT NULL COMMENT '日志ID',
   `tenant_id` varchar(32) NOT NULL DEFAULT '000000',
   `event_type` varchar(64) NOT NULL COMMENT '事件类型',
   `risk_level` varchar(20) NOT NULL DEFAULT 'medium' COMMENT 'low/medium/high/critical',
@@ -1008,8 +1017,9 @@ CREATE TABLE `sys_security_log` (
   `client_ip` varchar(45) DEFAULT NULL,
   `user_agent` varchar(500) DEFAULT NULL,
   `request_id` varchar(64) DEFAULT NULL,
+  `source` varchar(50) NOT NULL DEFAULT 'system' COMMENT '事件来源模块',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
+  PRIMARY KEY (`log_id`),
   KEY `idx_security_tenant_time` (`tenant_id`,`create_time`),
   KEY `idx_security_event_type` (`event_type`),
   KEY `idx_security_risk` (`risk_level`)
@@ -1095,17 +1105,19 @@ CREATE TABLE `sys_tenant` (
   `expire_time` datetime DEFAULT NULL COMMENT '过期时间',
   `status` char(1) NOT NULL DEFAULT '0' COMMENT '0正常 1停用',
   `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+  `offboard_status` varchar(20) NOT NULL DEFAULT 'none' COMMENT '注销状态：none/pending/completed',
   `deleted` tinyint NOT NULL DEFAULT '0' COMMENT '逻辑删除',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`tenant_id`),
   UNIQUE KEY `uk_tenant_domain` (`domain_name`),
-  KEY `idx_tenant_domain` (`domain_name`)
+  KEY `idx_tenant_domain` (`domain_name`),
+  KEY `idx_tenant_offboard` (`offboard_status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='租户表';
 
 INSERT INTO `sys_tenant` VALUES
-('000000','平台租户','platform.example.com','P001','超级管理员','13800000001',NULL,'0','平台管理租户',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
-('100000','默认租户','demo.example.com','P100','租户管理员',NULL,NULL,'0','默认演示租户',0,'2026-06-11 00:58:56','2026-06-11 00:58:56');
+('000000','平台租户','platform.example.com','P001','超级管理员','13800000001',NULL,'0','平台管理租户','none',0,'2026-06-11 00:58:56','2026-06-11 00:58:56'),
+('100000','默认租户','demo.example.com','P100','租户管理员',NULL,NULL,'0','默认演示租户','none',0,'2026-06-11 00:58:56','2026-06-11 00:58:56');
 
 -- -------------------------------------------------------
 -- sys_theme_config
@@ -1415,3 +1427,208 @@ INSERT IGNORE INTO `sys_dict_data` VALUES
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+-- =======================================================
+-- 阶段三 / 四 / 六 新增表与种子
+-- （与 bls-server/migrations/20260921_014~016 保持一致，新装环境由此创建）
+-- =======================================================
+-- ============================================================
+-- 阶段三：套餐权益（feature）与配额（quota）
+--
+-- 新增三张表：
+--   sys_package_feature       套餐功能开关（全局表）
+--   sys_package_quota         套餐配额上限（全局表，quota_limit < 0 = 不限）
+--   sys_tenant_quota_usage    租户配额用量（多租户表，复合唯一键 tenant_id+quota_key+period_key）
+--
+-- 并初始化内置套餐 P001（平台版）/ P100（租户标准版）的权益与配额。
+-- 全部语句可重复执行。
+-- ============================================================
+
+DROP TABLE IF EXISTS `sys_package_feature`;
+CREATE TABLE `sys_package_feature` (
+  `id` varchar(32) NOT NULL COMMENT '主键ID',
+  `package_id` varchar(32) NOT NULL COMMENT '套餐ID',
+  `feature_key` varchar(100) NOT NULL COMMENT '功能标识：feature.ai.chat 等',
+  `enabled` char(1) NOT NULL DEFAULT '1' COMMENT '0关闭 1开启',
+  `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_package_feature` (`package_id`,`feature_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='套餐功能权益表';
+
+DROP TABLE IF EXISTS `sys_package_quota`;
+CREATE TABLE `sys_package_quota` (
+  `id` varchar(32) NOT NULL COMMENT '主键ID',
+  `package_id` varchar(32) NOT NULL COMMENT '套餐ID',
+  `quota_key` varchar(64) NOT NULL COMMENT '配额标识：max_users 等',
+  `quota_limit` bigint NOT NULL DEFAULT 0 COMMENT '配额上限，负数=不限',
+  `period` varchar(20) NOT NULL DEFAULT 'total' COMMENT '计量周期：total/monthly/daily',
+  `remark` varchar(500) DEFAULT NULL COMMENT '备注',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_package_quota` (`package_id`,`quota_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='套餐配额定义表';
+
+DROP TABLE IF EXISTS `sys_tenant_quota_usage`;
+CREATE TABLE `sys_tenant_quota_usage` (
+  `id` varchar(32) NOT NULL COMMENT '主键ID',
+  `tenant_id` varchar(32) NOT NULL COMMENT '租户ID',
+  `quota_key` varchar(64) NOT NULL COMMENT '配额标识',
+  `period_key` varchar(32) NOT NULL DEFAULT 'total' COMMENT '周期键：total / 2026-09 / 2026-09-21',
+  `used` bigint NOT NULL DEFAULT 0 COMMENT '已使用量',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_tenant_quota` (`tenant_id`,`quota_key`,`period_key`),
+  KEY `idx_tenant_quota_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='租户配额用量表';
+
+-- ---------- 内置套餐功能权益 ----------
+INSERT IGNORE INTO `sys_package_feature` (`id`, `package_id`, `feature_key`, `enabled`, `remark`) VALUES
+  ('pf_p001_ai_chat',        'P001', 'feature.ai.chat',        '1', '平台版全部功能'),
+  ('pf_p001_webhook',        'P001', 'feature.webhook',        '1', '平台版全部功能'),
+  ('pf_p001_openapi',        'P001', 'feature.openapi',        '1', '平台版全部功能'),
+  ('pf_p001_audit_export',   'P001', 'feature.audit.export',   '1', '平台版全部功能'),
+  ('pf_p001_custom_domain',  'P001', 'feature.custom_domain',  '1', '平台版全部功能'),
+  ('pf_p100_ai_chat',        'P100', 'feature.ai.chat',        '1', '标准版包含 AI 对话'),
+  ('pf_p100_webhook',        'P100', 'feature.webhook',        '1', '标准版包含 Webhook'),
+  ('pf_p100_openapi',        'P100', 'feature.openapi',        '1', '标准版包含开放 API'),
+  ('pf_p100_audit_export',   'P100', 'feature.audit.export',   '0', '标准版不含审计导出'),
+  ('pf_p100_custom_domain',  'P100', 'feature.custom_domain',  '0', '标准版不含自定义域名');
+
+-- ---------- 内置套餐配额（quota_limit < 0 表示不限） ----------
+INSERT IGNORE INTO `sys_package_quota` (`id`, `package_id`, `quota_key`, `quota_limit`, `period`, `remark`) VALUES
+  ('pq_p001_users',      'P001', 'max_users',                 -1, 'total',   '平台版不限'),
+  ('pq_p001_storage',    'P001', 'max_storage_bytes',         -1, 'total',   '平台版不限'),
+  ('pq_p001_files',      'P001', 'max_files',                 -1, 'total',   '平台版不限'),
+  ('pq_p001_apikeys',    'P001', 'max_api_keys',              -1, 'total',   '平台版不限'),
+  ('pq_p001_webhooks',   'P001', 'max_webhooks',              -1, 'total',   '平台版不限'),
+  ('pq_p001_ai_tokens',  'P001', 'max_ai_tokens_monthly',     -1, 'monthly', '平台版不限'),
+  ('pq_p001_ai_cost',    'P001', 'max_ai_cost_monthly',       -1, 'monthly', '平台版不限'),
+  ('pq_p001_jobs',       'P001', 'max_concurrent_jobs',       -1, 'total',   '平台版不限'),
+  ('pq_p100_users',      'P100', 'max_users',                  50, 'total',   '标准版 50 个用户'),
+  ('pq_p100_storage',    'P100', 'max_storage_bytes',  10737418240, 'total',   '标准版 10 GiB'),
+  ('pq_p100_files',      'P100', 'max_files',               10000, 'total',   '标准版 1 万个文件'),
+  ('pq_p100_apikeys',    'P100', 'max_api_keys',                5, 'total',   '标准版 5 个 API Key'),
+  ('pq_p100_webhooks',   'P100', 'max_webhooks',               10, 'total',   '标准版 10 个 Webhook'),
+  ('pq_p100_ai_tokens',  'P100', 'max_ai_tokens_monthly', 1000000, 'monthly', '标准版每月 100 万 tokens'),
+  ('pq_p100_ai_cost',    'P100', 'max_ai_cost_monthly',     10000, 'monthly', '标准版每月 1 万元额度'),
+  ('pq_p100_jobs',       'P100', 'max_concurrent_jobs',         5, 'total',   '标准版 5 个并发任务');
+
+-- ---------- 菜单权限：配额查询 ----------
+INSERT IGNORE INTO `sys_menu`
+  (`menu_id`, `parent_id`, `menu_name`, `path`, `component`, `perms`, `icon`, `menu_type`, `sort_num`, `status`, `create_time`, `update_time`)
+VALUES
+  ('quota_list_0001', '000100', '套餐配额', NULL, NULL, 'system:quota:list', NULL, '2', 20, '0', '2026-09-21 00:00:00', '2026-09-21 00:00:00');
+
+INSERT IGNORE INTO `sys_role_menu` (`role_id`, `menu_id`) VALUES
+  ('000001', 'quota_list_0001'),
+  ('100001', 'quota_list_0001');
+
+INSERT IGNORE INTO `sys_package_menu` (`package_id`, `menu_id`) VALUES
+  ('P001', 'quota_list_0001'),
+  ('P100', 'quota_list_0001');
+
+-- ============================================================
+-- 阶段四：认证闭环 —— 密码重置一次性令牌
+--
+-- sys_password_reset_token
+--   - 数据库只保存 token 的 SHA-256，不保存明文
+--   - 单次使用（used 0/1），消费时用条件 UPDATE 保证原子
+--   - 带有效期（expire_time）
+--   - 使用后由应用吊销该用户全部 Session
+-- ============================================================
+
+DROP TABLE IF EXISTS `sys_password_reset_token`;
+CREATE TABLE `sys_password_reset_token` (
+  `token_id` varchar(32) NOT NULL COMMENT '令牌ID',
+  `tenant_id` varchar(32) NOT NULL DEFAULT '000000' COMMENT '租户ID',
+  `user_id` varchar(32) NOT NULL COMMENT '用户ID',
+  `token_hash` varchar(128) NOT NULL COMMENT '令牌 SHA-256（不保存明文）',
+  `purpose` varchar(20) NOT NULL DEFAULT 'reset_password' COMMENT '用途：reset_password/verify_email/invite',
+  `used` tinyint NOT NULL DEFAULT '0' COMMENT '0未使用 1已使用',
+  `expire_time` datetime NOT NULL COMMENT '过期时间',
+  `used_time` datetime DEFAULT NULL COMMENT '使用时间',
+  `client_ip` varchar(45) DEFAULT NULL COMMENT '申请来源IP',
+  `user_agent` varchar(500) DEFAULT NULL COMMENT 'User-Agent',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`token_id`),
+  UNIQUE KEY `uk_reset_token_hash` (`token_hash`),
+  KEY `idx_reset_token_user` (`user_id`,`used`),
+  KEY `idx_reset_token_expire` (`expire_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='密码重置一次性令牌表';
+
+-- 权限码：管理员重置用户密码
+INSERT IGNORE INTO `sys_menu`
+  (`menu_id`, `parent_id`, `menu_name`, `path`, `component`, `perms`, `icon`, `menu_type`, `sort_num`, `status`, `create_time`, `update_time`)
+VALUES
+  ('user_resetpwd_0001', '000130', '重置密码', NULL, NULL, 'system:user:resetPassword', NULL, '2', 7, '0', '2026-09-21 00:00:00', '2026-09-21 00:00:00');
+
+INSERT IGNORE INTO `sys_role_menu` (`role_id`, `menu_id`) VALUES
+  ('000001', 'user_resetpwd_0001'),
+  ('100001', 'user_resetpwd_0001');
+
+INSERT IGNORE INTO `sys_package_menu` (`package_id`, `menu_id`) VALUES
+  ('P001', 'user_resetpwd_0001'),
+  ('P100', 'user_resetpwd_0001');
+
+-- ============================================================
+-- 阶段六：外部 API（/openapi/v1）真正可用
+--
+-- 新增 sys_api_key：
+--   - key_id            对外公开的 Key 标识（X-Api-Key 头）
+--   - key_hash          完整 Key 的 SHA-256，二次校验，避免仅凭 key_id 通过
+--   - encrypted_secret  AES-256-GCM 信封加密的 HMAC Secret（数据库不存明文）
+--   - scopes            逗号分隔的授权范围（read / write / *）
+--   - expire_at / revoked_at / last_used_at
+--
+-- 命名说明：本表沿用需求给出的 `created_at`（例外，见 bls-memory/00-common/07-database.md）。
+-- ============================================================
+
+DROP TABLE IF EXISTS `sys_api_key`;
+CREATE TABLE `sys_api_key` (
+  `api_key_id` varchar(32) NOT NULL COMMENT '主键ID',
+  `tenant_id` varchar(32) NOT NULL COMMENT '租户ID',
+  `name` varchar(100) NOT NULL COMMENT '名称',
+  `key_id` varchar(64) NOT NULL COMMENT '对外公开的 Key 标识',
+  `key_hash` varchar(128) NOT NULL COMMENT '完整 API Key 的 SHA-256',
+  `encrypted_secret` text COMMENT 'AES-256-GCM 信封加密的 HMAC Secret',
+  `secret_preview` varchar(32) DEFAULT NULL COMMENT '明文前缀提示（不可用于签名）',
+  `scopes` varchar(500) NOT NULL DEFAULT 'read' COMMENT '授权范围，逗号分隔：read/write/*',
+  `status` char(1) NOT NULL DEFAULT '0' COMMENT '0启用 1停用',
+  `expire_at` datetime DEFAULT NULL COMMENT '过期时间，NULL 表示永不过期',
+  `last_used_at` datetime DEFAULT NULL COMMENT '最近一次成功调用时间',
+  `revoked_at` datetime DEFAULT NULL COMMENT '撤销时间',
+  `created_by` varchar(32) DEFAULT NULL COMMENT '创建人ID',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted` tinyint NOT NULL DEFAULT '0' COMMENT '逻辑删除',
+  PRIMARY KEY (`api_key_id`),
+  UNIQUE KEY `uk_api_key_key_id` (`key_id`),
+  UNIQUE KEY `uk_api_key_key_hash` (`key_hash`),
+  KEY `idx_api_key_tenant` (`tenant_id`),
+  KEY `idx_api_key_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='外部 API Key';
+
+-- 权限码：API Key 管理
+INSERT IGNORE INTO `sys_menu`
+  (`menu_id`, `parent_id`, `menu_name`, `path`, `component`, `perms`, `icon`, `menu_type`, `sort_num`, `status`, `create_time`, `update_time`)
+VALUES
+  ('apikey_list_0001',   '000100', '开放API密钥', NULL, NULL, 'system:apikey:list',   NULL, '2', 21, '0', '2026-09-21 00:00:00', '2026-09-21 00:00:00'),
+  ('apikey_add_0001',    '000100', '新增密钥',    NULL, NULL, 'system:apikey:add',    NULL, '2', 22, '0', '2026-09-21 00:00:00', '2026-09-21 00:00:00'),
+  ('apikey_remove_0001', '000100', '删除密钥',    NULL, NULL, 'system:apikey:remove', NULL, '2', 23, '0', '2026-09-21 00:00:00', '2026-09-21 00:00:00'),
+  ('apikey_status_0001', '000100', '密钥状态',    NULL, NULL, 'system:apikey:status', NULL, '2', 24, '0', '2026-09-21 00:00:00', '2026-09-21 00:00:00');
+
+INSERT IGNORE INTO `sys_role_menu` (`role_id`, `menu_id`) VALUES
+  ('000001', 'apikey_list_0001'), ('000001', 'apikey_add_0001'),
+  ('000001', 'apikey_remove_0001'), ('000001', 'apikey_status_0001'),
+  ('100001', 'apikey_list_0001'), ('100001', 'apikey_add_0001'),
+  ('100001', 'apikey_remove_0001'), ('100001', 'apikey_status_0001');
+
+INSERT IGNORE INTO `sys_package_menu` (`package_id`, `menu_id`) VALUES
+  ('P001', 'apikey_list_0001'), ('P001', 'apikey_add_0001'),
+  ('P001', 'apikey_remove_0001'), ('P001', 'apikey_status_0001'),
+  ('P100', 'apikey_list_0001'), ('P100', 'apikey_add_0001'),
+  ('P100', 'apikey_remove_0001'), ('P100', 'apikey_status_0001');

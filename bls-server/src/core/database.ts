@@ -4,13 +4,15 @@ import { env } from '../config/env';
 import { dbQueryDurationSeconds, dbQueryErrorsTotal } from '../observability/metrics';
 import { writeSqlError } from './sql-audit';
 
-console.log('[db] config loaded', {
-  host: env.db.host,
-  port: env.db.port,
-  user: env.db.user,
-  database: env.db.database,
-  connectionLimit: env.db.connectionLimit,
-});
+/**
+ * 懒加载连接池（阶段七）
+ *
+ * 重要：**模块加载时不再创建连接池**。仅 import 本模块（例如单元测试通过
+ * service → database 的间接依赖）不会建立任何 MySQL 连接；只有在真正执行
+ * query/execute/transaction/getDb 时才创建。
+ *
+ * 这保证 `npm run test`（单元测试）不需要、也不会连接真实 MySQL。
+ */
 
 const commonDbConfig = {
   host: env.db.host,
@@ -40,64 +42,76 @@ const commonDbConfig = {
   charset: 'utf8mb4',
 };
 
-export const pool = mysql.createPool(commonDbConfig);
+function isConnectionResetError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    err.message.includes('ECONNRESET') ||
+    err.message.includes('ECONNREFUSED') ||
+    err.message.includes('ETIMEDOUT') ||
+    err.message.includes('PROTOCOL_CONNECTION_LOST') ||
+    err.message.includes('Connection lost')
+  );
+}
 
-// ========== 连接池事件监听 ==========
-pool.on('connection', (connection) => {
-  console.log('[db] new connection created, threadId=%d', connection.threadId);
-
-  // 连接级错误检测：自动销毁已断开的连接
-  connection.on('error', (err) => {
-    console.error('[db] connection %d error:', connection.threadId, err.message);
-    if (isConnectionResetError(err)) {
-      try {
-        connection.destroy();
-      } catch (_) {
-        // ignore
+function attachPoolEvents(pool: any, tag: string): void {
+  pool.on('connection', (connection: any) => {
+    console.log('[%s] new connection created, threadId=%d', tag, connection.threadId);
+    connection.on('error', (err: Error) => {
+      console.error('[%s] connection %d error:', tag, connection.threadId, err.message);
+      if (isConnectionResetError(err)) {
+        try { connection.destroy(); } catch { /* ignore */ }
       }
-    }
+    });
   });
-});
-// pool.on('acquire', (connection) => { console.log('[db] connection %d acquired', connection.threadId); });
-// pool.on('release', (connection) => { console.log('[db] connection %d released', connection.threadId); });
-pool.on('enqueue', () => {
-  console.log('[db] waiting for available connection slot');
-});
+  pool.on('error', (err: Error) => {
+    console.error('[%s] pool error:', tag, err.message);
+  });
+  pool.on('enqueue', () => {
+    console.log('[%s] waiting for available connection slot', tag);
+  });
+}
+
+let poolInstance: mysql.Pool | null = null;
+/** mysql2（回调版）的 Pool 与 mysql2/promise 的 Pool 类型不兼容，这里保持宽松类型 */
+let kyselyPoolInstance: any = null;
+
+/** 获取（并按需创建）原生 mysql2 连接池 */
+export function getPool(): mysql.Pool {
+  if (!poolInstance) {
+    console.log('[db] config loaded', {
+      host: env.db.host,
+      port: env.db.port,
+      user: env.db.user,
+      database: env.db.database,
+      connectionLimit: env.db.connectionLimit,
+    });
+    poolInstance = mysql.createPool(commonDbConfig);
+    attachPoolEvents(poolInstance, 'db');
+  }
+  return poolInstance;
+}
+
+/** Kysely 专用 Pool */
+function getKyselyPool(): any {
+  if (!kyselyPoolInstance) {
+    kyselyPoolInstance = createMysqlPool(commonDbConfig);
+    attachPoolEvents(kyselyPoolInstance, 'db:kysely');
+  }
+  return kyselyPoolInstance;
+}
 
 /**
- * Kysely 专用 Pool
+ * 兼容旧代码的 `pool` 导出。
+ * 通过 Proxy 转发到懒创建的真实连接池，任何属性访问都会触发按需创建。
  */
-const kyselyPool = createMysqlPool(commonDbConfig);
-
-// 连接创建时，给每个连接添加错误处理
-kyselyPool.on('connection', (connection) => {
-  console.log('[db:kysely] new connection created, threadId=%d', connection.threadId);
-
-  connection.on('error', (err) => {
-    console.error('[db:kysely] connection %d error:', connection.threadId, err.message);
-    // ECONNRESET 等致命错误：销毁连接，pool 会自动创建新连接替换
-    if (isConnectionResetError(err)) {
-      try {
-        connection.destroy();
-      } catch (_) {
-        // ignore
-      }
-    }
-  });
+export const pool: any = new Proxy({} as Record<string, unknown>, {
+  get(_target, prop) {
+    const real: any = getPool();
+    const value = real[prop];
+    return typeof value === 'function' ? value.bind(real) : value;
+  },
 });
 
-// 全局 pool 错误处理
-kyselyPool.on('error', (err) => {
-  console.error('[db:kysely] pool error:', err.message);
-});
-
-// kyselyPool.on('acquire', (connection) => { console.log('[db:kysely] connection %d acquired', connection.threadId); });
-// kyselyPool.on('release', (connection) => { console.log('[db:kysely] connection %d released', connection.threadId); });
-kyselyPool.on('enqueue', () => {
-  console.log('[db:kysely] waiting for available connection slot');
-});
-
-// ========== 连接错误检测（ECONNRESET 等） ==========
 /** 统一 DB 操作观测包装 */
 async function observeDbOperation<T>(operation: string, fn: () => Promise<T>): Promise<T> {
   const end = dbQueryDurationSeconds.startTimer({ operation });
@@ -109,17 +123,6 @@ async function observeDbOperation<T>(operation: string, fn: () => Promise<T>): P
   } finally {
     end();
   }
-}
-
-function isConnectionResetError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  return (
-    err.message.includes('ECONNRESET') ||
-    err.message.includes('ECONNREFUSED') ||
-    err.message.includes('ETIMEDOUT') ||
-    err.message.includes('PROTOCOL_CONNECTION_LOST') ||
-    err.message.includes('Connection lost')
-  );
 }
 
 /**
@@ -248,7 +251,7 @@ export async function getDb() {
     dbPromise = import('kysely').then(({ Kysely, MysqlDialect }) => {
       const rawDb = new Kysely<Record<string, any>>({
         dialect: new MysqlDialect({
-          pool: kyselyPool,
+          pool: getKyselyPool(),
         }),
       });
       return wrapKyselyInstance(rawDb);
@@ -256,18 +259,6 @@ export async function getDb() {
   }
 
   return dbPromise;
-}
-
-/** Graceful Shutdown：关闭所有数据库连接池 */
-export async function closeDatabase(): Promise<void> {
-  const results = await Promise.allSettled([
-    (async () => { await pool.end(); })(),
-    (async () => { await new Promise<void>((resolve, reject) => { (kyselyPool as any).end((err?: Error) => { if (err) reject(err); else resolve(); }); }); })(),
-  ]);
-  const failures = results.filter((r) => r.status === 'rejected');
-  if (failures.length > 0) {
-    console.error('[db] close pool errors:', failures.map((r: any) => r.reason?.message).join(', '));
-  }
 }
 
 export type QueryParams = Record<string, unknown> | unknown[];
@@ -279,7 +270,7 @@ export async function query<T>(
   try {
     return await observeDbOperation('query', () =>
       withRetry(async () => {
-        const [rows] = await pool.query(sql, params as any);
+        const [rows] = await getPool().query(sql, params as any);
         return rows as T[];
       }, 'query')
     );
@@ -296,7 +287,7 @@ export async function queryOne<T>(
   try {
     return await observeDbOperation('query_one', () =>
       withRetry(async () => {
-        const [rows] = await pool.query(sql, params as any);
+        const [rows] = await getPool().query(sql, params as any);
         return (rows as T[])[0] ?? null;
       }, 'queryOne')
     );
@@ -313,7 +304,7 @@ export async function execute(
   try {
     return await observeDbOperation('execute', () =>
       withRetry(async () => {
-        const [result] = await pool.execute(sql, params as any);
+        const [result] = await getPool().execute(sql, params as any);
         return result as mysql.ResultSetHeader;
       }, 'execute')
     );
@@ -328,7 +319,7 @@ export async function transaction<T>(
 ): Promise<T> {
   return observeDbOperation('transaction', () =>
     withRetry(async () => {
-      const conn = await pool.getConnection();
+      const conn = await getPool().getConnection();
       try {
         await conn.beginTransaction();
         const result = await runner(conn);
@@ -342,4 +333,25 @@ export async function transaction<T>(
       }
     }, 'transaction')
   );
+}
+
+/** Graceful Shutdown：关闭所有数据库连接池（未创建过则直接返回） */
+export async function closeDatabase(): Promise<void> {
+  const results = await Promise.allSettled([
+    (async () => { if (poolInstance) await poolInstance.end(); })(),
+    (async () => {
+      if (kyselyPoolInstance) {
+        await new Promise<void>((resolve, reject) => {
+          (kyselyPoolInstance as any).end((err?: Error) => { if (err) reject(err); else resolve(); });
+        });
+      }
+    })(),
+  ]);
+  const failures = results.filter((r) => r.status === 'rejected');
+  if (failures.length > 0) {
+    console.error('[db] close pool errors:', failures.map((r: any) => r.reason?.message).join(', '));
+  }
+  poolInstance = null;
+  kyselyPoolInstance = null;
+  dbPromise = null;
 }

@@ -21,6 +21,7 @@
 - [CRUD 工厂](./crud.md) — defineCrudModule 一行配置生成 CRUD、Koa/Java 对比
 - [API 版本化](./api-versioning.md) — 路由前缀、OpenAPI、Internal 接口
 - [认证体系](./auth.md) — Token、Session Center、时序图
+- [登录人机验证](./login-captcha.md) — 两级 captcha（静默 + 滑块/旋转）、captchaToken、安全设计
 - [RBAC 权限](./rbac.md) — 角色-菜单-按钮
 - [多租户](./multi-tenant.md) — 数据隔离、权限守卫
 - [安全能力](./security.md) — 防重放、限流、审计

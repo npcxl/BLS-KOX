@@ -1,6 +1,10 @@
 # Page — Login (`/user/login`)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.1.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-20
+>
+> *Uncommitted note:* the login flow, the two-stage login captcha and the frontend captcha modal
+> described here are **not yet committed** (verified against working tree at `61aaf9a` +
+> uncommitted captcha changes).
 
 ## 1. Summary
 
@@ -9,9 +13,10 @@
 | Route | `/user/login` (`bls-admin/config/routes.ts`, `layout: false`) |
 | Component | `bls-admin/src/pages/user/login/index.tsx` |
 | Purpose | Account + password login; resolves the tenant by request **domain**; stores access/refresh tokens |
-| Backend module | `bls-server/src/api/auth/index.ts` (`AuthService`) |
+| Backend module | `bls-server/src/api/auth/index.ts` (`AuthService`), `bls-server/src/api/auth/captcha/index.ts`, `bls-server/src/security/captcha/*` |
 | Menu permission | none (public route) |
 | Shared docs | `00-common/01-redis.md`, `02-replay-protection.md`, `03-rate-limiting.md`, `04-auth-and-permissions.md`, `05-security-log-and-event-center.md` |
+| Captcha | two-stage login captcha → dedicated page memory [pages/login-captcha.md](login-captcha.md) |
 
 Public routes list (`bls-admin/src/app.tsx`): `/user/login`, `/user/register`,
 `/user/register-result`. The login page loads public theme + public system config instead of the
@@ -23,16 +28,40 @@ authenticated ones.
 
 | User action | Service function (file) | Method | Endpoint |
 |---|---|---|---|
-| Submit the form | `login({username, password, type:'account'})` — `bls-admin/src/services/ant-design-pro/api.ts` | POST | `/api/auth/login` |
+| Submit the form | `login({username, password, type:'account', captchaToken?})` — `bls-admin/src/services/ant-design-pro/api.ts` | POST | `/api/auth/login` |
 | Load public theme for the page | `publicThemeConfig()` — `bls-admin/src/services/ant-design-pro/api.ts` | GET | `/api/system/config/public-theme` |
 | Load public system config | `publicSystemConfig()` — `bls-admin/src/services/ant-design-pro/api.ts` | GET | `/api/system/config/public-system` |
 | Load current user after login | `currentUser()` | GET | `/api/auth/profile` |
 | Restore session on app start | `ensureValidSession()` — `bls-admin/src/auth/auth-manager.ts` | POST | `/api/auth/refresh` |
+| *(captcha)* read public captcha config | `getCaptchaConfig()` — `bls-admin/src/services/auth/captcha.ts` | GET | `/api/auth/captcha/config` |
+| *(captcha)* create a challenge | `createCaptchaChallenge({username, stage?})` | POST | `/api/auth/captcha/challenge` |
+| *(captcha)* stage 1 silent verification | `verifyCaptchaSilent({...})` | POST | `/api/auth/captcha/silent/verify` |
+| *(captcha)* stage 2 visual verification | `verifyCaptchaSecondary({...})` | POST | `/api/auth/captcha/secondary/verify` |
+
+### Login flow with the two-stage captcha
+
+`captchaConfig.enabled === false` → the original flow (submit → `POST /api/auth/login`).
+When enabled (component `useEffect` on mount):
+
+1. `GET /api/auth/captcha/config`; if not enabled nothing else happens (back-compatible).
+2. `loginBehaviorCollector.start()` (`bls-admin/src/auth/behavior-collector.ts`) — collects **only
+   statistical values** (counts, interval mean/σ, speed, focus/blur, `navigator.webdriver`);
+   no coordinates, no keystrokes.
+3. Pre-warm a **silent** challenge with `POST /api/auth/captcha/challenge` (the response is
+   ignored when the server answers `stage:'secondary'`, so `mode=always` users are not
+   interrupted before they type).
+4. On submit: reuse the silent challenge (or create a fresh one when it expired) →
+   `POST /api/auth/captcha/silent/verify`.
+   - `passed:true` → keep the one-shot `captchaToken` in a ref.
+   - `passed:false` → open `CaptchaChallengeModal` with `nextStage/secondaryChallenge`.
+5. `POST /api/auth/login` with `captchaToken` in the body.
+6. Login errors `40010/40011/40012/40013` → drop the token and retry the captcha flow **once**
+   (`captchaRetryRef`); `50301` → show “人机验证服务暂不可用”.
 
 ### Request body built by the frontend
 
 ```json
-{ "username": "<input>", "password": "<md5(password)>", "type": "account" }
+{ "username": "<input>", "password": "<md5(password)>", "type": "account", "captchaToken": "<one-shot, only when captcha is enabled>" }
 ```
 
 The password is MD5-hashed **in the browser** before it is sent
@@ -63,9 +92,14 @@ A `submittingRef` guard prevents double submission.
 
 - Auth: **public** (no `jwtAuth`).
 - Handler: `login` in `bls-server/src/api/auth/index.ts`.
-- Body: `{username?, password?}` read inline. **No Zod schema.** Any client-supplied
+- Body: `{username?, password?, captchaToken?}` read inline. **No Zod schema.** Any client-supplied
   `tenantId` is ignored.
 - Behaviour (`AuthService.loginByDomain`):
+  0. **Captcha gate (only when the feature is active)**: `captchaService.consumeLoginToken()` —
+     missing token → `40010 CAPTCHA_REQUIRED`; bad signature / binding mismatch → `40011
+     CAPTCHA_INVALID`; expired → `40012 CAPTCHA_EXPIRED`; already consumed → `40013
+     CAPTCHA_REPLAYED`; Redis unavailable → `503 / 50301 CAPTCHA_SERVICE_UNAVAILABLE`
+     (fail closed). The token is consumed **before** any username/password check.
   1. Resolve the domain via `buildRequestMeta` → `resolveTenantDomain`
      (`X-Forwarded-Host` only when `TRUST_PROXY=true` → `Host` without port → `Origin` →
      `localhost`).
@@ -78,6 +112,11 @@ A `submittingRef` guard prevents double submission.
   4. Verify password (Argon2id or MD5; Argon2id stores `argon2id(md5(pwd))`).
   5. Sign access (15 m) + refresh (7 d) tokens; create Redis sessions and Session Center entries.
   6. `publishEvent('LOGIN_SUCCESS' | 'LOGIN_FAILED')` (fire-and-forget to the event service).
+  7. Success → `captchaService.resetLoginFailures()`; failure → `captchaService.recordLoginFailure()`
+     (both only when the captcha feature is active). Captcha errors (`4001x` / `50301`) are **not**
+     counted as login failures and never publish `LOGIN_FAILED`.
+  8. Success and failure both call `writeLoginLog(...)` (writes `sys_login_log`), and a failure runs
+     `detectBruteForce(...)` → `LOGIN_BRUTE_FORCE` security log above 5 failures / 15 min.
 - Response success: `{code:200, data:{token, refreshToken, user}, message:'操作成功'}`.
   `user` is the same shape as `GET /api/auth/profile`.
 
@@ -92,11 +131,11 @@ gender, email, phone, deptId, isAdmin, status`, plus `permissions`, `perms`,
 | Protection | Rule |
 |---|---|
 | Replay | `/api/auth/login` POST → `nonce`, window **60 s**, nonce TTL **150 s** |
-| Rate limit | `ip` **20 / 60 s** and `account` **5 / 300 s** |
+| Rate limit | `ip` **20 / 60 s** and `account` **5 / 300 s**; captcha endpoints: see below |
 | IP block | global `blockedIpMiddleware` (Redis + `sys_ip_blacklist`) |
 | Session | login writes `auth:session:{jti}`, `auth:refresh:{jti}`, Session Center `acc:`/`ref:` entries |
-| Brute force | indirect: risk rule `rule_login_brute_force` (20 × `LOGIN_FAILED` / 300 s per IP → `BLOCK_IP` + `LOCK_ACCOUNT`) |
-| Captcha | **none** on the login page and no server-side captcha verification |
+| Brute force | risk rule `rule_login_brute_force` (20 × `LOGIN_FAILED` / 300 s per IP → `BLOCK_IP` + `LOCK_ACCOUNT`) driven by the real `sys_login_log` rows written since the login-flow change, plus `LOGIN_BRUTE_FORCE` after 5 failures / 15 min for one account |
+| Captcha | two-stage login captcha (silent → slider/rotate), one-shot `captchaToken` consumed by the login handler. Rate limits: `/challenge` ip 30/60 s + account 10/300 s + device 20/300 s, `/silent/verify` ip 60/60 s + account 20/300 s, `/secondary/verify` ip 30/60 s + account 15/300 s + device 30/300 s, `/config` ip 120/60 s. Full table: [pages/login-captcha.md](login-captcha.md) |
 
 The frontend always sends `X-Timestamp` + `X-Nonce` (added by the request interceptor), which is
 what satisfies the nonce rule. Because there is no token yet, the nonce key is
@@ -117,25 +156,32 @@ what satisfies the nonce rule. Because there is no token yet, the nonce key is
 
 ## 6. Known gaps / discrepancies
 
-1. **No captcha** on login, despite locale keys `pages.login.captcha.*` and an unused helper
-   `getFakeCaptcha` → `GET /api/login/captcha` in
-   `bls-admin/src/services/ant-design-pro/login.ts` (no backend route either).
-2. **`sys_login_log` is not written by the login flow.** `writeLoginLog()` exists in
-   `core/audit.ts` but is never called; login activity is published to the external event
-   service instead. Therefore the Login Log page may be empty.
-3. **Brute-force auto-action depends on a `LOGIN_FAILED` *security* log**, which the login
-   handler does not write (it publishes an *event*). So `rule_login_brute_force` may not fire.
-4. Account locking (raising `sys_user.status`) only happens through the event center action
+1. The template leftovers `pages.login.captcha.*` locale keys and `getFakeCaptcha` →
+   `GET /api/login/captcha` (`bls-admin/src/services/ant-design-pro/login.ts`) are still dead code;
+   the real captcha lives in `bls-admin/src/services/auth/captcha.ts` + `components/CaptchaChallenge`.
+2. Captcha is implemented in the **Koa** backend only. `bls-java-server` / `bls-rust-server` do not
+   implement `/api/auth/captcha/*` and ignore the `captchaToken` field, so when those backends are
+   selected the login page simply keeps the pre-captcha behaviour (the frontend degrades gracefully:
+   an unknown `code` on `POST /api/auth/login` just shows the message).
+3. The captcha gate is skipped entirely when `CAPTCHA_DEV_BYPASS=true`; production startup refuses to
+   boot with that variable set (see `bls-server/src/app.ts`).
+4. `sys_login_log` **is** written now (success + failure) and `detectBruteForce` runs on failure, so
+   the Login Log page and `rule_login_brute_force` have real data.
+5. Account locking (raising `sys_user.status`) only happens through the event center action
    `LOCK_ACCOUNT`.
 
 ---
 
 ## 7. How to extend
 
-- **Add captcha**: add a `getCaptcha` backend endpoint, render it on the page, verify it in the
-  login handler before `loginByDomain`, and add a rate-limit rule for the captcha endpoint.
-- **Write the login log**: call `writeLoginLog(...)` on both success and failure in the login
-  handler so the Login Log page and brute-force detection work.
+- **Change the captcha policy** (thresholds, TTLs, secondary types, mode): edit the
+  `sys.login.captcha.*` values in the System parameters page or `sql/Init.sql`
+  (see [pages/system-config.md](system-config.md) and [pages/login-captcha.md](login-captcha.md)) —
+  no code change is required.
+- **Add a new secondary challenge type**: extend `CAPTCHA_SECONDARY_TYPES` in
+  `bls-server/src/config/dynamic-config.ts`, add the generator in
+  `bls-server/src/security/captcha/image.ts`, the payload + verification branch in
+  `security/captcha/service.ts`, and the UI branch in `components/CaptchaChallenge/index.tsx`.
 - **Add a new login factor**: extend `AuthService.loginByTenant`, keep the response shape
   `{token, refreshToken, user}` unchanged so the frontend keeps working.
 - Update this document and the affected `00-common/*` tables after the change.

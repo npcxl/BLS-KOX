@@ -1,0 +1,231 @@
+﻿
+> bls-kox-server@1.0.0 test
+> vitest run
+
+
+[1m[46m RUN [49m[22m [36mv3.2.7 [39m[90mC:/git-bls/BLS-KOX/bls-server[39m
+
+ [32m✓[39m src/middleware/__tests__/http-metrics.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 99[2mms[22m[39m
+ [32m✓[39m src/shared/__tests__/secret-crypto.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [32m✓[39m src/services/__tests__/api-key-service.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 28[2mms[22m[39m
+[90mstdout[2m | src/__tests__/replayProtection.test.ts[2m > [22m[2mReplay Protection Middleware[2m > [22m[2mshould export replayProtectionMiddleware
+[22m[39m◇ injected env (18) from .env // tip: ⌘ suppress logs { quiet: true }
+
+[90mstdout[2m | src/security/__tests__/file-security.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+
+node.exe : [90mstderr[2m | src/security/__tests__/file-security.test.ts[2m > [22m[2mFile Security[2m > [22m[2m随
+机→false
+所在位置 行:1 字符: 1
++ & "C:\Users\18569\.workbuddy\binaries\node\versions\22.22.2/node.exe" ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([90mstderr[2m...22m[2m随机→false:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[22m[39m[WARN] [file-security] blocked: unknown magic { hex: [32m'00000102'[39m }
+
+[90mstderr[2m | src/security/__tests__/file-security.test.ts[2m > [22m[2mFile Security[2m > [22m[2mbad magic 拒绝
+[22m[39m[WARN] [file-security] blocked: unknown magic { hex: [32m'00010203'[39m }
+
+[90mstdout[2m | src/security/event-center/__tests__/event-center.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+
+[90mstdout[2m | src/config/__tests__/dynamic-config.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+
+[90mstdout[2m | src/api/system/ai-model/__tests__/ai-model.test.ts
+[22m[39m◇ injected env (17) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+
+[90mstdout[2m | src/api/system/tenant/__tests__/tenant.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+
+[90mstdout[2m | src/core/__tests__/crud.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ⌘ override existing { override: true }
+
+[90mstdout[2m | src/api/system/storage/__tests__/storage.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+
+ [32m✓[39m src/__tests__/replayProtection.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 483[2mms[22m[39m
+   [33m[2m✓[22m[39m Replay Protection Middleware[2m > [22mshould export replayProtectionMiddleware [33m 481[2mms[22m[39m
+ [32m✓[39m src/api/system/page-config/__tests__/page-config.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+[90mstdout[2m | src/api/system/webhook/__tests__/webhook.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ⌘ enable debugging { debug: true }
+
+[90mstdout[2m | src/api/system/ai-model/__tests__/ai-model.test.ts
+[22m[39m[DEBUG] [AI-Model] module loaded 
+
+[90mstdout[2m | src/api/system/ops-release/__tests__/release.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+
+ [32m✓[39m src/api/system/ai-model/__tests__/ai-model.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 41[2mms[22m[39m
+[90mstderr[2m | src/api/system/tenant/__tests__/tenant.test.ts[2m > [22m[2mtenant 状态切换[2m > [22m[2m停用不再要求先删除用户和
+角色，并立即吊销该租户全部会话
+[22m[39m[WARN] [tenant] disabled, sessions revoked { tenantId: [32m'100000'[39m, revokedUsers: [33m0[39m }
+
+[90mstderr[2m | src/config/__tests__/dynamic-config.test.ts[2m > [22m[2mDynamic Config[2m > [22m[2mparse: "yes"
+ → ignored, default true
+[22m[39m[WARN] [dynamic-config] invalid bool, using default { key: [32m'sys.login.multiDevice'[39m, val: [32m'yes'
+[39m }
+
+[90mstderr[2m | src/config/__tests__/dynamic-config.test.ts[2m > [22m[2mDynamic Config[2m > [22m[2mparse: 9999 
+→ out of range, uses 20
+[22m[39m[WARN] [dynamic-config] out of range { key: [32m'sys.upload.maxSize'[39m, val: [32m'9999'[39m, max: [33m
+500[39m }
+
+[90mstderr[2m | src/config/__tests__/dynamic-config.test.ts[2m > [22m[2mDynamic Config[2m > [22m[2mRedis corrup
+t JSON → DB fallback
+[22m[39m[WARN] [dynamic-config] redis cache parse failed 
+
+[90mstderr[2m | src/config/__tests__/dynamic-config.test.ts[2m > [22m[2mDynamic Config[2m > [22m[2mDB error → r
+eturns defaults
+[22m[39m[ERROR] [dynamic-config] db read failed { error: [32m'Error: down'[39m }
+
+ [32m✓[39m src/api/system/ops-release/__tests__/release.test.ts [2m([22m[2m55 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [32m✓[39m src/core/__tests__/crud.test.ts [2m([22m[2m87 tests[22m[2m)[22m[32m 283[2mms[22m[39m
+[90mstdout[2m | src/security/event-center/__tests__/event-center.test.ts[2m > [22m[2mSecurity Event Center[2m > [22m[2mcollectEvent: returns { riskScore, actions }
+[22m[39m[db] config loaded {
+  host: [32m'117.72.118.165'[39m,
+  port: [33m3306[39m,
+  user: [32m'root'[39m,
+  database: [32m'kox'[39m,
+  connectionLimit: [33m20[39m
+}
+
+ [32m✓[39m src/config/__tests__/dynamic-config.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 307[2mms[22m[39m
+[90mstdout[2m | src/services/__tests__/tenant-lifecycle.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ⌘ enable debugging { debug: true }
+
+[90mstdout[2m | src/security/event-center/__tests__/event-center.test.ts[2m > [22m[2mSecurity Event Center[2m > [22m[2mcollectEvent: returns { riskScore, actions }
+[22m[39m[db] new connection created, threadId=17510
+
+ [32m✓[39m src/services/__tests__/tenant-lifecycle.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+[90mstdout[2m | src/api/system/tenant/__tests__/tenant.test.ts[2m > [22m[2mtenant provisioning[2m > [22m[2mprovisioning 一次性创建租户/角色/用户/角色菜单/用户角色/配置，并规范化域名
+[22m[39m[INFO] [tenant] provisioned {
+  tenantId: [32m'360005594016518144'[39m,
+  packageId: [32m'P100'[39m,
+  domain: [32m'new.example.com'[39m
+}
+
+ [32m✓[39m src/observability/__tests__/metrics.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+[90mstdout[2m | src/api/system/dict/__tests__/dict.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+
+ [32m✓[39m src/core/__tests__/runtime-guard.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m src/api/system/dict/__tests__/dict.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+[90mstdout[2m | src/api/system/tenant/__tests__/tenant.test.ts[2m > [22m[2mtenant provisioning[2m > [22m[2m相同 Idempotency-Key 重复提交只创建一次租户
+[22m[39m[INFO] [tenant] provisioned {
+  tenantId: [32m'360005595698434048'[39m,
+  packageId: [32m'P100'[39m,
+  domain: [32m'new.example.com'[39m
+}
+
+ [32m✓[39m src/api/system/tenant/__tests__/tenant.test.ts [2m([22m[2m26 tests[22m[2m)[22m[33m 705[2mms[22m[39m
+   [33m[2m✓[22m[39m tenant provisioning[2m > [22mprovisioning 一次性创建租户/角色/用户/角色菜单/用户角色/配置，并规范化域名 [33m 400[2mms[22m[39m
+ [32m✓[39m src/__tests__/metrics-integration.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m src/api/system/storage/__tests__/storage.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 39[2mms[22m[39m
+ [32m✓[39m src/services/__tests__/quota-service.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+[90mstdout[2m | src/outbox/__tests__/outbox.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ⌘ override existing { override: true }
+
+ [32m✓[39m src/services/__tests__/password-reset-service.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+[90mstdout[2m | src/middleware/__tests__/openapi-auth.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+
+[90mstdout[2m | src/outbox/__tests__/outbox.test.ts[2m > [22m[2mOutbox[2m > [22m[2mhandler failure -> markFailed returns to pending with future next_retry_at
+[22m[39m[INFO] [outbox] retry { eventId: [32m'360005598596698112'[39m, retryCount: [33m2[39m, backoffMs: [33m4000[39m }
+
+[90mstderr[2m | src/outbox/__tests__/outbox.test.ts[2m > [22m[2mOutbox[2m > [22m[2mdead letter: retryCount at l
+imit -> dead
+[22m[39m[WARN] [outbox] dead letter { eventId: [32m'360005598613475328'[39m, eventType: [32m'X'[39m, error: [32m
+'boom'[39m }
+
+ [32m✓[39m src/outbox/__tests__/outbox.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+[90mstdout[2m | src/security/event-center/__tests__/event-center.test.ts[2m > [22m[2mSecurity Event Center[2m > [22m[2mblocked IP middleware: normal IP passes through
+[22m[39m[db:kysely] new connection created, threadId=17511
+
+ [32m✓[39m src/security/data-scope/__tests__/data-scope.test.ts [2m([22m[2m26 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+[90mstdout[2m | src/middleware/__tests__/api-version-routes.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+
+ [32m✓[39m src/middleware/__tests__/openapi-auth.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m src/shared/__tests__/ip-cidr.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+[90mstdout[2m | src/middleware/__tests__/permission.test.ts
+[22m[39m◇ injected env (18) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+
+ [32m✓[39m src/security/event-center/__tests__/event-center.test.ts [2m([22m[2m21 tests[22m[2m)[22m[33m 1411[2mms[22m[39m
+   [33m[2m✓[22m[39m Security Event Center[2m > [22mcollectEvent: returns { riskScore, actions } [33m 310[2mms[22m[39m
+   [33m[2m✓[22m[39m Security Event Center[2m > [22mblocked IP middleware: normal IP passes through [33m 767[2mms[22m[39m
+ [32m✓[39m src/__tests__/mass-assignment.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+[90mstderr[2m | src/api/system/webhook/__tests__/webhook.test.ts[2m > [22m[2mWebhook[2m > [22m[2mfetch: res.ok=
+false → throw
+[22m[39m[ERROR] [webhook] log delivery failed {
+  webhookId: [32m'w2'[39m,
+  error: [32m"Error: Cannot find module '../../core/database'\n"[39m +
+    [32m'Require stack:\n'[39m +
+    [32m'- C:\\git-bls\\BLS-KOX\\bls-server\\src\\queue\\jobs\\webhook.job.ts'[39m
+}
+
+[90mstderr[2m | src/api/system/webhook/__tests__/webhook.test.ts[2m > [22m[2mWebhook[2m > [22m[2mfetch: ECONNRE
+FUSED → throw
+[22m[39m[ERROR] [webhook] log delivery failed {
+  webhookId: [32m'w3'[39m,
+  error: [32m"Error: Cannot find module '../../core/database'\n"[39m +
+    [32m'Require stack:\n'[39m +
+    [32m'- C:\\git-bls\\BLS-KOX\\bls-server\\src\\queue\\jobs\\webhook.job.ts'[39m
+}
+
+[90mstderr[2m | src/api/system/webhook/__tests__/webhook.test.ts[2m > [22m[2mWebhook[2m > [22m[2mfetch: AbortEr
+ror → throw
+[22m[39m[ERROR] [webhook] log delivery failed {
+  webhookId: [32m'w4'[39m,
+  error: [32m"Error: Cannot find module '../../core/database'\n"[39m +
+    [32m'Require stack:\n'[39m +
+    [32m'- C:\\git-bls\\BLS-KOX\\bls-server\\src\\queue\\jobs\\webhook.job.ts'[39m
+}
+
+[90mstdout[2m | src/api/system/webhook/__tests__/webhook.test.ts[2m > [22m[2mWebhook[2m > [22m[2mhasPerm: 平台租户普通用户不再自动绕过 → 403（阶段二）
+[22m[39m[db] config loaded {
+  host: [32m'117.72.118.165'[39m,
+  port: [33m3306[39m,
+  user: [32m'root'[39m,
+  database: [32m'kox'[39m,
+  connectionLimit: [33m20[39m
+}
+
+ [32m✓[39m src/middleware/__tests__/permission.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+[90mstdout[2m | src/api/system/webhook/__tests__/webhook.test.ts[2m > [22m[2mWebhook[2m > [22m[2mhasPerm: 平台租户普通用户不再自动绕过 → 403（阶段二）
+[22m[39m[db] new connection created, threadId=17512
+
+ [32m✓[39m src/queue/__tests__/queue.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+[90mstderr[2m | src/api/system/webhook/__tests__/webhook.test.ts[2m > [22m[2mWebhook[2m > [22m[2mhasPerm: 无权限 →
+ ForbiddenError
+[22m[39m[WARN] [event-client] event-service unreachable { error: [32m'fetch failed'[39m }
+
+ [32m✓[39m src/middleware/__tests__/api-version-routes.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/middleware/__tests__/api-version.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/__tests__/rate-limit-rules.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/__tests__/db-metrics.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/__tests__/redis-metrics.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+[90mstderr[2m | src/api/system/webhook/__tests__/webhook.test.ts
+[22m[39m[WARN] [event-client] event-service unreachable { error: [32m'fetch failed'[39m }
+
+ [32m✓[39m src/api/system/webhook/__tests__/webhook.test.ts [2m([22m[2m24 tests[22m[2m)[22m[33m 2948[2mms[22m[39m
+   [33m[2m✓[22m[39m Webhook[2m > [22mhasPerm: 无权限 → ForbiddenError [33m 518[2mms[22m[39m
+ [32m✓[39m src/__tests__/password.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 2897[2mms[22m[39m
+   [33m[2m✓[22m[39m Password Hashing[2m > [22mhashPasswordArgon2[2m > [22mshould generate different hashes for same password [33m 339[2mms[22m[39m
+   [33m[2m✓[22m[39m Password Hashing[2m > [22mverifyPasswordArgon2[2m > [22mshould verify correct password [33m 660[2mms[22m[39m
+   [33m[2m✓[22m[39m Password Hashing[2m > [22mverifyPasswordArgon2[2m > [22mshould reject wrong password [33m 495[2mms[22m[39m
+   [33m[2m✓[22m[39m Password Hashing[2m > [22mverifyPassword (unified)[2m > [22mshould verify Argon2id password [33m 691[2mms[22m[39m
+   [33m[2m✓[22m[39m Password Hashing[2m > [22mverifyPassword (unified)[2m > [22mshould reject wrong password for Argon2id [33m 356[2mms[22m[39m
+[90mstdout[2m | src/security/__tests__/file-security.test.ts[2m > [22m[2mFile Security[2m > [22m[2mhandleUpload[2m > [22m[2m.exe → securityLog called, no audit
+[22m[39m[db:kysely] new connection created, threadId=17514
+
+ [32m✓[39m src/security/__tests__/file-security.test.ts [2m([22m[2m35 tests[22m[2m)[22m[33m 2986[2mms[22m[39m
+   [33m[2m✓[22m[39m File Security[2m > [22mhandleUpload[2m > [22m跨租户 storageId → 500 [33m 1959[2mms[22m[39m
+   [33m[2m✓[22m[39m File Security[2m > [22mhandleUpload[2m > [22m.exe → securityLog called, no audit [33m 887[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m34 passed[39m[22m[90m (34)[39m
+[2m      Tests [22m [1m[32m565 passed[39m[22m[90m (565)[39m
+[2m   Start at [22m 18:13:40
+[2m   Duration [22m 4.17s[2m (transform 5.69s, setup 0ms, collect 14.76s, tests 12.58s, environment 10ms, prepare 6.89s)[22m
+

@@ -1,4 +1,4 @@
-export type RateLimitDimension = 'ip' | 'user' | 'tenant' | 'account';
+export type RateLimitDimension = 'ip' | 'user' | 'tenant' | 'account' | 'device';
 
 export interface RateLimitRule {
   path: string;

@@ -1,6 +1,9 @@
 # 12 — Frontend Data Layer: hooks, CrudTablePage, services
 
-> **Document version:** 1.0.3 · **Code version:** 1.0.0 · **Verified commit:** ff64e74 · **Last verified:** 2026-09-20
+> **Document version:** 1.1.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
+>
+> *Uncommitted note:* `services/auth/captcha.ts` + `auth/behavior-collector.ts` were verified
+> against `61aaf9a` + uncommitted captcha changes.
 >
 > The `CrudTablePage` props added in 1.4.0/1.4.1 (`showActions`, `onSelectionChange`,
 > `rowClickToSelect`) live in the working tree on top of `ff64e74` — re-stamp this document once that
@@ -124,7 +127,9 @@ Behaviours worth remembering:
 | `ai/module-builder.ts` | `chatCompletions` | ✖ dead; a second raw-fetch SSE implementation. |
 | `ops/release.ts` | release list/detail/steps/logs/create/rollback/current/running/service-status | ✔ Live — `pages/ops/release`. |
 | `security/replayInterceptor.ts` | `buildReplayHeaders`, `idempotencyKey` | Live only for the AI workbench's raw fetch. |
-| `ant-design-pro/index.ts`, `ant-design-pro/login.ts` | aggregate barrel, `getFakeCaptcha` (GET `/api/login/captcha`) | ✖ dead — the captcha endpoint does not exist server-side. |
+| `ant-design-pro/index.ts`, `ant-design-pro/login.ts` | aggregate barrel, `getFakeCaptcha` (GET `/api/login/captcha`) | ✖ dead — superseded by `services/auth/captcha.ts`; the `/api/login/captcha` endpoint does not exist. |
+| `auth/captcha.ts` | `getCaptchaConfig`, `createCaptchaChallenge`, `verifyCaptchaSilent`, `verifyCaptchaSecondary` + types | ✔ Live — login captcha (`pages/user/login`, `components/CaptchaChallenge`). All four calls pass `skipErrorMessage:true`; the login page owns the error UX. |
+| `auth/behavior-collector.ts` (in `src/auth/`) | `BehaviorCollector`, `loginBehaviorCollector`, `detectAutomation()` | ✔ Live — stage-1 silent-verification signal. Stores **statistics only** (counts, interval mean/σ, speed, blur/visibility, `navigator.webdriver`); no coordinates, no keystrokes. |
 
 ## 5. Known inconsistencies
 

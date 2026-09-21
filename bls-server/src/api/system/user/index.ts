@@ -9,7 +9,7 @@ import { getRequestContext } from '../../../core/request-context';
 import { logSecurity } from '../../../core/security-audit';
 import { SecurityEventType } from '../../../core/security-audit';
 import { pickAllowed, toSnake, USER_PROFILE_FIELDS, USER_CREATE_FIELDS, USER_EDIT_FIELDS } from '../../../shared/utils/mass-assignment';
-import { hashPasswordArgon2 } from '../../../shared/utils/password';
+import { hashPasswordArgon2, hashPasswordMd5 } from '../../../shared/utils/password';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { appendEvent, EventTypes } from '../../../outbox/outbox';
 import { sessionCenter } from '../../../security/session/session-center';
@@ -17,6 +17,9 @@ import { extractIds } from '../../../core/crud';
 import { success, pageSuccess } from '../../../core/response';
 import { PLATFORM_TENANT_ID } from '../../../shared/constants/tenant';
 import { logger } from '../../../core/logger';
+import { quotaService } from '../../../services/quota-service';
+import { QUOTA_KEYS } from '../../../shared/constants/entitlements';
+import { passwordResetService } from '../../../services/password-reset-service';
 
 const router = new Router({ prefix: '/system/user' });
 const T = 'sys_user', UR = 'sys_user_role', R = 'sys_role';
@@ -173,6 +176,12 @@ router.post('/add', jwtAuth(), hasPerm('system:user:add'), async (ctx: Context) 
   const roleIds = [...new Set(body.roleIds ?? [])];
   await assertRolesValid(db, roleIds, tid);
 
+  // 阶段三：用户数配额（数据库条件 UPDATE，原子且并发安全）
+  await quotaService.consume(tid, QUOTA_KEYS.MAX_USERS, 1, {
+    idempotencyKey: String(ctx.get('Idempotency-Key') ?? '').trim() || undefined,
+    reason: 'user.create',
+  });
+
   const userId = generateSnowflakeId();
   const snakeData = {
     user_id: userId,
@@ -184,19 +193,25 @@ router.post('/add', jwtAuth(), hasPerm('system:user:add'), async (ctx: Context) 
   };
 
   // 业务写入与 Outbox 事件写入同一事务 → 原子性: 任一失败整体回滚
-  await db.transaction().execute(async (trx: any) => {
-    await trx.insertInto(T).values(snakeData as any).execute();
-    if (roleIds.length > 0) {
-      await trx.insertInto(UR).values(roleIds.map((roleId) => ({ user_id: userId, role_id: roleId }))).execute();
-    }
-    await appendEvent(trx, {
-      tenantId: tid,
-      eventType: EventTypes.USER_CREATED,
-      aggregateType: 'user',
-      aggregateId: String(data.username),
-      payload: { username: data.username, nickname: data.nickname },
+  try {
+    await db.transaction().execute(async (trx: any) => {
+      await trx.insertInto(T).values(snakeData as any).execute();
+      if (roleIds.length > 0) {
+        await trx.insertInto(UR).values(roleIds.map((roleId) => ({ user_id: userId, role_id: roleId }))).execute();
+      }
+      await appendEvent(trx, {
+        tenantId: tid,
+        eventType: EventTypes.USER_CREATED,
+        aggregateType: 'user',
+        aggregateId: String(data.username),
+        payload: { username: data.username, nickname: data.nickname },
+      });
     });
-  });
+  } catch (error) {
+    // 创建失败 → 归还配额
+    await quotaService.release(tid, QUOTA_KEYS.MAX_USERS, 1).catch(() => {});
+    throw error;
+  }
 
   success(ctx, { userId }, '新增成功');
 });
@@ -236,6 +251,18 @@ router.put('/edit', jwtAuth(), hasPerm('system:user:edit'), async (ctx: Context)
   });
 
   if (affected === 0) throw new NotFoundError();
+
+  // 阶段四：用户被停用 → 立即吊销其全部会话
+  if (String((data as any).status ?? '') === '1') {
+    await sessionCenter.revokeAll(tid, body.userId).catch(() => {});
+    await logSecurity(ctx, SecurityEventType.PERM_CHANGE, `停用用户：${body.userId}`).catch(() => {});
+  }
+
+  // 角色变更同样属于权限变更，记录审计
+  if (roleIds !== undefined) {
+    await logSecurity(ctx, SecurityEventType.ROLE_CHANGE, `调整用户角色：${body.userId}`).catch(() => {});
+  }
+
   success(ctx, null, '修改成功');
 });
 
@@ -306,6 +333,10 @@ router.delete('/remove', jwtAuth(), hasPerm('system:user:remove'), async (ctx: C
   for (const id of ids) {
     await sessionCenter.revokeAll(tid, id).catch(() => {});
   }
+  // 阶段三：删除用户 → 归还用户数配额
+  if (affected.updated > 0) {
+    await quotaService.release(tid, QUOTA_KEYS.MAX_USERS, affected.updated).catch(() => {});
+  }
   await logSecurity(ctx, SecurityEventType.PERM_CHANGE, `删除用户：${affected.usernames.join(',')}`).catch(() => {});
 
   success(ctx, { deleted: affected.updated }, '删除成功');
@@ -366,6 +397,45 @@ router.post('/kick', jwtAuth(), hasPerm('system:user:kick'), async (ctx: Context
 
   await logSecurity(ctx, SecurityEventType.PERM_CHANGE, `踢下线用户：${visible.map((r: any) => r.username).join(',')}`).catch(() => {});
   success(ctx, { kicked }, `成功踢出 ${kicked} 个用户`);
+});
+
+const adminResetPasswordSchema = z.object({
+  userId: z.string().trim().min(1).max(32),
+  newPassword: z.string().min(6, '新密码长度不能少于6位').max(100),
+});
+
+/**
+ * POST /resetPassword — 管理员重置指定用户密码（阶段四）
+ *
+ * 使用现有 replay signature 规则（写操作由全局 replayProtectionMiddleware 保护）；
+ * 重置后立即吊销该用户全部 Session，并使其未消费的重置令牌失效。
+ */
+router.post('/resetPassword', jwtAuth(), hasPerm('system:user:resetPassword'), async (ctx: Context) => {
+  const db = (await getDb()) as any;
+  const b = parseOrThrow(adminResetPasswordSchema, ctx.request.body ?? {});
+  const tid = tenantId();
+
+  const existing = await db.selectFrom(T).select(['user_id', 'username', 'status'])
+    .where('user_id', '=', b.userId).where('tenant_id', '=', tid).where('deleted', '=', 0)
+    .executeTakeFirst();
+  if (!existing) throw new NotFoundError();
+
+  const raw = String(b.newPassword);
+  const md5 = /^[a-f0-9]{32}$/i.test(raw) ? raw.toLowerCase() : hashPasswordMd5(raw);
+  const hashed = await hashPasswordArgon2(md5);
+
+  const result: any = await db.updateTable(T)
+    .set({ password: hashed, password_algorithm: 'argon2id', password_update_time: new Date() } as any)
+    .where('user_id', '=', b.userId).where('tenant_id', '=', tid).where('deleted', '=', 0)
+    .executeTakeFirst();
+  if (Number(result?.numUpdatedRows ?? 0) === 0) throw new NotFoundError();
+
+  // 会话立即失效 + 旧重置链接失效
+  await sessionCenter.revokeAll(tid, b.userId).catch(() => {});
+  await passwordResetService.invalidateForUser(b.userId).catch(() => {});
+
+  await logSecurity(ctx, SecurityEventType.PERM_CHANGE, `管理员重置用户密码：${existing.username}`).catch(() => {});
+  success(ctx, null, '密码重置成功');
 });
 
 export default router;

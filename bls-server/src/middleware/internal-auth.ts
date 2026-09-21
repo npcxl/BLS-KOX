@@ -11,11 +11,39 @@
  *   - 开发环境允许通过，但必须显式设置 INTERNAL_SECRET
  */
 import type { Context, Next } from 'koa';
-import { createHash } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import { logger } from '../core/logger';
+import { isIpAllowed, parseAllowlist, isValidCidrOrIp, normalizeIp } from '../shared/utils/ip-cidr';
 
-// 允许的内网 IP 前缀（Kubernetes / Docker / 本地回环）
-const ALLOWLIST_PREFIXES: string[] = (process.env.INTERNAL_IP_ALLOWLIST ?? '127.,10.,172.16.,172.17.,172.18.,172.19.,172.20.,172.21.,172.22.,172.23.,172.24.,172.25.,172.26.,172.27.,172.28.,172.29.,172.30.,172.31.,192.168.').split(',');
+/**
+ * 允许的内网 CIDR（Kubernetes / Docker / 本地回环）。
+ * 阶段七：由字符串前缀匹配改为真正的 CIDR 语义，
+ * 避免 `10.` 匹配到任意以 `10.` 开头的字符串。
+ */
+const DEFAULT_ALLOWLIST = [
+  '127.0.0.0/8',
+  '10.0.0.0/8',
+  '172.16.0.0/12',
+  '192.168.0.0/16',
+  '::1/128',
+];
+const ALLOWLIST: string[] = parseAllowlist(process.env.INTERNAL_IP_ALLOWLIST, DEFAULT_ALLOWLIST);
+for (const entry of ALLOWLIST) {
+  if (!isValidCidrOrIp(entry)) {
+    throw new Error(`[internal-auth] INTERNAL_IP_ALLOWLIST contains an invalid CIDR/IP entry: ${entry}`);
+  }
+}
+
+/** 常量时间字符串比较 */
+function timingSafeEqualString(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) {
+    timingSafeEqual(bufA, bufA);
+    return false;
+  }
+  return timingSafeEqual(bufA, bufB);
+}
 
 const DEMO_WEAK_PREFIX = 'DEMO_ONLY_CHANGE_ME_';
 const CHANGE_TO_PREFIX = 'CHANGE_TO_';
@@ -47,16 +75,13 @@ function getInternalSecret(): string {
 const INTERNAL_SECRET = getInternalSecret();
 
 function isAllowedIp(ip: string): boolean {
-  for (const prefix of ALLOWLIST_PREFIXES) {
-    if (ip.startsWith(prefix)) return true;
-  }
-  return false;
+  return isIpAllowed(ip, ALLOWLIST);
 }
 
 export function internalAuth() {
   return async (ctx: Context, next: Next) => {
-    // 1. IP 白名单
-    const ip = (ctx.ip ?? ctx.request.ip ?? '').replace(/^::ffff:/, '');
+    // 1. IP 白名单（CIDR）
+    const ip = normalizeIp(ctx.ip ?? ctx.request.ip ?? '');
     if (!isAllowedIp(ip)) {
       // 生产环境严格拒绝，开发环境放行
       if (process.env.NODE_ENV === 'production') {
@@ -85,10 +110,10 @@ export function internalAuth() {
       return;
     }
 
-    // 4. Token 比较（恒定时间比较防时序攻击）
+    // 4. Token 比较（sha256 + timingSafeEqual，恒定时间防时序攻击）
     const expected = createHash('sha256').update(INTERNAL_SECRET).digest('hex');
     const provided = createHash('sha256').update(token).digest('hex');
-    if (expected !== provided) {
+    if (!timingSafeEqualString(expected, provided)) {
       ctx.status = 403;
       ctx.body = { code: 403, message: 'Invalid internal token' };
       return;

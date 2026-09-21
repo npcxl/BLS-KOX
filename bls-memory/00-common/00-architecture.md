@@ -1,6 +1,9 @@
 # 00 — Architecture & Request Pipeline (shared)
 
-> **Document version:** 1.1.1 · **Code version:** 1.0.0 · **Verified commit:** ff64e74 · **Last verified:** 2026-09-20
+> **Document version:** 1.3.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
+>
+> *Uncommitted note:* the `4001x`/`50301` captcha error codes and the router sub-directory
+> recursion were verified against `61aaf9a` + uncommitted captcha changes.
 
 This document describes the parts of BLS-KOX that every page depends on.
 Read it once; page documents assume it.
@@ -50,6 +53,7 @@ Only **one** backend (Koa or Java) runs at a time. Switch by editing
 10. replayProtectionMiddleware() // timestamp + nonce + signature + idempotency
 11. blockedIpMiddleware()        // Redis + sys_ip_blacklist
 12. rateLimitMiddleware()        // Redis INCR + EXPIRE
+12b. operationLogMiddleware()     // 阶段五：所有写操作 → sys_operation_log（在安全中间件之后）
 13. api version rewrite          // /api/v1/* -> /api/*
 14. apiVersion()
 15. router.routes()
@@ -100,6 +104,16 @@ Special security error codes:
 | 40903 | Same Idempotency-Key still processing |
 | 40904 | Same Idempotency-Key with different body (conflict) |
 | 42901 | Rate limit exceeded |
+| 40301 | Package entitlement missing (phase 3) — `EntitlementError`, HTTP 403 |
+| 40905 | Quota exceeded (phase 3) — `QuotaExceededError`, HTTP 409 |
+| 40010 | `CAPTCHA_REQUIRED` — login captcha is enabled but `captchaToken` is missing (`CaptchaRequiredError`, HTTP 400) |
+| 40011 | `CAPTCHA_INVALID` — bad signature or binding mismatch (`CaptchaInvalidError`, HTTP 400) |
+| 40012 | `CAPTCHA_EXPIRED` — captchaToken/challenge timed out (`CaptchaExpiredError`, HTTP 400) |
+| 40013 | `CAPTCHA_REPLAYED` — captchaToken already consumed (`CaptchaReplayedError`, HTTP 400) |
+| 50301 | `CAPTCHA_SERVICE_UNAVAILABLE` — Redis unavailable, verification refused (`CaptchaUnavailableError`, HTTP 503) |
+
+`4001x` / `50301` responses also carry `details.errorCode` with the string constant, so the
+frontend can branch on either the number or the name.
 
 > Note: `40101` is reused by the Session Center (`SessionInvalidError`) to mean
 > "session revoked, please log in again". The frontend treats `code === 40101` on HTTP 401
@@ -111,6 +125,12 @@ Special security error codes:
 
 A root router with prefix `/api` is created, then `scanAndRegister()` walks `src/api/**`.
 Only `index.ts` files are loaded (`*.model.ts`, `*.schema.ts`, tests are skipped).
+
+The scanner **always recurses into sub-directories** (it used to skip them when the parent had an
+`index.ts`). This is what lets `src/api/auth/index.ts` (function routes) and
+`src/api/auth/captcha/index.ts` (a custom router mounted at `/auth/captcha`) coexist. Keep the
+convention when adding a nested module: the child's own `new Router({ prefix: '/<parent>/<child>' })`
+must carry the full path after `/api`, exactly like `api/system/config`.
 
 Three registration modes:
 
@@ -300,6 +320,38 @@ log names the module, table and field. Checks include:
 
 ---
 
+## 6b. Production startup guards (phase 7)
+
+`config/env.ts` refuses to boot in production when any of these is wrong:
+
+| Requirement | Reason |
+|---|---|
+| `REDIS_ENABLED=true` | sessions, nonce/replay, rate limiting and idempotency all depend on Redis |
+| `SECRET_ENCRYPTION_KEY` (base64, 32 bytes) | sensitive columns are stored with AES-256-GCM envelope encryption |
+| `JWT_SECRET` / `DB_PASSWORD` / `CORS_ORIGINS` / `API_SIGN_SECRET` / `INTERNAL_SECRET` / `CAPTCHA_SECRET` | no placeholders (`CHANGE_TO_*`), no weak defaults |
+| `INTERNAL_IP_ALLOWLIST` | must be valid CIDR / IP entries, otherwise startup fails |
+
+Environment switches introduced in phase 7 (both default to `false` in production):
+
+| Env | Default (prod / dev) | Effect |
+|---|---|---|
+| `METRICS_PUBLIC` | `false` / `true` | when false, `GET /api/metrics` returns 404; use `/internal/metrics` |
+| `API_DOCS_ENABLED` | `false` / `true` | when false, `GET /api/docs` and `/api/openapi.json` return 404 |
+
+**Unit tests never touch MySQL or Redis**: `core/database.ts` creates its pools lazily (module import
+is side-effect free) and the Redis client is created with `lazyConnect`. Use
+`npm run test:integration` (with `INTEGRATION_TEST=true`) for tests that really need a database.
+
+**Migrations are serialised**: `scripts/migrate.ts` takes a MySQL advisory lock
+(`GET_LOCK('bls_kox_migration', MIGRATION_LOCK_TIMEOUT)`) before applying files, so N instances can
+start at once without racing.
+
+**Backups** (`scripts/backup.ts`): each dump gets a `.sha256` sidecar, retention is `BACKUP_KEEP`
+(default 30), `--verify` restores into a throwaway database and compares table counts, and
+`--upload` (or `BACKUP_UPLOAD_ENABLED=true` + `BACKUP_S3_*`) pushes the file to MinIO/OSS/S3.
+
+---
+
 ## 7. Verify after change
 
 ```powershell
@@ -307,7 +359,9 @@ log names the module, table and field. Checks include:
 cd bls-admin; npm run tsc; npm run test
 
 # Koa backend
-cd bls-server; npm run lint; npm run test; npm run build; npm run openapi
+cd bls-server; npm run lint; npm run test; npm run build; npm run openapi; npm run openapi:check
+# integration tests need a real MySQL + Redis (CI does this):
+#   mysql < sql/Init.sql && npm run db:migrate up && INTEGRATION_TEST=true npm run test:integration
 
 # Java backend
 cd bls-java-server; mvn test

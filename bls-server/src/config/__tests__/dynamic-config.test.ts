@@ -2,7 +2,7 @@
  * Dynamic Config — 真实 Mock Redis/DB 专项测试
  */
 import { describe, it, expect, vi } from 'vitest';
-import { parseConfigValue, getDynamicConfig, invalidateConfigCache } from '../dynamic-config';
+import { parseConfigValue, getDynamicConfig, invalidateConfigCache, toPublicCaptchaConfig, CAPTCHA_CONFIG_KEYS } from '../dynamic-config';
 
 // ====== Mock factories with recorded where() calls ======
 
@@ -163,6 +163,89 @@ describe('Dynamic Config', () => {
   });
 
   it('onWrite function defined on config module', async () => {
+    const mod = await import('../../api/system/config/index.js');
+    expect(typeof mod.config.onWrite).toBe('function');
+  });
+});
+
+// ============================================================
+// 登录人机验证参数（sys.login.captcha.*）
+// ============================================================
+describe('Dynamic Config — 登录人机验证参数', () => {
+  it('默认值完整（9 个参数）', () => {
+    expect(CAPTCHA_CONFIG_KEYS.length).toBe(9);
+    const c = parseConfigValue({});
+    expect(c.captchaEnabled).toBe(true);
+    expect(c.captchaMode).toBe('adaptive');
+    expect(c.captchaSilentThreshold).toBe(70);
+    expect(c.captchaForceAfterFailures).toBe(3);
+    expect(c.captchaChallengeTtlSeconds).toBe(180);
+    expect(c.captchaTokenTtlSeconds).toBe(120);
+    expect(c.captchaSecondaryTypes).toEqual(['slider', 'rotate']);
+    expect(c.captchaMaxAttempts).toBe(5);
+    expect(c.captchaProvider).toBe('builtin');
+  });
+
+  it('bool 严格解析（"1"/"true"/"0"/"false"，其他回退默认）', () => {
+    expect(parseConfigValue({ 'sys.login.captcha.enabled': '0' }).captchaEnabled).toBe(false);
+    expect(parseConfigValue({ 'sys.login.captcha.enabled': 'false' }).captchaEnabled).toBe(false);
+    expect(parseConfigValue({ 'sys.login.captcha.enabled': '1' }).captchaEnabled).toBe(true);
+    expect(parseConfigValue({ 'sys.login.captcha.enabled': 'yes' }).captchaEnabled).toBe(true);
+  });
+
+  it('mode 枚举校验：off/adaptive/always 合法，其他回退 adaptive', () => {
+    expect(parseConfigValue({ 'sys.login.captcha.mode': 'off' }).captchaMode).toBe('off');
+    expect(parseConfigValue({ 'sys.login.captcha.mode': 'always' }).captchaMode).toBe('always');
+    expect(parseConfigValue({ 'sys.login.captcha.mode': 'sometimes' }).captchaMode).toBe('adaptive');
+  });
+
+  it('数值范围校验：越界 / 非数字回退默认', () => {
+    expect(parseConfigValue({ 'sys.login.captcha.silentThreshold': '85' }).captchaSilentThreshold).toBe(85);
+    expect(parseConfigValue({ 'sys.login.captcha.silentThreshold': '120' }).captchaSilentThreshold).toBe(70);
+    expect(parseConfigValue({ 'sys.login.captcha.silentThreshold': '-1' }).captchaSilentThreshold).toBe(70);
+    expect(parseConfigValue({ 'sys.login.captcha.silentThreshold': 'abc' }).captchaSilentThreshold).toBe(70);
+    expect(parseConfigValue({ 'sys.login.captcha.forceAfterFailures': '0' }).captchaForceAfterFailures).toBe(3);
+    expect(parseConfigValue({ 'sys.login.captcha.forceAfterFailures': '10' }).captchaForceAfterFailures).toBe(10);
+    expect(parseConfigValue({ 'sys.login.captcha.challengeTtlSeconds': '10' }).captchaChallengeTtlSeconds).toBe(180);
+    expect(parseConfigValue({ 'sys.login.captcha.challengeTtlSeconds': '900' }).captchaChallengeTtlSeconds).toBe(900);
+    expect(parseConfigValue({ 'sys.login.captcha.tokenTtlSeconds': '9999' }).captchaTokenTtlSeconds).toBe(120);
+    expect(parseConfigValue({ 'sys.login.captcha.maxAttempts': '3' }).captchaMaxAttempts).toBe(3);
+    expect(parseConfigValue({ 'sys.login.captcha.maxAttempts': '99' }).captchaMaxAttempts).toBe(5);
+  });
+
+  it('secondaryTypes 枚举校验：非法项剔除，全部非法回退默认', () => {
+    expect(parseConfigValue({ 'sys.login.captcha.secondaryTypes': 'slider' }).captchaSecondaryTypes).toEqual(['slider']);
+    expect(parseConfigValue({ 'sys.login.captcha.secondaryTypes': 'rotate' }).captchaSecondaryTypes).toEqual(['rotate']);
+    expect(parseConfigValue({ 'sys.login.captcha.secondaryTypes': 'slider,image' }).captchaSecondaryTypes).toEqual(['slider']);
+    expect(parseConfigValue({ 'sys.login.captcha.secondaryTypes': 'image,audio' }).captchaSecondaryTypes).toEqual(['slider', 'rotate']);
+    expect(parseConfigValue({ 'sys.login.captcha.secondaryTypes': '' }).captchaSecondaryTypes).toEqual(['slider', 'rotate']);
+  });
+
+  it('provider 枚举校验：仅 builtin', () => {
+    expect(parseConfigValue({ 'sys.login.captcha.provider': 'builtin' }).captchaProvider).toBe('builtin');
+    expect(parseConfigValue({ 'sys.login.captcha.provider': 'geetest' }).captchaProvider).toBe('builtin');
+  });
+
+  it('公开配置投影只含 enabled / mode / secondaryTypes，不泄露阈值与内部规则', () => {
+    const pub = toPublicCaptchaConfig(parseConfigValue({}));
+    expect(Object.keys(pub).sort()).toEqual(['enabled', 'mode', 'secondaryTypes']);
+    expect(JSON.stringify(pub)).not.toContain('Threshold');
+    expect(JSON.stringify(pub)).not.toContain('maxAttempts');
+    expect(JSON.stringify(pub)).not.toContain('forceAfterFailures');
+  });
+
+  it('enabled=false 或 mode=off → 对前端而言为关闭', () => {
+    expect(toPublicCaptchaConfig(parseConfigValue({ 'sys.login.captcha.enabled': 'false' })).enabled).toBe(false);
+    expect(toPublicCaptchaConfig(parseConfigValue({ 'sys.login.captcha.mode': 'off' })).enabled).toBe(false);
+    expect(toPublicCaptchaConfig(parseConfigValue({ 'sys.login.captcha.mode': 'always' })).enabled).toBe(true);
+  });
+
+  it('配置写入后缓存失效（系统参数 onWrite → invalidateConfigCache）', async () => {
+    const redis = makeRedis();
+    await invalidateConfigCache('T001', () => redis);
+    expect(redis.del).toHaveBeenCalledWith('config:T001');
+
+    // onWrite 真实调用 invalidateConfigCache（不抛错即视为通过；租户上下文缺失时 fail-closed 由 CRUD 框架处理）
     const mod = await import('../../api/system/config/index.js');
     expect(typeof mod.config.onWrite).toBe('function');
   });

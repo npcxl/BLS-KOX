@@ -605,6 +605,310 @@
         ]
       }
     },
+    "/api/system/api-key/{apiKeyId}/revoke": {
+      "post": {
+        "tags": [
+          "api-key"
+        ],
+        "summary": "api-key - 提交 revoke",
+        "operationId": "post_api_system_api-key_apiKeyId_revoke",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          },
+          {
+            "name": "apiKeyId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "apiKeyId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/api-key_post__api_system_api-key_apiKeyId_revoke"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/api-key/add": {
+      "post": {
+        "tags": [
+          "api-key"
+        ],
+        "summary": "api-key - 新增记录",
+        "operationId": "post_api_system_api-key_add",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/api-key_post__api_system_api-key_add"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/api-key/list": {
+      "get": {
+        "tags": [
+          "api-key"
+        ],
+        "summary": "api-key - 分页列表",
+        "operationId": "get_api_system_api-key_list",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/api-key_get__api_system_api-key_list"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/api-key/remove": {
+      "delete": {
+        "tags": [
+          "api-key"
+        ],
+        "summary": "api-key - 删除记录",
+        "operationId": "delete_api_system_api-key_remove",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/api-key_delete__api_system_api-key_remove"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/api-key/status": {
+      "put": {
+        "tags": [
+          "api-key"
+        ],
+        "summary": "api-key - 切换状态",
+        "operationId": "put_api_system_api-key_status",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/api-key_put__api_system_api-key_status"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/get-stored-session": {
       "get": {
         "tags": [
@@ -827,6 +1131,283 @@
                 "$ref": "#/components/schemas/auth_post__api_auth_refresh"
               }
             }
+          }
+        }
+      }
+    },
+    "/api/auth/forgot-password": {
+      "post": {
+        "tags": [
+          "auth-password"
+        ],
+        "summary": "auth-password - 提交 forgot-password",
+        "operationId": "post_api_auth_forgot-password",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        }
+      }
+    },
+    "/api/auth/reset-password": {
+      "post": {
+        "tags": [
+          "auth-password"
+        ],
+        "summary": "auth-password - 提交 reset-password",
+        "operationId": "post_api_auth_reset-password",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        }
+      }
+    },
+    "/api/auth/captcha/challenge": {
+      "post": {
+        "tags": [
+          "captcha"
+        ],
+        "summary": "captcha - 提交 challenge",
+        "operationId": "post_api_auth_captcha_challenge",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        }
+      }
+    },
+    "/api/auth/captcha/config": {
+      "get": {
+        "tags": [
+          "captcha"
+        ],
+        "summary": "captcha - 查询 config",
+        "operationId": "get_api_auth_captcha_config",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        }
+      }
+    },
+    "/api/auth/captcha/image/{imageId}": {
+      "get": {
+        "tags": [
+          "captcha"
+        ],
+        "summary": "captcha - 查询 :imageId",
+        "operationId": "get_api_auth_captcha_image_imageId_",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "imageId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "imageId"
+          }
+        ]
+      }
+    },
+    "/api/auth/captcha/secondary/verify": {
+      "post": {
+        "tags": [
+          "captcha"
+        ],
+        "summary": "captcha - 提交 verify",
+        "operationId": "post_api_auth_captcha_secondary_verify",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        }
+      }
+    },
+    "/api/auth/captcha/silent/verify": {
+      "post": {
+        "tags": [
+          "captcha"
+        ],
+        "summary": "captcha - 提交 verify",
+        "operationId": "post_api_auth_captcha_silent_verify",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
           }
         }
       }
@@ -5735,6 +6316,124 @@
         }
       }
     },
+    "/api/system/quota/my": {
+      "get": {
+        "tags": [
+          "quota"
+        ],
+        "summary": "quota - 查询 my",
+        "operationId": "get_api_system_quota_my",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/quota_get__api_system_quota_my"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/quota/tenant/{tenantId}": {
+      "get": {
+        "tags": [
+          "quota"
+        ],
+        "summary": "quota - 查询 :tenantId",
+        "operationId": "get_api_system_quota_tenant_tenantId_",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/quota_get__api_system_quota_tenant_tenantId_"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/system/role/{roleId}/menus": {
       "get": {
         "tags": [
@@ -8775,6 +9474,65 @@
         }
       }
     },
+    "/api/system/user/resetPassword": {
+      "post": {
+        "tags": [
+          "user"
+        ],
+        "summary": "user - 提交 resetPassword",
+        "operationId": "post_api_system_user_resetPassword",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        },
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "tenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/user_post__api_system_user_resetPassword"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/system/user/sessions/{userId}": {
       "get": {
         "tags": [
@@ -9437,12 +10195,61 @@
           }
         }
       },
+      "api-key_post__api_system_api-key_apiKeyId_revoke": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
+      "api-key_post__api_system_api-key_add": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
+      "api-key_get__api_system_api-key_list": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
+      "api-key_delete__api_system_api-key_remove": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
+      "api-key_put__api_system_api-key_status": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
       "auth_post__api_auth_login": {
         "type": "object",
         "properties": {
           "username": {
             "type": "string",
             "description": "username"
+          },
+          "captchaToken": {
+            "type": "string",
+            "description": "captchaToken"
           },
           "password": {
             "type": "string",
@@ -10014,6 +10821,24 @@
           }
         }
       },
+      "quota_get__api_system_quota_my": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
+      "quota_get__api_system_quota_tenant_tenantId_": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
       "role_get__api_system_role_roleId_menus": {
         "type": "object",
         "properties": {
@@ -10519,6 +11344,15 @@
           }
         }
       },
+      "user_post__api_system_user_resetPassword": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "tenantId"
+          }
+        }
+      },
       "user_get__api_system_user_sessions_userId_": {
         "type": "object",
         "properties": {
@@ -10647,8 +11481,20 @@
       "description": "ai-usage"
     },
     {
+      "name": "api-key",
+      "description": "api-key"
+    },
+    {
       "name": "auth",
       "description": "认证授权"
+    },
+    {
+      "name": "auth-password",
+      "description": "auth-password"
+    },
+    {
+      "name": "captcha",
+      "description": "登录人机验证"
     },
     {
       "name": "chat",
@@ -10701,6 +11547,10 @@
     {
       "name": "page-config",
       "description": "页面配置"
+    },
+    {
+      "name": "quota",
+      "description": "quota"
     },
     {
       "name": "role",

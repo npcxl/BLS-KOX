@@ -1,6 +1,6 @@
 # BLS-KOX Page Memory
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
 
 This folder is the **page-by-page operating memory** of the BLS-KOX SaaS platform.
 
@@ -103,6 +103,7 @@ Pages talk to `/api/*`. Nginx (or `bls-admin/config/proxy.ts` in dev) decides wh
 | Page | Route | Memory file |
 |---|---|---|
 | Login | `/user/login` | [pages/user-login.md](pages/user-login.md) |
+| Login captcha (two-stage, silent + slider/rotate) | part of `/user/login` | [pages/login-captcha.md](pages/login-captcha.md) |
 | Register + result | `/user/register`, `/user/register-result` | [pages/user-register.md](pages/user-register.md) |
 
 ### Dashboard & personal

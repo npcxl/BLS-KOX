@@ -5,6 +5,8 @@ import { jwtAuth } from '../../../middleware/auth';
 import { getCurrentTenantId } from '../../../middleware/tenant';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { logger } from '../../../core/logger';
+import { entitlementService } from '../../../services/entitlement-service';
+import { FEATURE_KEYS } from '../../../shared/constants/entitlements';
 
 const router = new Router({ prefix: '/ai/chat' });
 
@@ -63,6 +65,10 @@ router.post('/conversations', jwtAuth(), async (ctx: Context) => {
   if (!userId) { ctx.status = 401; ctx.body = { code: 401, message: '未登录或无法获取用户上下文' }; return; }
 
   const body = ctx.request.body as { id?: string; title?: string; messages?: Array<{ role: string; content: string }> };
+
+  // 阶段三：AI 对话属于套餐功能权益（不含则 403 entitlement 错误）
+  await entitlementService.assertFeature(tenantId, FEATURE_KEYS.AI_CHAT, 'AI 对话');
+
   try {
     const db = (await getDb()) as any;
     const now = new Date().toISOString().slice(0, 19).replace('T', ' ');

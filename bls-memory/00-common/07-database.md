@@ -1,6 +1,9 @@
 # 07 — Database Schema & Migrations (shared)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.2.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
+>
+> *Uncommitted note:* `20260922_017_login_captcha.sql` (and the matching `sql/Init.sql` rows) were
+> verified against `61aaf9a` + uncommitted captcha changes.
 
 Single entry point for everything database-related: where the schema lives, the conventions,
 the full table inventory (all **40** tables), the migration workflow, and the **known drift**
@@ -50,13 +53,14 @@ These tables legitimately deviate from the timestamp rule. Do not "fix" them wit
 | Table | Uses |
 |---|---|
 | `sys_operation_log` | `operator_time` instead of `create_time` |
+| `sys_api_key` | `created_at` / `updated_at` instead of `create_time` / `update_time` (the requirement for phase 6 named these columns explicitly) |
 | `sys_webhook`, `sys_webhook_delivery` | `created_at` / `updated_at` |
 | `ai_conversation`, `ai_conversation_message` | `created_at` / `updated_at` |
 | `sys_event_log`, `sys_jobs`, `outbox_event`, `sys_ai_usage`, `sys_sql_audit`, `sys_search_index`, `sys_migrations`, `ops_release_log` | no `create_time` at all (own time column or none) |
 
 ---
 
-## 3. Table inventory (40 tables)
+## 3. Table inventory (45 tables)
 
 `T` = has `tenant_id`, `D` = has `deleted` (soft delete), `#` = number of columns
 (excluding index-only lines).
@@ -85,12 +89,17 @@ These tables legitimately deviate from the timestamp rule. Do not "fix" them wit
 | `sys_menu` | `menu_id` | – | – | 12 | **Global** menu/permission tree (no `tenant_id`, no `deleted`) | `pages/system-menu.md` |
 | `sys_package` | `package_id` | – | – | 6 | **Global** tenant packages (no `tenant_id`, no `deleted`) | `pages/tenant-package.md` |
 | `sys_package_menu` | `package_id, menu_id` | – | – | 2 | Package ↔ menu grant | `pages/tenant-package.md` |
+| `sys_package_feature` | `id` | – | – | 7 | **Global** package feature switches (`feature.ai.chat`, `feature.webhook`, `feature.openapi`, `feature.audit.export`, `feature.custom_domain`); unique on `package_id+feature_key` | `00-common/04` §8.4 |
+| `sys_package_quota` | `id` | – | – | 8 | **Global** package quota limits (`max_users`, `max_storage_bytes`, `max_files`, `max_api_keys`, `max_webhooks`, `max_ai_tokens_monthly`, `max_ai_cost_monthly`, `max_concurrent_jobs`); `quota_limit < 0` = unlimited | `00-common/04` §8.4 |
+| `sys_tenant_quota_usage` | `id` | Y | – | 7 | Per-tenant quota consumption; unique on `tenant_id+quota_key+period_key` (`total` / `YYYY-MM` / `YYYY-MM-DD`) | `00-common/04` §8.4 |
+| `sys_password_reset_token` | `token_id` | Y | – | 11 | One-shot password-reset / verify-email / invite tokens — **SHA-256 only, never plaintext**; unique on `token_hash` | `00-common/04` §8.3 |
+| `sys_api_key` | `api_key_id` | Y | Y | 17 | Partner-API credentials (`key_id`, `key_hash`, AES-256-GCM `encrypted_secret`, `scopes`, `expire_at`, `revoked_at`, `last_used_at`); unique on `key_id` and `key_hash` | `00-common/08` §4 |
 
 ### 3.3 Configuration, dictionaries, theming & page config
 
 | Table | PK | T | D | # | Purpose | Documented in |
 |---|---|---|---|---|---|---|
-| `sys_config` | `config_id` | Y | Y | 11 | Key/value parameters (`sys.user.defaultPassword`, `sys.upload.maxSize`, …) | `pages/system-config.md` |
+| `sys_config` | `config_id` | Y | Y | 11 | Key/value parameters (`sys.user.defaultPassword`, `sys.upload.maxSize`, `sys.login.captcha.*` …) | `pages/system-config.md` |
 | `sys_theme_config` | `theme_id` | Y | Y | 20 | Layout/theme settings (incl. `token_json`, `remark`) | `pages/system-theme.md` |
 | `sys_dict_type` | `dict_type_id` | Y | Y | 9 | Dictionary types; `uk_dict_type_tenant` | `pages/system-dict.md` |
 | `sys_dict_data` | `dict_data_id` | Y | Y | 12 | Dictionary values | `pages/system-dict.md` |
@@ -170,12 +179,23 @@ Key seed identities:
 # add a change
 1. edit sql/Init.sql                          (so new installs get it)
 2. add bls-server/migrations/YYYYMMDD_NNN_<topic>.sql  (so existing DBs get it)
-   - prefix numbers are sequential: 001..012 exist so far
+   - prefix numbers are sequential: 001..017 taken (015 password_reset_token, 016 api_key,
+     017 login_captcha)
    - write it idempotently: CREATE TABLE IF NOT EXISTS / INSERT IGNORE / guarded ALTER
    - record the version row in `sys_migrations`
 3. if the change is a table/column, update the owning page document in bls-memory/
 4. update this document (§3 inventory / §7 drift) and add a CHANGELOG entry
 ```
+
+**Seed data still gets a migration.** `sql/Init.sql` only serves **fresh installs**; every
+already-deployed database needs the matching `bls-server/migrations/YYYYMMDD_NNN_*.sql` with an
+idempotent `INSERT IGNORE`, *even when the change is pure seed data with no DDL* (reference
+example: `20260922_017_login_captcha.sql` ↔ the 9 `sys.login.captcha.*` rows in `Init.sql`).
+Never rely on "the operator will copy the `Init.sql` block by hand" — that step is exactly what
+`npm run db:migrate up` exists to remove.
+
+The two files must stay content-identical, so write the `sql/Init.sql` rows and the migration rows
+from the same source (a short script) and diff both afterwards.
 
 Existing migrations:
 
@@ -190,6 +210,11 @@ Existing migrations:
 | `20260713_007_webhook_delivery_log.sql` | `sys_webhook_delivery` + webhook menus/page config |
 | `20260817_011_sql_audit_menu.sql` | SQL-audit menus `000204` / `000205` |
 | `20260920_012_crud_completeness.sql` | `ALTER TABLE sys_theme_config ADD remark`; seeds 14 button permissions (`system:user:add`, `system:theme:add/remove`, `system:role:status`, `system:package:status`, `system:tenant:status`, `system:pageconfig:list/edit/remove`, `system:ai-model:list/add/edit/remove/status`) and grants them to roles `000001` / `100001` and packages `P001` / `P100` |
+| `20260921_013_tenant_lifecycle.sql` | adds `sys_tenant.offboard_status` (+ index); **fixes the `sys_security_log` drift**: renames PK `id` → `log_id` and adds the missing `source` column |
+| `20260921_014_package_entitlements.sql` | creates `sys_package_feature`, `sys_package_quota`, `sys_tenant_quota_usage`; seeds features/quotas for `P001`/`P100` and the `system:quota:list` permission |
+| `20260921_015_password_reset_token.sql` | creates `sys_password_reset_token`; seeds `system:user:resetPassword` |
+| `20260921_016_api_key.sql` | creates `sys_api_key`; seeds `system:apikey:list/add/remove/status` |
+| `20260922_017_login_captcha.sql` | Seeds the 9 `sys.login.captcha.*` rows (`000406`–`000414`, tenant `000000`) — identical to `sql/Init.sql` lines 68–76, `INSERT IGNORE` so it is re-runnable. **No DDL**: `sys_security_log.event_type` is `varchar(64)`, so the new `CAPTCHA_*` event types need no schema change. |
 
 ⚠ `ALTER TABLE` is DDL and implicitly commits in MySQL — it cannot be rolled back with a
 transaction. Keep such scripts idempotent.
@@ -213,28 +238,24 @@ rg -n "CREATE TABLE \`sys_user\`" -A 30 sql/Init.sql
 
 ## 7. Known drift / gaps (verified 2026-09-20)
 
-1. **`sys_security_log` schema mismatch (real bug, unfixed).**
-   `sql/Init.sql` defines PK `id` and columns `id, tenant_id, event_type, risk_level, title,
-   detail, username, user_id, route, method, client_ip, user_agent, request_id, create_time` —
-   **no `log_id` and no `source`**. But `bls-server/src/core/security-audit.ts`
-   `writeSecurityLog()` inserts `log_id` and `source`, and the Security Log page uses
-   `rowKey="logId"`. No migration adds those columns. Consequence: security-log inserts can fail
-   (they are wrapped in `catch` in several call sites) and the Security Log page can stay empty.
-   Fix = either add `log_id` (auto-increment) + `source` via a migration, or change the writer
-   and the page to use `id` and drop `source`.
+1. ~~**`sys_security_log` schema mismatch (real bug, unfixed).**~~
+   **FIXED 2026-09-21** (`20260921_013_tenant_lifecycle.sql`): the PK is now `log_id` and the
+   `source` column exists, matching `core/security-audit.ts` and the page's `rowKey="logId"`.
+   `sql/Init.sql` was updated as well.
 
-2. **`sys_login_log` is never written.** `writeLoginLog()` exists in
-   `bls-server/src/core/audit.ts` but is not called by the login flow (which publishes
-   `LOGIN_SUCCESS` / `LOGIN_FAILED` events instead). The Login Log page is therefore empty, and
-   the `LOGIN_FAILED`-based brute-force rule never fires.
+2. ~~**`sys_login_log` is never written.**~~ **FIXED 2026-09-21**: the login route now calls
+   `writeLoginLog()` on both success and failure, and `detectBruteForce()` counts those real
+   events (5 failures / 15 min → `LOGIN_BRUTE_FORCE`).
 
 3. **Missing dictionary seed data.** `sys_page_column_config` references `value_enum_code`
    `sys_storage_type` (page `system_storage`, column `C057`) and `sys_bucket_access_type`
    (page `file_manager`, column `C072`), but neither exists in `sys_dict_type`. Those selects
    render empty until an admin creates them.
 
-4. **`sys_tenant.expire_time` is stored but never enforced** — no query anywhere rejects an
-   expired tenant. Also `sys_tenant.package_id` has no validation against `sys_package`.
+4. ~~**`sys_tenant.expire_time` is stored but never enforced.**~~ **FIXED 2026-09-21**:
+   `services/tenant-lifecycle.ts` enforces `status` / `offboard_status` / `expire_time` on login,
+   refresh, `jwtAuth` and background jobs. `sys_tenant.package_id` is validated against
+   `sys_package` (must exist and be enabled) by tenant provisioning and by `PUT /system/tenant/edit`.
 
 5. **`sys_package` / `sys_menu` / `sys_package_menu` have no `deleted` column** and are hard
    deleted (`DELETE FROM`) by their modules. Do not write generic soft-delete code for them —

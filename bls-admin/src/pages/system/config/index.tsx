@@ -4,9 +4,11 @@ import { ReloadOutlined } from '@ant-design/icons';
 import { useCallback, useMemo, useState } from 'react';
 import { useMultiDict } from '@/hooks/useDict';
 import { usePageConfig } from '@/hooks/usePageConfig';
+import { usePermission } from '@/hooks/usePermission';
 import { refreshGlobalSettings } from '@/services/system/settings';
 import CrudTablePage from '@/components/CrudTablePage';
 import RebuildIndexModal from '@/components/RebuildIndexModal';
+import CaptchaSettingPanel from './components/CaptchaSettingPanel';
 
 export type ConfigRecord = {
   configId: string;
@@ -24,6 +26,7 @@ function ConfigPageInner() {
   const { sys_status, sys_config_type } = useMultiDict(['sys_status', 'sys_config_type']);
   const { proColumns } = usePageConfig('system_config');
   const [rebuildOpen, setRebuildOpen] = useState(false);
+  const { hasPermission } = usePermission(['system:config:edit', 'system:config:add']);
 
   const statusFormEnum = Object.fromEntries(Object.entries(sys_status?.valueEnum ?? {}).map(([k, v]) => [k, v.text]));
   const configTypeFormEnum = Object.fromEntries(Object.entries(sys_config_type?.valueEnum ?? {}).map(([k, v]) => [k, v.text]));
@@ -47,16 +50,24 @@ function ConfigPageInner() {
   ], [openRebuild]);
 
   const handleSaved = useCallback(async (_mode: 'create' | 'edit', values: Partial<ConfigRecord>) => {
-    if (['theme.default', 'sys.app.name', 'sys.demo.enabled', 'sys.upload.maxSize', 'sys.version', 'sys.user.defaultPassword'].includes(
-      String(values.configKey),
-    )) {
+    const key = String(values.configKey ?? '');
+    if (key.startsWith('sys.login.captcha.')) {
+      message.success('登录人机验证配置已更新，立即生效');
+      return;
+    }
+    if (['theme.default', 'sys.app.name', 'sys.demo.enabled', 'sys.upload.maxSize', 'sys.version', 'sys.user.defaultPassword'].includes(key)) {
       await refreshGlobalSettings();
       message.success('前端配置已刷新');
     }
   }, []);
 
+  const handleCaptchaSaved = useCallback(async () => {
+    await refreshGlobalSettings();
+  }, []);
+
   return (
     <>
+      <CaptchaSettingPanel canEdit={hasPermission} onSaved={handleCaptchaSaved} />
       <CrudTablePage<ConfigRecord>
         title="系统参数"
         rowKey="configId"

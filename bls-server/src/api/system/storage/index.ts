@@ -19,6 +19,9 @@ import { getDynamicConfig } from '../../../config/dynamic-config';
 import { writeSecurityLog, SecurityEventType } from '../../../core/security-audit';
 import { writeUploadAudit } from '../../../core/audit';
 import { getRequestContext } from '../../../core/request-context';
+import { quotaService } from '../../../services/quota-service';
+import { QUOTA_KEYS } from '../../../shared/constants/entitlements';
+import { encryptSecret, decryptSecret } from '../../../shared/utils/secret-crypto';
 import fs from 'fs';
 import path from 'path';
 
@@ -103,12 +106,22 @@ function isMaskedValue(value: unknown): boolean {
   return typeof value === 'string' && value.includes('****');
 }
 
-/** 对外返回时脱敏 access_key / secret_key */
+/** 阶段五：DB 中存的是 AES-256-GCM 密文，展示 / 使用前先解密 */
+function safeDecrypt(value: unknown): string | null {
+  if (!value) return null;
+  try {
+    return decryptSecret(String(value));
+  } catch {
+    return null;
+  }
+}
+
+/** 对外返回时脱敏 access_key / secret_key（解密后再脱敏，绝不返回明文） */
 function maskRow(row: Record<string, any>): Record<string, any> {
   return {
     ...row,
-    access_key: maskSecret(row.access_key),
-    secret_key: maskSecret(row.secret_key),
+    access_key: maskSecret(safeDecrypt(row.access_key)),
+    secret_key: maskSecret(safeDecrypt(row.secret_key)),
   };
 }
 
@@ -144,7 +157,7 @@ function buildStorageValues(
       values[col] = null;
       return;
     }
-    values[col] = incoming;
+    values[col] = encryptSecret(String(incoming));
   };
   keyRule(body.accessKey, 'access_key');
   keyRule(body.secretKey, 'secret_key');
@@ -292,7 +305,7 @@ export async function handleUpload(
     storageId: configRow.storage_id, tenantId: configRow.tenant_id,
     storageName: configRow.storage_name, storageType: configRow.storage_type,
     endpoint: configRow.endpoint, region: configRow.region, port: configRow.port,
-    useSsl: configRow.use_ssl, accessKey: configRow.access_key, secretKey: configRow.secret_key,
+    useSsl: configRow.use_ssl, accessKey: safeDecrypt(configRow.access_key), secretKey: safeDecrypt(configRow.secret_key),
     publicBucket: configRow.public_bucket, privateBucket: configRow.private_bucket,
     publicBaseUrl: configRow.public_base_url, privateBaseUrl: configRow.private_base_url,
     pathStyle: configRow.path_style, configJson: configRow.config_json, policyJson: configRow.policy_json,
@@ -380,12 +393,50 @@ export async function handleUpload(
 
 // 文件上传路由（含分布式锁）
 router.post('/upload', jwtAuth(), hasPerm('system:file:upload'), async (ctx: Context) => {
+  // 阶段三：文件数 + 存储容量配额（在上传前消费，fail-closed）
+  const tid = getCurrentTenantId();
+  if (!tid) {
+    ctx.status = 401;
+    ctx.body = { code: 401, message: '租户上下文缺失' };
+    return;
+  }
+  const uploadFiles = (ctx.request as any).files;
+  const uploadFile = uploadFiles?.file
+    ? (Array.isArray(uploadFiles.file) ? uploadFiles.file[0] : uploadFiles.file)
+    : null;
+  const uploadSize = Math.max(0, Number(uploadFile?.size ?? 0));
+  const idem = String(ctx.get('Idempotency-Key') ?? '').trim() || undefined;
+
+  const rollbackQuota = async () => {
+    await quotaService.release(tid, QUOTA_KEYS.MAX_FILES, 1).catch(() => {});
+    if (uploadSize > 0) {
+      await quotaService.release(tid, QUOTA_KEYS.MAX_STORAGE_BYTES, uploadSize).catch(() => {});
+    }
+  };
+
+  await quotaService.consume(tid, QUOTA_KEYS.MAX_FILES, 1, {
+    idempotencyKey: idem ? `${idem}:files` : undefined,
+    reason: 'file.upload',
+  });
+  try {
+    if (uploadSize > 0) {
+      await quotaService.consume(tid, QUOTA_KEYS.MAX_STORAGE_BYTES, uploadSize, {
+        idempotencyKey: idem ? `${idem}:bytes` : undefined,
+        reason: 'file.upload',
+      });
+    }
+  } catch (error) {
+    await rollbackQuota();
+    throw error;
+  }
+
   const redis = getRedisClient();
   let unlock: (() => Promise<void>) | null = null;
   if (redis) {
     const lock = createDistributedLock(redis);
     const result = await lock.acquire('storage:upload', { leaseTime: 30, waitTime: 5 });
     if (result.status === 'busy') {
+      await rollbackQuota();
       ctx.status = 409;
       ctx.body = { code: 409, message: '操作太频繁，请稍后再试' };
       return;
@@ -397,7 +448,12 @@ router.post('/upload', jwtAuth(), hasPerm('system:file:upload'), async (ctx: Con
   }
   try {
     await handleUpload(ctx, getDb, getCurrentTenantId, writeSecurityLog as any, writeUploadAudit as any, getRequestContext);
+    // 上传未成功（校验失败 / 存储异常）→ 归还配额
+    if ((ctx.body as any)?.code !== 200) {
+      await rollbackQuota();
+    }
   } catch (err: any) {
+    await rollbackQuota();
     ctx.body = { code: 500, message: err?.message || '上传失败' };
   } finally {
     if (unlock) {

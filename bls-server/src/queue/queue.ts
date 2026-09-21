@@ -48,15 +48,36 @@ export async function dequeue(): Promise<JobRecord | null> {
   return row ? mapRow(row) : null;
 }
 
-export async function completeJob(jobId: string, result: unknown): Promise<void> {
+/**
+ * 任务进入终态时归还 `max_concurrent_jobs` 配额（阶段三）。
+ * 用 lazy require + try/catch，避免队列层意外影响主流程。
+ */
+async function releaseJobQuota(tenantId?: string | null): Promise<void> {
+  if (!tenantId) return;
+  try {
+    const { quotaService } = require('../services/quota-service');
+    const { QUOTA_KEYS } = require('../shared/constants/entitlements');
+    await quotaService.release(String(tenantId), QUOTA_KEYS.MAX_CONCURRENT_JOBS, 1);
+  } catch (error) {
+    logger.warn('[queue] release job quota failed', { tenantId, error: String(error) });
+  }
+}
+
+export async function completeJob(jobId: string, result: unknown, tenantId?: string | null): Promise<void> {
   const db = await getDb();
   await db.updateTable(TABLE).set({ status: 'completed', result: JSON.stringify(result), updated_at: new Date() } as any)
     .where('job_id', '=', jobId).execute();
   jobQueueCompletedTotal.inc();
   logger.info('[queue] completed', { jobId });
+  await releaseJobQuota(tenantId);
 }
 
-export async function failJob(jobId: string, record: Pick<JobRecord, 'attempt' | 'maxAttempts'>, error: string): Promise<void> {
+export async function failJob(
+  jobId: string,
+  record: Pick<JobRecord, 'attempt' | 'maxAttempts'>,
+  error: string,
+  tenantId?: string | null,
+): Promise<void> {
   const db = await getDb();
   const attempt = record.attempt + 1;
   if (attempt >= record.maxAttempts) {
@@ -64,6 +85,7 @@ export async function failJob(jobId: string, record: Pick<JobRecord, 'attempt' |
       .where('job_id', '=', jobId).execute();
     jobQueueFailedTotal.inc();
     logger.warn('[queue] dead letter', { jobId, attempts: attempt });
+    await releaseJobQuota(tenantId);
   } else {
     const backoff = Math.pow(2, attempt - 1) * 1000;
     await db.updateTable(TABLE).set({ status: 'queued', error_message: error, next_retry_at: new Date(Date.now() + backoff), updated_at: new Date() } as any)

@@ -10,7 +10,7 @@ import { generateSnowflakeId } from '../shared/utils/snowflake';
 import type { AuditActor } from './audit';
 import { logger } from './logger';
 import { getRequestContext } from './request-context';
-import { securityEventsTotal, crossTenantAccessTotal, loginFailedTotal, refreshReuseDetectedTotal } from '../observability/metrics';
+import { securityEventsTotal, crossTenantAccessTotal, loginFailedTotal, refreshReuseDetectedTotal, auditWriteFailuresTotal } from '../observability/metrics';
 import { publishEvent } from '../services/event-client';
 
 // ========== 事件类型 ==========
@@ -42,6 +42,15 @@ export const SecurityEventType = {
   API_KEY_REVOKED:       'API_KEY_REVOKED',
   SENSITIVE_DATA_ACCESS: 'SENSITIVE_DATA_ACCESS',
   SECURITY_VALIDATION_FAILED: 'SECURITY_VALIDATION_FAILED',
+  // ===== 登录人机验证 =====
+  CAPTCHA_SILENT_PASSED:      'CAPTCHA_SILENT_PASSED',
+  CAPTCHA_SILENT_FAILED:      'CAPTCHA_SILENT_FAILED',
+  CAPTCHA_SECONDARY_REQUIRED: 'CAPTCHA_SECONDARY_REQUIRED',
+  CAPTCHA_SECONDARY_PASSED:   'CAPTCHA_SECONDARY_PASSED',
+  CAPTCHA_SECONDARY_FAILED:   'CAPTCHA_SECONDARY_FAILED',
+  CAPTCHA_TOKEN_INVALID:      'CAPTCHA_TOKEN_INVALID',
+  CAPTCHA_TOKEN_REPLAYED:     'CAPTCHA_TOKEN_REPLAYED',
+  CAPTCHA_SERVICE_UNAVAILABLE:'CAPTCHA_SERVICE_UNAVAILABLE',
 } as const;
 
 export type SecurityEventType = (typeof SecurityEventType)[keyof typeof SecurityEventType];
@@ -84,6 +93,14 @@ const EVENT_RISK: Record<string, RiskLevel> = {
   API_KEY_REVOKED:       RiskLevel.MEDIUM,
   SENSITIVE_DATA_ACCESS: RiskLevel.CRITICAL,
   SECURITY_VALIDATION_FAILED: RiskLevel.MEDIUM,
+  CAPTCHA_SILENT_PASSED:      RiskLevel.LOW,
+  CAPTCHA_SILENT_FAILED:      RiskLevel.MEDIUM,
+  CAPTCHA_SECONDARY_REQUIRED: RiskLevel.MEDIUM,
+  CAPTCHA_SECONDARY_PASSED:   RiskLevel.LOW,
+  CAPTCHA_SECONDARY_FAILED:   RiskLevel.MEDIUM,
+  CAPTCHA_TOKEN_INVALID:      RiskLevel.MEDIUM,
+  CAPTCHA_TOKEN_REPLAYED:     RiskLevel.HIGH,
+  CAPTCHA_SERVICE_UNAVAILABLE:RiskLevel.HIGH,
 };
 
 // ========== 输入类型 ==========
@@ -200,8 +217,11 @@ export async function writeSecurityLog(input: SecurityLogInput): Promise<void> {
       }
     }
   } catch (error) {
+    // 阶段五：审计不可用必须可观测（指标 + 结构化日志）
+    auditWriteFailuresTotal.inc({ type: 'security' });
     logger.error('安全审计日志写入失败', {
-      event: 'security_audit_write_failed',
+      event: 'audit_write_failed',
+      auditType: 'security',
       eventType: input.eventType,
       error: error instanceof Error ? { name: error.name, message: error.message } : String(error),
     });

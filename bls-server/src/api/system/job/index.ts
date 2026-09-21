@@ -10,6 +10,8 @@ import { enqueue, getJob, listJobs } from '../../../queue/queue';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
 import { getCurrentTenantId, requireTenantId } from '../../../middleware/tenant';
+import { quotaService } from '../../../services/quota-service';
+import { QUOTA_KEYS } from '../../../shared/constants/entitlements';
 
 /** 允许异步提交的 Job 类型白名单 */
 const ALLOWED_JOB_TYPES = new Set(['export', 'import', 'notification', 'webhook']);
@@ -28,7 +30,19 @@ router.post('/', jwtAuth(), hasPerm('system:job:create'), async (ctx: Context) =
     ctx.body = { code: 400, message: `不允许的 Job 类型: ${jobType}` };
     return;
   }
-  const job = await enqueue({ tenantId: tid, userId: ctx.state.user?.userId, jobType, jobData });
+  // 阶段三：并发任务配额（任务进入终态时由 queue 归还）
+  await quotaService.consume(tid, QUOTA_KEYS.MAX_CONCURRENT_JOBS, 1, {
+    idempotencyKey: String(ctx.get('Idempotency-Key') ?? '').trim() || undefined,
+    reason: 'job.create',
+  });
+
+  let job;
+  try {
+    job = await enqueue({ tenantId: tid, userId: ctx.state.user?.userId, jobType, jobData });
+  } catch (error) {
+    await quotaService.release(tid, QUOTA_KEYS.MAX_CONCURRENT_JOBS, 1).catch(() => {});
+    throw error;
+  }
   ctx.body = { code: 200, data: { jobId: job.jobId, status: job.status } };
 });
 

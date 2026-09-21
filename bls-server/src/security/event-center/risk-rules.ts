@@ -95,6 +95,16 @@ export const DEFAULT_RULES: RiskRule[] = [
     actions: ['ALERT_ONLY'],
     weight: 4,
   },
+  {
+    id: 'rule_captcha_token_abuse',
+    name: '验证码凭证滥用（无效/重放）',
+    eventTypes: ['CAPTCHA_TOKEN_INVALID', 'CAPTCHA_TOKEN_REPLAYED'],
+    windowSeconds: 300,
+    threshold: 5,
+    riskLevel: RiskLevel.HIGH,
+    actions: ['ALERT_ONLY'],
+    weight: 6,
+  },
 ];
 
 /**

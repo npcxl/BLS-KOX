@@ -7,9 +7,10 @@ import { requireTenantId } from '../../../middleware/tenant';
 import { jwtAuth } from '../../../middleware/auth';
 import { hasPerm } from '../../../middleware/permission';
 import { assertTenantResource } from '../../../security/ownership';
-import { ConflictError, NotFoundError, ValidationError } from '../../../core/errors';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../../core/errors';
 import { success, pageSuccess } from '../../../core/response';
 import { extractIds } from '../../../core/crud';
+import { PLATFORM_TENANT_ID } from '../../../shared/constants/tenant';
 
 const router = new Router({ prefix: '/system/role' });
 const T = 'sys_role', RM = 'sys_role_menu', UR = 'sys_user_role', MENU = 'sys_menu';
@@ -151,11 +152,12 @@ router.put('/status', jwtAuth(), hasPerm('system:role:status'), async (ctx: Cont
   success(ctx, null, '状态修改成功');
 });
 
-/** PUT /:roleId/menus — 分配菜单（事务 + 菜单有效性校验） */
+/** PUT /:roleId/menus — 分配菜单（事务 + 菜单有效性校验 + 套餐范围校验） */
 router.put('/:roleId/menus', jwtAuth(), hasPerm('system:role:assignMenu'), async (ctx: Context) => {
   const roleId = ctx.params.roleId;
   const { menuIds } = parseOrThrow(menuAssignSchema, ctx.request.body ?? {});
   const uniqueMenuIds = [...new Set(menuIds)];
+  const tid = requireTenantId();
   const db = (await getDb()) as any;
 
   await db.transaction().execute(async (trx: any) => {
@@ -165,6 +167,24 @@ router.put('/:roleId/menus', jwtAuth(), hasPerm('system:role:assignMenu'), async
       const menus: any[] = await trx.selectFrom(MENU).select('menu_id')
         .where('menu_id', 'in', uniqueMenuIds).execute();
       if (menus.length !== uniqueMenuIds.length) throw new ValidationError('存在无效的菜单ID');
+    }
+
+    // 阶段二：套餐是租户权限上限，禁止把套餐外的菜单授予租户角色
+    if (tid !== PLATFORM_TENANT_ID && uniqueMenuIds.length > 0) {
+      const tenant = await trx.selectFrom('sys_tenant').select('package_id')
+        .where('tenant_id', '=', tid).executeTakeFirst();
+      if (tenant?.package_id) {
+        const pkgMenus: any[] = await trx.selectFrom('sys_package_menu').select('menu_id')
+          .where('package_id', '=', tenant.package_id).execute();
+        const allowed = new Set(pkgMenus.map((m: any) => String(m.menu_id)));
+        // 套餐未配置任何菜单时不设限（与 AuthService.profile 的口径保持一致）
+        if (allowed.size > 0) {
+          const outOfScope = uniqueMenuIds.filter((id) => !allowed.has(String(id)));
+          if (outOfScope.length > 0) {
+            throw new ForbiddenError(`以下菜单超出当前租户套餐范围：${outOfScope.join(', ')}`);
+          }
+        }
+      }
     }
 
     await trx.deleteFrom(RM).where('role_id', '=', roleId).execute();

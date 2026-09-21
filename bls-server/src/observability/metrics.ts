@@ -90,6 +90,18 @@ export const loginFailedTotal = new Counter({
   registers: [metricsRegistry],
 });
 
+/**
+ * 审计写入失败（阶段五）
+ * type: security | operation | login | upload
+ * 该指标 + 结构化错误日志是审计不可用时的唯一可观测信号。
+ */
+export const auditWriteFailuresTotal = new Counter({
+  name: 'bls_kox_audit_write_failures_total',
+  help: 'Audit log write failures',
+  labelNames: ['type'],
+  registers: [metricsRegistry],
+});
+
 // ========== Database ==========
 
 export const dbQueryDurationSeconds = new Histogram({

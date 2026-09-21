@@ -1,6 +1,9 @@
 # 05 — Security Log & Event Center (shared)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.1.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
+>
+> *Uncommitted note:* the `CAPTCHA_*` event types and `rule_captcha_token_abuse` were verified
+> against `61aaf9a` + uncommitted captcha changes.
 
 This is what makes the **Security Center** page (`/system/security`) and the
 **Security Log** page (`/system/log/security`) show data.
@@ -32,7 +35,24 @@ IDEMPOTENCY_CONFLICT    RATE_LIMIT_EXCEEDED     FREQUENCY_LIMIT
 BATCH_EXPORT            ROLE_CHANGE             PERM_CHANGE
 REFRESH_TOKEN_REUSE     API_KEY_CREATED         API_KEY_REVOKED
 SENSITIVE_DATA_ACCESS   SECURITY_VALIDATION_FAILED
+CAPTCHA_SILENT_PASSED   CAPTCHA_SILENT_FAILED   CAPTCHA_SECONDARY_REQUIRED
+CAPTCHA_SECONDARY_PASSED CAPTCHA_SECONDARY_FAILED CAPTCHA_TOKEN_INVALID
+CAPTCHA_TOKEN_REPLAYED  CAPTCHA_SERVICE_UNAVAILABLE
 ```
+
+### Login captcha audit payload
+
+`CAPTCHA_*` rows are written by `security/captcha/service.ts` (`source: 'captcha'`) and are
+deliberately restricted to:
+
+```
+challengeId · stage · secondaryType · riskScore · failureReason ·
+tenantId · usernameHash · ipHash · requestId
+```
+
+Never stored: the answer (`x` / `angle`), the password, the behaviour trace
+(`interactionSummary`), the full `captchaToken`, or a plaintext username. See
+[`pages/login-captcha.md`](../pages/login-captcha.md).
 
 ## 2. Risk levels and default mapping (`EVENT_RISK`)
 
@@ -50,6 +70,9 @@ SENSITIVE_DATA_ACCESS   SECURITY_VALIDATION_FAILED
 | `PERM_CHANGE` | HIGH |
 | `SENSITIVE_DATA_ACCESS` | CRITICAL |
 | `SECURITY_VALIDATION_FAILED` | MEDIUM |
+| `CAPTCHA_SILENT_PASSED` / `CAPTCHA_SECONDARY_PASSED` | LOW |
+| `CAPTCHA_SILENT_FAILED` / `CAPTCHA_SECONDARY_REQUIRED` / `CAPTCHA_SECONDARY_FAILED` / `CAPTCHA_TOKEN_INVALID` | MEDIUM |
+| `CAPTCHA_TOKEN_REPLAYED` / `CAPTCHA_SERVICE_UNAVAILABLE` | HIGH |
 
 `writeSecurityLog()` also:
 
@@ -89,6 +112,7 @@ client-supplied `x-tenant-id`.
 | `rule_signature_invalid` | Repeated bad signatures | `SIGNATURE_INVALID` | 60 s | 5 | HIGH | `BLOCK_IP` | 7 |
 | `rule_replay_attack` | Replay attack | `NONCE_REPLAY`, `REPLAY_DETECTED` | 60 s | 10 | HIGH | `BLOCK_IP` | 8 |
 | `rule_rate_limit` | High-frequency limiting | `RATE_LIMIT_EXCEEDED` | 60 s | 50 | MEDIUM | `ALERT_ONLY` | 4 |
+| `rule_captcha_token_abuse` | Captcha token abuse (invalid / replayed) | `CAPTCHA_TOKEN_INVALID`, `CAPTCHA_TOKEN_REPLAYED` | 300 s | 5 | HIGH | `ALERT_ONLY` | 6 |
 
 ### Actions (`executeActions`)
 
@@ -127,16 +151,15 @@ Writers of the block state:
 | Table | Written by | Read by |
 |---|---|---|
 | `sys_security_log` | `writeSecurityLog()` (replay, permission, auth, event center) | `/api/system/log/security`, `/api/system/security/events`, `/api/system/security/stats` |
-| `sys_login_log` | `writeLoginLog()` in `core/audit.ts` (⚠ **currently not called by the login flow** — login publishes events to the event service instead) | `/api/system/log/login` |
+| `sys_login_log` | `writeLoginLog()` in `core/audit.ts`, called by the login handler on **both** success (`login_status='1'`) and failure (`login_status='0'` + `fail_reason`) — this is now the data source of `detectBruteForce()` | `/api/system/log/login` |
 | `sys_operation_log` | audit writer in `core/audit.ts` | `/api/system/log/operation`, `/api/system/dashboard/recent-logs` |
 | `sys_upload_audit` | storage upload flow | `/api/system/log/upload` |
 | `sys_sql_audit` | `writeSqlError()` in `core/sql-audit.ts` (fire-and-forget raw pool, bypasses the audit hook to avoid recursion) | `/api/system/log/sql-audit` |
 | `sys_ip_blacklist` | Security Center API | Security Center list/stats, IP block middleware |
 
-⚠ Known schema discrepancy: `sql/Init.sql` defines `sys_security_log` with PK `id` and **no
-`log_id` / `source` columns**, while `writeSecurityLog()` inserts `log_id` and `source`, and the
-frontend uses `rowKey="logId"`. Verify the live schema (`ALTER TABLE` or migration) before
-debugging this page. No migration in the repo adds those columns.
+`sql/Init.sql` now defines `sys_security_log` with PK `log_id` and the `source` column, matching
+`writeSecurityLog()` and the frontend `rowKey="logId"` (this was a documented discrepancy and has
+been fixed in the working tree).
 
 ---
 
@@ -147,11 +170,10 @@ debugging this page. No migration in the repo adds those columns.
 - `core/sql-audit.ts` — `writeSqlError(operation, sql, error)` records failing SQL only
   (`query`, `query_one`, `execute`, `transaction`), truncating SQL to 10 000 chars and the
   error to 2 000 chars.
-- Login activity is currently published as `LOGIN_SUCCESS` / `LOGIN_FAILED` events to
-  `bls-server/src/services/event-client` (external event service), **not** written to
-  `sys_login_log` by the auth module. So local brute-force aggregation (which relies on
-  `LOGIN_FAILED` *security* logs) only triggers if a `LOGIN_FAILED` security log is written
-  somewhere else.
+- Login activity is published as `LOGIN_SUCCESS` / `LOGIN_FAILED` events to
+  `bls-server/src/services/event-client` (external event service) **and** written to
+  `sys_login_log` by the auth module. Captcha failures (`40010`–`40013`, `50301`) deliberately do
+  neither — they are not password attempts; they emit `CAPTCHA_*` security rows instead.
 
 ---
 

@@ -71,14 +71,34 @@ export class Worker {
     const def = this.handlers.get(job.jobType);
     if (!def) {
       logger.warn('[worker] no handler', { jobType: job.jobType, jobId: job.jobId });
-      await failJob(job.jobId, job, `No handler for: ${job.jobType}`);
+      await failJob(job.jobId, job, `No handler for: ${job.jobType}`, job.tenantId);
       return;
     }
+
+    // 阶段一：租户被停用 / 过期 / offboarding 后，拒绝执行它的后台任务
+    // （tenant.offboard 本身必须在租户已停用后继续运行，故排除）
+    if (job.tenantId && job.jobType !== 'tenant.offboard') {
+      try {
+        const { isTenantActive } = require('../services/tenant-lifecycle');
+        const active = await isTenantActive(job.tenantId);
+        if (!active) {
+          logger.warn('[worker] tenant inactive, job skipped', {
+            jobId: job.jobId, jobType: job.jobType, tenantId: job.tenantId,
+          });
+          await completeJob(job.jobId, { skipped: true, reason: 'TENANT_INACTIVE' }, job.tenantId);
+          return;
+        }
+      } catch (err) {
+        // 校验本身失败不应阻塞任务（例如数据库瞬时不可用）
+        logger.warn('[worker] tenant lifecycle check failed', { jobId: job.jobId, error: String(err) });
+      }
+    }
+
     try {
       const result = await withTimeout(def.handler(job.jobData), def.timeout ?? DEFAULT_TIMEOUT);
-      await completeJob(job.jobId, result ?? null);
+      await completeJob(job.jobId, result ?? null, job.tenantId);
     } catch (err: any) {
-      await failJob(job.jobId, job, err?.message ?? String(err));
+      await failJob(job.jobId, job, err?.message ?? String(err), job.tenantId);
     }
   }
 }

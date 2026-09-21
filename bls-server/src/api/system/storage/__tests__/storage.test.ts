@@ -133,11 +133,14 @@ describe('storage 编辑', () => {
     expect(row.secret_key).toBe('secret-key-abcdefgh');
   });
 
-  it('传入新 secretKey 时更新', async () => {
+  it('传入新 secretKey 时更新（以密文落库，不存明文）', async () => {
     await call(router, 'put', '/system/storage/edit', makeCtx({
       request: { body: { storageId: 'S1', secretKey: 'brand-new-secret' } },
     }));
-    expect(h.db.rows(T).find((r: any) => r.storage_id === 'S1').secret_key).toBe('brand-new-secret');
+    const stored = h.db.rows(T).find((r: any) => r.storage_id === 'S1').secret_key;
+    expect(stored).not.toBe('brand-new-secret');
+    expect(stored.startsWith('enc:v1:')).toBe(true);
+    expect(stored).not.toContain('brand-new-secret');
   });
 
   it('跨租户编辑 → 404 且数据未变', async () => {

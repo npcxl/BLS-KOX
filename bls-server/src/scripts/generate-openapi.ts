@@ -768,6 +768,7 @@ function describeRoute(method: string, path: string, tag: string): string {
 function tagDescription(tag: string): string {
   const map: Record<string, string> = {
     auth: '认证授权',
+    captcha: '登录人机验证',
     user: '用户管理',
     role: '角色管理',
     menu: '菜单管理',
