@@ -244,14 +244,14 @@ if (require.main === module) {
       issues.push('API_SIGN_SECRET must not be a CHANGE_TO_* placeholder (replay protection is enabled)');
     }
 
-    // 登录人机验证：生产环境必须配置强 CAPTCHA_SECRET，且禁止开发绕过
-    const captchaSecret = process.env.CAPTCHA_SECRET?.trim() ?? '';
-    if (!captchaSecret) {
-      issues.push('CAPTCHA_SECRET is missing (required in production for login captcha token signing)');
+    // 登录人机验证（ALTCHA）：生产环境必须配置强 ALTCHA_HMAC_KEY，且禁止开发绕过
+    const altchaHmacKey = process.env.ALTCHA_HMAC_KEY?.trim() ?? '';
+    if (!altchaHmacKey) {
+      issues.push('ALTCHA_HMAC_KEY is missing (required in production to sign and verify ALTCHA challenges)');
     } else {
-      if (captchaSecret.length < 32) issues.push('CAPTCHA_SECRET must be at least 32 characters');
-      if (WEAK_SECRETS.some(w => captchaSecret.toLowerCase().includes(w)) || captchaSecret.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) {
-        issues.push('CAPTCHA_SECRET is too weak (no common passwords or CHANGE_TO_* placeholder)');
+      if (altchaHmacKey.length < 32) issues.push('ALTCHA_HMAC_KEY must be at least 32 characters');
+      if (WEAK_SECRETS.some(w => altchaHmacKey.toLowerCase().includes(w)) || altchaHmacKey.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) {
+        issues.push('ALTCHA_HMAC_KEY is too weak (no common passwords or CHANGE_TO_* placeholder)');
       }
     }
     if ((process.env.CAPTCHA_DEV_BYPASS ?? 'false') === 'true') {

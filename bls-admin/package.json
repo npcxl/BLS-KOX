@@ -58,6 +58,7 @@
     "@tiptap/starter-kit": "^3.27.1",
     "@wangeditor/editor": "^5.1.23",
     "@wangeditor/editor-for-react": "^1.0.6",
+    "altcha": "^3.2.3",
     "antd": "^6.4.3",
     "antd-style": "^4.1.0",
     "classnames": "^2.5.1",

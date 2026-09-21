@@ -39,9 +39,9 @@ auto-registered — `current` / `public-*` are defined on the public router expl
 | Refresh layout settings after certain saves | `refreshGlobalSettings()` → `themeCurrent()` + `systemCurrent()` | GET | `/api/system/theme/current` + `/api/system/config/current` |
 | Page columns | `usePageConfig('system_config')` | GET | `/api/system/page-config/page/system_config/columns` |
 | Dicts | `useMultiDict(['sys_status','sys_config_type'])` | GET | `/api/system/dict/data/type?dictType=...` |
-| **登录人机验证 panel** — load the 9 `sys.login.captcha.*` rows | `CaptchaSettingPanel` → `listResource` | GET | `/api/system/config/list?pageNum=1&pageSize=200` (filtered client-side) |
+| **登录人机验证 panel** — load the 6 `sys.login.captcha.*` rows | `CaptchaSettingPanel` → `listResource` | GET | `/api/system/config/list?pageNum=1&pageSize=100` (filtered client-side) |
 | panel — toggle 开启/关闭 | `editResource` / `addResource` (`sys.login.captcha.enabled`) | PUT / POST | `/api/system/config/edit` · `/add` |
-| panel — save 高级配置 | `editResource` / `addResource` ×8 keys | PUT / POST | `/api/system/config/edit` · `/add` |
+| panel — save 高级配置 | `editResource` / `addResource` ×5 keys | PUT / POST | `/api/system/config/edit` · `/add` |
 
 `CaptchaSettingPanel` (mounted above the table, gated by `system:config:edit` **or**
 `system:config:add` via `usePermission`) reads the same `sys_config` rows and writes them back with
@@ -115,13 +115,10 @@ Managed keys (`MANAGED_CONFIG_KEYS`) and their validation:
 | `sys.app.name` | string | — | `appName` |
 | `sys.login.captcha.enabled` | bool | `1/true/0/false` | `captchaEnabled` |
 | `sys.login.captcha.mode` | **enum** | `off` \| `adaptive` \| `always` | `captchaMode` |
-| `sys.login.captcha.silentThreshold` | number | 0–100 | `captchaSilentThreshold` |
-| `sys.login.captcha.forceAfterFailures` | number | 1–100 | `captchaForceAfterFailures` |
+| `sys.login.captcha.provider` | **enum** | `altcha` \| `tianai` | `captchaProvider` |
 | `sys.login.captcha.challengeTtlSeconds` | number | 30–900 | `captchaChallengeTtlSeconds` |
 | `sys.login.captcha.tokenTtlSeconds` | number | 30–600 | `captchaTokenTtlSeconds` |
-| `sys.login.captcha.secondaryTypes` | **csv subset** | `slider`, `rotate` (unknown items dropped) | `captchaSecondaryTypes` |
-| `sys.login.captcha.maxAttempts` | number | 1–20 | `captchaMaxAttempts` |
-| `sys.login.captcha.provider` | **enum** | `builtin` | `captchaProvider` |
+| `sys.login.captcha.forceAfterFailures` | number | 1–100 | `captchaForceAfterFailures` |
 
 An invalid value (wrong type / out of range / unknown enum member / a CSV list that loses every
 item) is **replaced by the declared default** and logged as
@@ -129,9 +126,11 @@ item) is **replaced by the declared default** and logged as
 `^-?\d+(\.\d+)?$` (so `12abc` is rejected). `toPublicCaptchaConfig()` projects only
 `{enabled, mode, secondaryTypes}` for the public endpoint.
 
-Seed rows for the 9 captcha keys (tenant `000000`): `sql/Init.sql` (`000406`–`000414`, lines 68–76)
-for fresh installs **and** `bls-server/migrations/20260922_017_login_captcha.sql` for already
-deployed databases. No DDL in either (pure seed).
+Seed rows for the 6 captcha keys (tenant `000000`): `sql/Init.sql` (`000406`–`000411`) for fresh
+installs **and** `bls-server/migrations/20260922_017_login_captcha.sql` for already deployed
+databases (both generated from the same source, identical content, no DDL).
+Obsolete rows from the earlier design (`silentThreshold` / `secondaryTypes` / `maxAttempts`) are
+ignored by Dynamic Config and can be deleted.
 
 ---
 
@@ -156,9 +155,9 @@ closed via `requireTenantId()`. Public reads fall back to `000000`.
 
 - `configName`, `configKey`, `configValue` required.
 - `configType` default `'sys'`; `status` default `'0'`.
-- `CaptchaSettingPanel`: numeric ranges mirror the backend schema (threshold 0-100, force 1-100,
-  challenge TTL 30-900, token TTL 30-600, attempts 1-20); at least one `secondaryTypes` value must
-  be selected. The panel only offers `builtin` as the provider.
+- `CaptchaSettingPanel`: numeric ranges mirror the backend schema (force 1-100, challenge TTL 30-900,
+  token TTL 30-600); provider choices are `altcha` (default) and `tianai`. The ALTCHA HMAC key, the
+  PoW cost and the Tianai base URL come from environment variables and are **not** editable here.
 
 ## 6. Backend-only rules
 

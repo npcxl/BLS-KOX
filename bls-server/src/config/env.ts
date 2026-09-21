@@ -50,18 +50,20 @@ if (isProduction && replayEnabled && !apiSignSecret) throw new Error('API_SIGN_S
 if (isProduction && replayEnabled && apiSignSecret.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) throw new Error('API_SIGN_SECRET must not be a CHANGE_TO_* placeholder');
 
 /**
- * 登录人机验证密钥。
- * - 生产环境：缺失 / 过短 / CHANGE_TO_* 占位符 → 启动失败（fail closed）。
+ * 登录人机验证（ALTCHA）密钥与运行参数。
+ * - 生产环境：ALTCHA_HMAC_KEY 缺失 / 过短 / CHANGE_TO_* 占位符 → 启动失败（fail closed）。
  * - CAPTCHA_DEV_BYPASS 只允许在非生产环境使用，生产环境出现该值直接阻止启动。
+ * - ALTCHA_COST 为 Proof-of-Work 难度（PBKDF2 迭代次数），仅服务端使用，不下发前端。
+ * - TIANAI_BASE_URL 仅在 sys.login.captcha.provider=tianai 时需要（独立验证码服务）。
  */
-const captchaSecret = process.env.CAPTCHA_SECRET?.trim() ?? '';
+const altchaHmacKey = process.env.ALTCHA_HMAC_KEY?.trim() ?? '';
 const captchaDevBypass = (process.env.CAPTCHA_DEV_BYPASS ?? 'false') === 'true';
-const CAPTCHA_DEV_SECRET = 'dev_captcha_secret_not_for_production_use';
+const CAPTCHA_DEV_SECRET = 'dev_altcha_hmac_key_not_for_production_use';
 if (isProduction) {
-  if (isProduction && captchaDevBypass) throw new Error('CAPTCHA_DEV_BYPASS must not be enabled in production');
-  if (!captchaSecret) throw new Error('CAPTCHA_SECRET is required in production');
-  if (captchaSecret.length < 32) throw new Error('CAPTCHA_SECRET must be at least 32 characters');
-  if (captchaSecret.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) throw new Error('CAPTCHA_SECRET must not be a CHANGE_TO_* placeholder');
+  if (captchaDevBypass) throw new Error('CAPTCHA_DEV_BYPASS must not be enabled in production');
+  if (!altchaHmacKey) throw new Error('ALTCHA_HMAC_KEY is required in production');
+  if (altchaHmacKey.length < 32) throw new Error('ALTCHA_HMAC_KEY must be at least 32 characters');
+  if (altchaHmacKey.toUpperCase().startsWith(PLACEHOLDER_PREFIX)) throw new Error('ALTCHA_HMAC_KEY must not be a CHANGE_TO_* placeholder');
 }
 
 /**
@@ -147,11 +149,15 @@ export const env = {
     protectedMethods: (process.env.REPLAY_PROTECTED_METHODS ?? 'POST,PUT,PATCH,DELETE').split(',').map((s) => s.trim().toUpperCase()),
   },
   captcha: {
-    /** 生产环境必须显式配置；开发环境使用固定兜底值以便本地联调 */
-    secret: captchaSecret || CAPTCHA_DEV_SECRET,
-    configured: !!captchaSecret,
+    /** ALTCHA HMAC 密钥：生产环境必须显式配置；开发环境使用固定兜底值以便本地联调 */
+    hmacKey: altchaHmacKey || CAPTCHA_DEV_SECRET,
+    configured: !!altchaHmacKey,
     /** 仅开发环境允许：跳过人机验证（生产环境会阻止启动） */
     devBypass: captchaDevBypass && !isProduction,
     devSecret: CAPTCHA_DEV_SECRET,
+    /** Proof-of-Work 难度（PBKDF2 迭代次数），默认 5 万 */
+    cost: numberEnv('ALTCHA_COST', 50_000),
+    /** provider=tianai 时使用的独立验证码服务地址 */
+    tianaiUrl: process.env.TIANAI_BASE_URL?.trim() ?? '',
   },
 };

@@ -17,12 +17,14 @@ export const CACHE_TTL = 60;
 export type CaptchaMode = 'off' | 'adaptive' | 'always';
 export const CAPTCHA_MODES: readonly CaptchaMode[] = ['off', 'adaptive', 'always'];
 
-/** 二级人机验证类型（第一版） */
-export type CaptchaSecondaryType = 'slider' | 'rotate';
-export const CAPTCHA_SECONDARY_TYPES: readonly CaptchaSecondaryType[] = ['slider', 'rotate'];
-
-/** 人机验证提供方（第一版仅内置实现） */
-export const CAPTCHA_PROVIDERS: readonly string[] = ['builtin'];
+/**
+ * 人机验证提供方：
+ *   - altcha（默认）：自托管 ALTCHA 开源库，服务端校验 Proof-of-Work；
+ *   - tianai（可选）：代理到独立部署的 Tianai CAPTCHA 服务（仅在产品确需滑块拼图时启用）。
+ * 两者都不在 Koa 内自行实现验证码算法。
+ */
+export type CaptchaProvider = 'altcha' | 'tianai';
+export const CAPTCHA_PROVIDERS: readonly CaptchaProvider[] = ['altcha', 'tianai'];
 
 export interface DynamicConfig {
   multiLogin: boolean;
@@ -34,20 +36,14 @@ export interface DynamicConfig {
   captchaEnabled: boolean;
   /** off | adaptive | always */
   captchaMode: CaptchaMode;
-  /** 静默验证通过阈值（0-100） */
-  captchaSilentThreshold: number;
-  /** 同一账号近期连续登录失败达到该值 → 强制二级验证 */
-  captchaForceAfterFailures: number;
+  /** altcha | tianai */
+  captchaProvider: CaptchaProvider;
   /** challenge 有效期（秒） */
   captchaChallengeTtlSeconds: number;
-  /** captchaToken 有效期（秒） */
+  /** captchaToken 有效期（秒），默认 120 */
   captchaTokenTtlSeconds: number;
-  /** 允许的二级验证类型 */
-  captchaSecondaryTypes: CaptchaSecondaryType[];
-  /** 单个 challenge 允许的最大验证次数 */
-  captchaMaxAttempts: number;
-  /** 提供方（builtin） */
-  captchaProvider: string;
+  /** 同一账号近期连续登录失败达到该值 → 不再完全静默（切换为可见 ALTCHA 组件） */
+  captchaForceAfterFailures: number;
 }
 
 type RedisLike = { get(k: string): Promise<string | null>; set(k: string, v: string, mode: string, ttl: number): Promise<any>; del(k: string): Promise<number> };
@@ -71,13 +67,10 @@ const SCHEMA: Record<string, ConfigSchemaEntry> = {
   // ===== 登录人机验证 =====
   'sys.login.captcha.enabled': { type: 'bool', default: true },
   'sys.login.captcha.mode': { type: 'enum', default: 'adaptive', values: CAPTCHA_MODES },
-  'sys.login.captcha.silentThreshold': { type: 'number', default: 70, min: 0, max: 100 },
-  'sys.login.captcha.forceAfterFailures': { type: 'number', default: 3, min: 1, max: 100 },
+  'sys.login.captcha.provider': { type: 'enum', default: 'altcha', values: CAPTCHA_PROVIDERS },
   'sys.login.captcha.challengeTtlSeconds': { type: 'number', default: 180, min: 30, max: 900 },
   'sys.login.captcha.tokenTtlSeconds': { type: 'number', default: 120, min: 30, max: 600 },
-  'sys.login.captcha.secondaryTypes': { type: 'csv', default: ['slider', 'rotate'], values: CAPTCHA_SECONDARY_TYPES },
-  'sys.login.captcha.maxAttempts': { type: 'number', default: 5, min: 1, max: 20 },
-  'sys.login.captcha.provider': { type: 'enum', default: 'builtin', values: CAPTCHA_PROVIDERS },
+  'sys.login.captcha.forceAfterFailures': { type: 'number', default: 3, min: 1, max: 100 },
 };
 
 const KEY_MAP: Record<string, keyof DynamicConfig> = {
@@ -87,13 +80,10 @@ const KEY_MAP: Record<string, keyof DynamicConfig> = {
   'sys.app.name': 'appName',
   'sys.login.captcha.enabled': 'captchaEnabled',
   'sys.login.captcha.mode': 'captchaMode',
-  'sys.login.captcha.silentThreshold': 'captchaSilentThreshold',
-  'sys.login.captcha.forceAfterFailures': 'captchaForceAfterFailures',
+  'sys.login.captcha.provider': 'captchaProvider',
   'sys.login.captcha.challengeTtlSeconds': 'captchaChallengeTtlSeconds',
   'sys.login.captcha.tokenTtlSeconds': 'captchaTokenTtlSeconds',
-  'sys.login.captcha.secondaryTypes': 'captchaSecondaryTypes',
-  'sys.login.captcha.maxAttempts': 'captchaMaxAttempts',
-  'sys.login.captcha.provider': 'captchaProvider',
+  'sys.login.captcha.forceAfterFailures': 'captchaForceAfterFailures',
 };
 
 /** 全部受管的 sys_config 键（供文档 / 系统参数页使用） */
@@ -109,13 +99,10 @@ const DEFAULT_CONFIG: DynamicConfig = {
   appName: 'BLS-KOX',
   captchaEnabled: true,
   captchaMode: 'adaptive',
-  captchaSilentThreshold: 70,
-  captchaForceAfterFailures: 3,
+  captchaProvider: 'altcha',
   captchaChallengeTtlSeconds: 180,
   captchaTokenTtlSeconds: 120,
-  captchaSecondaryTypes: ['slider', 'rotate'],
-  captchaMaxAttempts: 5,
-  captchaProvider: 'builtin',
+  captchaForceAfterFailures: 3,
 };
 
 /** 解析单个字段（严格校验：类型 → 范围 → 枚举） */
@@ -175,7 +162,7 @@ function parseField(key: string, schema: ConfigSchemaEntry, val: unknown): { ok:
 }
 
 export function parseConfigValue(raw: Record<string, any>): DynamicConfig {
-  const out: DynamicConfig = { ...DEFAULT_CONFIG, captchaSecondaryTypes: [...DEFAULT_CONFIG.captchaSecondaryTypes] };
+  const out: DynamicConfig = { ...DEFAULT_CONFIG };
   for (const [key, schema] of Object.entries(SCHEMA)) {
     const prop = KEY_MAP[key];
     if (!prop) continue;
@@ -190,11 +177,11 @@ export function parseConfigValue(raw: Record<string, any>): DynamicConfig {
 }
 
 /** 从 DynamicConfig 中提取公共（可下发前端）的人机验证配置 */
-export function toPublicCaptchaConfig(cfg: DynamicConfig): { enabled: boolean; mode: CaptchaMode; secondaryTypes: CaptchaSecondaryType[] } {
+export function toPublicCaptchaConfig(cfg: DynamicConfig): { enabled: boolean; mode: CaptchaMode; provider: CaptchaProvider } {
   return {
     enabled: cfg.captchaEnabled && cfg.captchaMode !== 'off',
     mode: cfg.captchaMode,
-    secondaryTypes: [...cfg.captchaSecondaryTypes],
+    provider: cfg.captchaProvider,
   };
 }
 

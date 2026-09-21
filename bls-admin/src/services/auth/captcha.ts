@@ -1,96 +1,62 @@
 /**
- * 登录人机验证接口（公共，无需认证）
+ * 登录人机验证接口（ALTCHA，公共，无需认证）
  *
  * 与后端 `bls-server/src/api/auth/captcha/index.ts` 一一对应。
- * 全部请求 skipErrorMessage：错误提示由登录页/验证码弹窗自己控制，避免重复 toast。
+ * - `challenge` 由官方 ALTCHA widget 直接通过 `challenge` 属性拉取（官方结构，无外层封装），
+ *   因此这里**不**提供 challenge 的 request 封装。
+ * - 其余调用统一 `skipErrorMessage`，错误提示由登录页控制。
  */
 import { request } from '@umijs/max';
 
 export type CaptchaMode = 'off' | 'adaptive' | 'always';
-export type CaptchaSecondaryType = 'slider' | 'rotate';
+export type CaptchaProvider = 'altcha' | 'tianai';
+/** ALTCHA 组件形态：invisible=静默，visible=需人工交互 */
+export type CaptchaDisplay = 'invisible' | 'visible';
 
-/** 公共配置：后端只下发前端需要的字段（不含阈值与内部规则） */
-export interface CaptchaPublicConfig {
+export interface CaptchaConfig {
   enabled: boolean;
   mode: CaptchaMode;
-  secondaryTypes: CaptchaSecondaryType[];
-}
-
-export interface CaptchaSecondaryPayload {
-  canvasWidth: number;
-  canvasHeight: number;
-  pieceSize?: number;
-  pieceY?: number;
-  backgroundImageUrl?: string;
-  pieceImageUrl?: string;
-  imageUrl?: string;
-  tolerance?: number;
-  keyboardHint?: string;
-  keyboardStep?: number;
-  hint?: string;
-}
-
-export interface CaptchaChallenge {
-  challengeId: string;
-  stage: 'silent' | 'secondary';
-  expiresAt: number;
-  nonce: string;
-  secondaryType?: CaptchaSecondaryType;
-  payload?: CaptchaSecondaryPayload | null;
-}
-
-export interface CaptchaChallengeResult {
-  enabled: boolean;
-  challengeId?: string;
-  stage?: 'silent' | 'secondary';
-  expiresAt?: number;
-  nonce?: string;
-  secondaryType?: CaptchaSecondaryType;
-  payload?: CaptchaSecondaryPayload | null;
-}
-
-export interface SilentVerifyResult {
-  passed: boolean;
-  captchaToken?: string;
-  expiresAt?: number;
-  nextStage?: 'secondary';
-  secondaryChallenge?: CaptchaChallenge;
-}
-
-export interface SecondaryVerifyResult {
-  passed: boolean;
-  captchaToken?: string;
-  expiresAt?: number;
-  retryable?: boolean;
-  remainingAttempts?: number;
+  provider: CaptchaProvider;
+  display: CaptchaDisplay;
+  /** display=visible 时命中策略的原因（用于文案） */
   reason?: string;
+  /** ALTCHA widget 使用的 challenge 地址 */
+  challengeUrl: string;
+  /** ALTCHA widget 隐藏域字段名 */
+  fieldName: string;
 }
 
-/** 行为统计（只上传统计值，不上传轨迹 / 按键内容） */
-export interface InteractionSummary {
-  dwellMs: number;
-  mouse?: Record<string, number>;
-  touch?: Record<string, number>;
-  keyboard?: Record<string, number>;
-  focus?: Record<string, number>;
-  automation?: Record<string, unknown>;
+export interface CaptchaVerifyResult {
+  passed: boolean;
+  captchaToken?: string;
+  expiresAt?: number;
+  /** 服务端要求切换为可见组件后重新验证 */
+  requireVisible?: boolean;
+  reason?: string;
+  message?: string;
 }
 
 const OPTIONS = { skipErrorMessage: true } as const;
 
-export async function getCaptchaConfig(options?: Record<string, any>) {
-  return request<API.ResponseResult<CaptchaPublicConfig>>('/api/auth/captcha/config', {
+/** 读取公开配置与组件形态（可带 username 以获得更准确的策略判定） */
+export async function getCaptchaConfig(
+  params?: { username?: string },
+  options?: Record<string, any>,
+) {
+  return request<API.ResponseResult<CaptchaConfig>>('/api/auth/captcha/config', {
     method: 'GET',
+    params,
     ...OPTIONS,
     ...(options || {}),
   });
 }
 
-export async function createCaptchaChallenge(
-  data: { username?: string; stage?: 'secondary' },
+/** 把 ALTCHA payload 提交给服务端校验 → 换取一次性 captchaToken */
+export async function verifyCaptcha(
+  data: { payload: string; username?: string; stage?: CaptchaDisplay },
   options?: Record<string, any>,
 ) {
-  return request<API.ResponseResult<CaptchaChallengeResult>>('/api/auth/captcha/challenge', {
+  return request<API.ResponseResult<CaptchaVerifyResult>>('/api/auth/captcha/verify', {
     method: 'POST',
     data,
     ...OPTIONS,
@@ -98,39 +64,22 @@ export async function createCaptchaChallenge(
   });
 }
 
-export async function verifyCaptchaSilent(
-  data: {
-    challengeId: string;
-    nonce: string;
-    username?: string;
-    startedAt?: number;
-    finishedAt?: number;
-    interactionSummary?: InteractionSummary;
-    proof?: unknown;
-  },
-  options?: Record<string, any>,
-) {
-  return request<API.ResponseResult<SilentVerifyResult>>('/api/auth/captcha/silent/verify', {
-    method: 'POST',
-    data,
-    ...OPTIONS,
-    ...(options || {}),
-  });
-}
-
-export async function verifyCaptchaSecondary(
-  data: {
-    challengeId: string;
-    username?: string;
-    answer: { x?: number; angle?: number };
-    nonce?: string;
-  },
-  options?: Record<string, any>,
-) {
-  return request<API.ResponseResult<SecondaryVerifyResult>>('/api/auth/captcha/secondary/verify', {
-    method: 'POST',
-    data,
-    ...OPTIONS,
-    ...(options || {}),
-  });
-}
+/** 失败原因 → 中文提示 */
+export const CAPTCHA_REASON_TEXT: Record<string, string> = {
+  PAYLOAD_MISSING: '请先完成人机验证',
+  PAYLOAD_MALFORMED: '人机验证数据无效，请重试',
+  ALGORITHM_UNSUPPORTED: '人机验证算法不受支持，请联系管理员',
+  CHALLENGE_EXPIRED: '验证已过期，请重新验证',
+  SIGNATURE_INVALID: '人机验证签名校验失败，请重新验证',
+  SOLUTION_INVALID: '人机验证未通过，请重试',
+  BINDING_MISMATCH: '验证环境发生变化，请重新验证',
+  PROVIDER_UNAVAILABLE: '人机验证服务暂不可用，请稍后重试',
+  VISIBLE_REQUIRED: '请完成下方安全验证',
+  ACCOUNT_FAILURES: '请完成下方安全验证',
+  IP_ACCOUNT_FANOUT: '请完成下方安全验证',
+  IP_RISK_HIGH: '请完成下方安全验证',
+  RATE_LIMIT_PRESSURE: '请求过于频繁，请完成下方安全验证',
+  PRIVILEGED_ACCOUNT: '请完成下方安全验证',
+  DEVICE_ANOMALY: '请完成下方安全验证',
+  MODE_ALWAYS: '请完成下方安全验证',
+};

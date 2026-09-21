@@ -1,222 +1,194 @@
-# Page — Two-stage login captcha (public, part of `/user/login`)
+# Page — Login captcha (ALTCHA, public, part of `/user/login`)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-20
+> **Document version:** 2.0.0 · **Code version:** 1.0.0 · **Verified commit:** 753d86a · **Last verified:** 2026-09-21
 >
-> *Uncommitted note:* this mechanism exists only in the working tree at `61aaf9a` + uncommitted
-> captcha changes — it is **not yet committed**.
+> *Uncommitted note:* the ALTCHA-based captcha described here replaces the earlier
+> self-implemented slider/rotate design (v1.0.0) and is verified against the working tree on top of
+> `753d86a`.
 
 ## 1. Summary
 
 | Item | Value |
 |---|---|
 | Trigger | `POST /api/auth/login` when `sys.login.captcha.enabled=true` and `mode !== 'off'` |
-| Frontend | `bls-admin/src/services/auth/captcha.ts`, `bls-admin/src/auth/behavior-collector.ts`, `bls-admin/src/components/CaptchaChallenge/index.tsx`, `bls-admin/src/pages/user/login/index.tsx` |
+| Provider | **ALTCHA** — self-hosted open source, <https://github.com/altcha-org/altcha> (npm `altcha`, v3) |
 | Backend routes | `bls-server/src/api/auth/captcha/index.ts` (public, no `jwtAuth`) |
-| Backend logic | `bls-server/src/security/captcha/*` (`service.ts`, `silent.ts`, `image.ts`, `policy.ts`, `store.ts`, `config.ts`, `crypto-utils.ts`) |
-| Config | 9 × `sys.login.captcha.*` in `sys_config` → Dynamic Config (`bls-server/src/config/dynamic-config.ts`) |
-| Env | `CAPTCHA_SECRET` (required in production, ≥ 32 chars), `CAPTCHA_DEV_BYPASS` (dev only) |
-| Menu permission | none — the endpoints are public and return no privileged data |
+| Backend logic | `bls-server/src/security/captcha/*` (`altcha.ts`, `service.ts`, `policy.ts`, `store.ts`, `config.ts`, `crypto-utils.ts`, `types.ts`) |
+| Frontend | `bls-admin/src/components/AltchaCaptcha/index.tsx` (official `<altcha-widget>` wrapper), `bls-admin/src/services/auth/captcha.ts`, `bls-admin/src/pages/user/login/index.tsx` |
+| Config | 6 × `sys.login.captcha.*` in `sys_config` → Dynamic Config |
+| Env | `ALTCHA_HMAC_KEY` (required in production), `ALTCHA_COST`, `TIANAI_BASE_URL`, `CAPTCHA_DEV_BYPASS` |
+| Menu permission | none — public endpoints, no privileged data |
 | Shared docs | `00-common/01-redis.md`, `03-rate-limiting.md`, `04-auth-and-permissions.md`, `05-security-log-and-event-center.md`, `08-external-api-and-service-auth.md` |
+
+### Design rule (read this first)
+
+**We do not implement captcha algorithms ourselves.** No slider, no image slicing, no pointer-trajectory
+scoring, no browser fingerprinting. Everything cryptographic comes from the official ALTCHA library:
+
+| Concern | Owner |
+|---|---|
+| Challenge generation + HMAC signing + expiry | `altcha/lib` → `createChallenge()` |
+| Proof-of-Work solving (browser) | official `<altcha-widget>` (Web Worker) |
+| Payload verification (server) | `altcha/lib` → `verifySolution()` |
+| Code/audio challenge fallback | official widget (only when the server supplies a `codeChallenge`) |
+| `captchaToken` + Redis + binding | **this project** (not a captcha algorithm) |
 
 ### Two stages
 
 ```
-POST /captcha/challenge ──► stage: silent   ──► POST /captcha/silent/verify ──► passed ─► captchaToken
-                                            └─► stage: secondary (forced/risky)      ─┐
-                        ──► stage: secondary ─────────────────────────────────────────┴─► POST /captcha/secondary/verify ─► captchaToken
-                                                                                          POST /auth/login {captchaToken}
+invisible : widget display="invisible" + auto="onload" → PoW solved in the background, user sees nothing
+visible   : policy demands human interaction → widget display="standard" (official component + a11y)
 ```
 
-`mode=always` → `/challenge` answers `stage:'secondary'` directly.
-`mode=adaptive` → silent first; the server forces the second stage on risk (see §4).
-`mode=off` or `enabled=false` → the endpoints report `{enabled:false}` and `POST /auth/login`
-ignores `captchaToken` (fully back-compatible).
+Both stages end the same way: the server verifies the ALTCHA payload and issues a **one-shot
+`captchaToken`** which `POST /api/auth/login` consumes *before* touching `sys_user`.
+
+### Known limitation (state it, do not hide it)
+
+Self-hosted ALTCHA **cannot generate image/audio code challenges** — `altcha/lib` has no code-challenge
+generator (`challenge.codeChallenge` is only a pass-through field filled by ALTCHA Sentinel/Cloud).
+Therefore:
+
+- the *visible* stage shows the official **checkbox/switch PoW component** (with its built-in WCAG
+  support), not an image puzzle;
+- if the product genuinely requires a picture/slider puzzle, switch
+  `sys.login.captcha.provider=tianai` and run **Tianai CAPTCHA as a separate internal service** —
+  Koa only proxies challenge/verify and still issues its own `captchaToken`. Copying or rewriting
+  the Java captcha algorithm into TypeScript is forbidden.
+
+The *security* control is always the server-side PoW verification; the visible stage is a policy/UX
+escalation, not a second cryptographic factor.
 
 ---
 
 ## 2. Frontend → API map
 
-| User action | Service function | Method | Endpoint |
+| Action | Service function | Method | Endpoint |
 |---|---|---|---|
-| Page load: read public config | `getCaptchaConfig()` | GET | `/api/auth/captcha/config` |
-| Page load / retry: create challenge | `createCaptchaChallenge({username?, stage?})` | POST | `/api/auth/captcha/challenge` |
-| Submit the form: stage 1 | `verifyCaptchaSilent({challengeId, nonce, username, startedAt, finishedAt, interactionSummary, proof?})` | POST | `/api/auth/captcha/silent/verify` |
-| Stage 2 modal: verify | `verifyCaptchaSecondary({challengeId, username, answer, nonce?})` | POST | `/api/auth/captcha/secondary/verify` |
-| Stage 2 modal: images | plain `<img src>` (not `request()`) | GET | `/api/auth/captcha/image/:imageId` |
-| Submit the form | `login({username, password, type, captchaToken})` | POST | `/api/auth/login` |
+| Page load: read config + component shape | `getCaptchaConfig({username?})` | GET | `/api/auth/captcha/config` |
+| Official widget fetches a challenge itself | `<altcha-widget challenge="/api/auth/captcha/challenge">` | GET | `/api/auth/captcha/challenge` |
+| Submit the solved payload | `verifyCaptcha({payload, username, stage})` | POST | `/api/auth/captcha/verify` |
+| Submit the login form | `login({username, password, type, captchaToken})` | POST | `/api/auth/login` |
 
-All captcha calls pass `skipErrorMessage:true`; the login page owns the error UX.
-
-`bls-admin/src/auth/behavior-collector.ts` accumulates **statistics only**: counts, interval
-mean/σ, speed mean/max, blur/visibility counters and `navigator.webdriver` / plugins / languages.
-It never stores coordinates or key values, so the payload cannot contain a trajectory or a password.
+- `bls-admin/src/components/AltchaCaptcha/index.tsx` imports the official widget (`import 'altcha'`),
+  the official Chinese locale (`import 'altcha/i18n/zh-cn'`) and forwards `verified` / `statechange` /
+  `expired` events. PoW and payload creation stay inside ALTCHA — the component only themes it through
+  the official CSS variables (`--altcha-color-primary` = Ant Design `#1677ff`, etc.).
+- The widget must run in a **secure context**: HTTPS in production, `localhost` in dev.
+- The admin nginx CSP needs `worker-src 'self' blob: data:` because the official bundle creates its
+  Proof-of-Work Worker from an inline `data:` URL (`bls-admin-nginx.conf`).
 
 ---
 
 ## 3. Backend endpoints
 
-All five are **public** and set `Cache-Control: no-store, no-cache, must-revalidate, private`.
+All are public; `/config` and `/verify` are wrapped in the standard
+`{code, message, data}` envelope and set `Cache-Control: no-store`.
+**`/challenge` returns the official ALTCHA challenge object verbatim** (no envelope) because the
+widget's `challenge` attribute consumes it directly — the only business endpoint without the
+envelope, like `/api/openapi.json`.
 
-### `GET /api/auth/captcha/config`
+### `GET /api/auth/captcha/config?username=`
 
-`{code:200, data:{enabled, mode, secondaryTypes}}` — **only** these three fields.
-`silentThreshold`, `forceAfterFailures`, `challengeTtlSeconds`, `tokenTtlSeconds`, `maxAttempts`
-and `provider` are never exposed. When the domain cannot be resolved → `{enabled:false}`.
+```json
+{ "enabled": true, "mode": "adaptive", "provider": "altcha",
+  "display": "invisible", "challengeUrl": "/api/auth/captcha/challenge",
+  "fieldName": "altchaPayload" }
+```
 
-### `POST /api/auth/captcha/challenge`
+`display` is `visible` when `mode=always`, or when the account/IP hits the escalation policy
+(§4). `reason` is added in that case. Thresholds, `ALTCHA_COST` and the HMAC key are never exposed.
 
-Body: `{username?, stage?:'secondary'}`.
-Response: `{enabled:true, challengeId, stage, expiresAt, nonce, secondaryType?, payload?}` or
-`{enabled:false}`.
-`payload` (secondary only, never contains the answer):
+### `GET /api/auth/captcha/challenge?username=`
 
-| Field | slider | rotate |
+Returns the official structure, e.g.
+
+```json
+{ "parameters": { "algorithm": "PBKDF2/SHA-256", "nonce": "…", "salt": "…", "cost": 50000,
+                  "keyLength": 32, "keyPrefix": "00", "expiresAt": 1789000000,
+                  "data": { "tenantId": "000000", "usernameHash": "…", "display": "invisible" } },
+  "signature": "…" }
+```
+
+- `parameters.data` (tenant + usernameHash + display) is **inside the HMAC signature**, so the client
+  cannot tamper with it. That is what makes the tenant/account binding and the visible/invisible
+  decision server-enforced.
+- The `nonce` is also registered in Redis (`captcha:challenge:{nonce}`, `SET NX EX`) so every
+  challenge is **single-use**, as the official docs require.
+
+### `POST /api/auth/captcha/verify`
+
+Body: `{ payload, username?, stage?: 'invisible' | 'visible' }` where `payload` is the widget's
+`base64(JSON.stringify({ challenge: { parameters, signature }, solution }))`.
+
+Verification order (all server-side):
+
+1. decode + structural validation of the payload;
+2. binding: `parameters.data.tenantId` must equal the resolved tenant, and
+   `parameters.data.usernameHash` (when non-empty) must equal the request's username hash;
+3. **policy re-evaluation**: if the policy now demands `visible` (or the challenge was issued for
+   `visible`) and the client claims `invisible` → `requireVisible: true`, no token, and the challenge
+   is *not* burned;
+4. challenge single-use: `GETDEL captcha:challenge:{nonce}` → gone ⇒ `CHALLENGE_EXPIRED`;
+5. `altcha/lib verifySolution()` → expiry → signature → PoW;
+6. issue the one-shot `captchaToken`.
+
+Responses:
+
+```json
+{ "passed": true,  "captchaToken": "…", "expiresAt": 1789000000000 }
+{ "passed": false, "reason": "SOLUTION_INVALID" }
+{ "passed": false, "reason": "VISIBLE_REQUIRED", "requireVisible": true }
+```
+
+`reason` ∈ `PAYLOAD_MISSING | PAYLOAD_MALFORMED | ALGORITHM_UNSUPPORTED | CHALLENGE_EXPIRED |
+SIGNATURE_INVALID | SOLUTION_INVALID | BINDING_MISMATCH | PROVIDER_UNAVAILABLE | VISIBLE_REQUIRED |
+ACCOUNT_FAILURES | IP_ACCOUNT_FANOUT | IP_RISK_HIGH | RATE_LIMIT_PRESSURE | PRIVILEGED_ACCOUNT |
+DEVICE_ANOMALY | MODE_ALWAYS`.
+
+### Captcha errors of `POST /api/auth/login`
+
+| code | HTTP | meaning |
 |---|---|---|
-| `canvasWidth` / `canvasHeight` | 320×160 | 200×200 |
-| `pieceSize`, `pieceY` | ✔ | — |
-| `backgroundImageUrl`, `pieceImageUrl` | ✔ | — |
-| `imageUrl` | — | ✔ |
-| `tolerance` | 8 px | 15° |
-| `keyboardHint`, `keyboardStep`, `hint` | ✔ | ✔ |
-
-### `POST /api/auth/captcha/silent/verify`
-
-Body: `{challengeId, nonce, username, startedAt, finishedAt, interactionSummary, proof?}`.
-`interactionSummary` is whitelisted server-side by `sanitizeInteractionSummary()` — unknown keys
-(trajectories, key contents, any PII) are dropped and numbers are clamped.
-
-Response (pass): `{passed:true, captchaToken, expiresAt}`
-Response (fail): `{passed:false, nextStage:'secondary', secondaryChallenge:{...}}`
-
-### `POST /api/auth/captcha/secondary/verify`
-
-Body: `{challengeId, username, answer:{x} | {angle}, nonce?}`.
-
-Response (pass): `{passed:true, captchaToken, expiresAt}`
-Response (fail): `{passed:false, retryable, remainingAttempts, reason}` where `reason` ∈
-`ANSWER_MISMATCH | MISSING_ANSWER | MAX_ATTEMPTS | CHALLENGE_EXPIRED | CHALLENGE_NOT_FOUND |
-CHALLENGE_STAGE_MISMATCH | TOKEN_BINDING_MISMATCH`.
-
-### `GET /api/auth/captcha/image/:imageId`
-
-`image/svg+xml`, generated by `security/captcha/image.ts` (`crypto.randomInt` randomness:
-random gradient + shapes + noise, random piece position, random jigsaw outline, random rotation
-20°–340°). Returns 404 when the image expired. The answer is **never** part of the image.
+| 40010 | 400 | `CAPTCHA_REQUIRED` — token missing |
+| 40011 | 400 | `CAPTCHA_INVALID` — unknown / binding mismatch |
+| 40012 | 400 | `CAPTCHA_EXPIRED` |
+| 40013 | 400 | `CAPTCHA_REPLAYED` |
+| 50301 | 503 | `CAPTCHA_SERVICE_UNAVAILABLE` — Redis unavailable / provider not configured |
 
 ---
 
-## 4. Security design
+## 4. Escalation policy (server side, cannot be skipped by the client)
 
-### Silent scoring (`security/captcha/silent.ts`)
+`evaluateCaptchaPolicy()` (`security/captcha/policy.ts`) switches the widget to `visible` when any of:
 
-| Input | Use |
+| Condition | `reason` |
 |---|---|
-| challenge existence / expiry / stage | hard gate before scoring |
-| nonce | tampered ⇒ force stage 2 (`NONCE_REPLAY`) |
-| dwell time | server-side `now - challenge.createdAt`, clamped by the client value |
-| mouse / touch event counts | two equal-weight modalities (max 40) |
-| interval mean/σ | σ≈0 with many events ⇒ `IRREGULAR_TIMING` |
-| keyboard interval only | count + mean/σ (max 35) — **no key contents** |
-| focus / blur / visibility | small bonus, penalty for heavy switching |
-| `navigator.webdriver` / headless / bot UA | hard fail `AUTOMATION_DETECTED` |
-| account / IP / device failure counters | force stage 2 |
-| IP risk (Event Center rules) | force stage 2 at HIGH/CRITICAL or score ≥ 70 |
-| rate-limit pressure (`rate:ip:{ip}:/api/auth/login`) | force stage 2 above 10 |
-| optional PoW (`proof:{nonce,difficulty}`, difficulty 4-8) | ±20 |
+| `mode=always` | `MODE_ALWAYS` |
+| same account reached `forceAfterFailures` consecutive login failures (15 min window, cleared on success) | `ACCOUNT_FAILURES` |
+| one IP tried ≥ 3 distinct accounts in the window | `IP_ACCOUNT_FANOUT` |
+| IP risk HIGH/CRITICAL or score ≥ 70 (Security Event Center rule engine) | `IP_RISK_HIGH` |
+| login rate-limit pressure ≥ 10 (`rate:ip:{ip}:/api/auth/login`) | `RATE_LIMIT_PRESSURE` |
+| `sys_user.is_admin = 1` for the login account | `PRIVILEGED_ACCOUNT` |
+| obvious bot UA / missing UA (header-level only) | `DEVICE_ANOMALY` |
 
-Availability rules: **“no mouse movement” is never a bot verdict.** Keyboard-only and touch-only
-users reach the default threshold 70 on their own (count ≥ 8 keys / ≥ 8 touches + dwell ≥ 1.2 s +
-natural σ + focus bonus). When the score really is too low the user simply gets the visible
-challenge instead of being rejected.
-
-### Force-second-stage policy (`security/captcha/policy.ts`)
-
-Cannot be bypassed from the client: there is no request field that skips stage 2, and every
-condition is evaluated server-side inside `verifySilent`.
-
-Trigger | Reason enum
----|---
-`accountFailures ≥ forceAfterFailures` (default 3, 15 min window, cleared on successful login) | `ACCOUNT_FAILURES`
-same IP tried ≥ 3 distinct accounts in 15 min | `IP_ACCOUNT_FANOUT`
-IP risk HIGH/CRITICAL or score ≥ 70 | `IP_RISK_HIGH`
-nonce mismatch / replay | `NONCE_REPLAY`
-binding mismatch (IP / UA / domain / username) or bot-like UA | `DEVICE_ANOMALY`
-`sys_user.is_admin = 1` for the login account | `PRIVILEGED_ACCOUNT`
-login rate-limit pressure ≥ 10 | `RATE_LIMIT_PRESSURE`
-`mode=always` | `RISK_FORCED`
-
-### captchaToken
-
-```
-captchaToken = base64url({v:1,c:challengeId,t:tenantId,e:expEpochSeconds}) + '.' + base64url(HMAC-SHA256(payload, CAPTCHA_SECRET))
-```
-
-- Only `sha256(captchaToken)` is stored in Redis (`captcha:token:{hash}`).
-- One-shot consumption: atomic `SET NX EX` on `captcha:token-used:{hash}` **then** `GETDEL` of the
-  payload (`GETDEL` falls back to `MULTI/EXEC GET+DEL`; no Lua required).
-  - claim fails → `CAPTCHA_REPLAYED`; claim succeeds but payload gone → `CAPTCHA_EXPIRED`.
-- Bound to `challengeId`, tenant, **tenant domain hash**, `username` hash, **IP hash**, **UA hash**.
-  Any mismatch → `CAPTCHA_INVALID` (the token has already been burned).
-- The login handler consumes it **before** touching `sys_user`, so a captcha failure cannot leak
-  whether the account exists. Responses are structurally identical for existing/non-existing users.
-- Comparisons use `timingSafeEqual` (`crypto-utils.safeEqual`).
-
-### Secondary challenge
-
-- Type chosen randomly from `secondaryTypes`; images generated server-side.
-- The correct `x` (slider) / `angle` (rotate) live only in `captcha:challenge:{id}`.
-- Tolerance: slider ±8 px, rotate ±15° — never a fixed coordinate.
-- `attempts` is an atomic `INCR` counter; the `(maxAttempts + 1)`-th verification invalidates the
-  challenge immediately (even with the right answer).
-- Success deletes the challenge before issuing the token.
-- Both challenge types are driven by an antd `Slider`, which keeps arrow-key + Enter operation as
-  the reserved keyboard-accessible alternative (payload carries `keyboardHint` / `keyboardStep`).
-
-### Fail closed
-
-`CaptchaStore` converts “Redis disabled” and any Redis command error into
-`CaptchaUnavailableError` (HTTP 503 / code 50301). The captcha endpoints and `POST /auth/login`
-therefore refuse to proceed when Redis is unavailable — there is no path that skips verification.
-
-### Secrets & startup validation
-
-| Variable | Rule |
-|---|---|
-| `CAPTCHA_SECRET` | production: required, ≥ 32 chars, no `CHANGE_TO_*` / common-password substring (`env.ts` + `app.ts` startup block) |
-| `CAPTCHA_DEV_BYPASS` | only dev; `true` in production **blocks startup**; when active it short-circuits every captcha check and the public config reports `enabled:false` |
+Enforcement: the same predicate runs again inside `/verify` with the *real* username, so pre-fetching
+an `invisible` challenge cannot dodge the escalation.
 
 ---
 
-## 5. Configuration (`sys_config` → Dynamic Config)
+## 5. `captchaToken`
 
-| Key | Type | Range / enum | Default |
-|---|---|---|---|
-| `sys.login.captcha.enabled` | bool | `1/true/0/false` | `true` |
-| `sys.login.captcha.mode` | enum | `off` \| `adaptive` \| `always` | `adaptive` |
-| `sys.login.captcha.silentThreshold` | number | 0–100 | `70` |
-| `sys.login.captcha.forceAfterFailures` | number | 1–100 | `3` |
-| `sys.login.captcha.challengeTtlSeconds` | number | 30–900 | `180` |
-| `sys.login.captcha.tokenTtlSeconds` | number | 30–600 | `120` |
-| `sys.login.captcha.secondaryTypes` | csv subset | `slider`, `rotate` | `slider,rotate` |
-| `sys.login.captcha.maxAttempts` | number | 1–20 | `5` |
-| `sys.login.captcha.provider` | enum | `builtin` | `builtin` |
-
-Invalid values (wrong type / out of range / unknown enum member / unknown csv item) are **rejected
-and replaced by the documented default** with a `[dynamic-config]` warning — never silently coerced.
-Rows for these keys are seeded for tenant `000000` in **both**:
-
-- `sql/Init.sql` (`000406`–`000414`, lines 68–76) — fresh installs;
-- `bls-server/migrations/20260922_017_login_captcha.sql` (`INSERT IGNORE`, re-runnable) — already
-  deployed databases via `npm run db:migrate up`.
-
-There is no DDL in either file (`sys_security_log.event_type` is `varchar(64)`, so the `CAPTCHA_*`
-event types need no schema change). Other tenants fall back to the built-in defaults until a row is
-added (the System parameters page can add them on demand).
-
-Immediate effect: the System parameters CRUD config has
-`onWrite: () => invalidateConfigCache(tid)`, so saving any `sys_config` row drops
-`config:{tenantId}` and the next read re-reads the DB (the 60 s cache TTL only matters for other
-instances / out-of-band DB writes).
+- 32 random bytes (`crypto.randomBytes`) → `base64url`. **Signing is not needed**: the Redis lookup is
+  the authority, and only `sha256(token)` is ever stored/compared.
+- Redis: `captcha:token:{sha256}` → `{provider, tenantId, domainHash, usernameHash, ipHash, uaHash,
+  stage, issuedAt, expiresAt}`, TTL = `sys.login.captcha.tokenTtlSeconds` (default **120 s**).
+- Bound to: current **domain**, **username** hash, **IP** hash, **User-Agent** hash.
+- One-shot: atomic `SET NX EX` on `captcha:token-used:{sha256}` then `GETDEL` of the record
+  (`GETDEL`, falling back to `MULTI/EXEC GET+DEL`). Claim fails → `CAPTCHA_REPLAYED`; record gone →
+  `CAPTCHA_EXPIRED`. Concurrent requests: exactly one wins.
+- Consumed by the login handler **before** `sys_user` is read, and deleted on consumption; the same
+  response shape is returned whether or not the account exists (no account enumeration).
 
 ---
 
@@ -224,51 +196,66 @@ instances / out-of-band DB writes).
 
 | Protection | Rule |
 |---|---|
-| Replay | normal `/api/**` nonce rule (POST) — the captcha endpoints send `X-Timestamp`/`X-Nonce` from the browser interceptor; server-to-server callers do not need extra headers |
-| Rate limit | `/challenge` ip 30/60 s, account 10/300 s, device 20/300 s · `/silent/verify` ip 60/60 s, account 20/300 s · `/secondary/verify` ip 30/60 s, account 15/300 s, device 30/300 s · `/config` ip 120/60 s |
-| Cache | every captcha endpoint + image: `Cache-Control: no-store` |
-| Redis TTL | challenge = `challengeTtlSeconds`, attempts = same, nonce = same, token = `tokenTtlSeconds`, used marker = `tokenTtlSeconds + 300`, image = `challengeTtlSeconds`, failure counters = 900 s. No permanent keys. |
-| Audit | `CAPTCHA_*` security log with only `challengeId / stage / secondaryType / riskScore / failureReason / tenantId / usernameHash / ipHash / requestId` |
-| Logging | answers, passwords, behaviour traces and full tokens are never written to logs or audit rows |
+| Rate limit | `/captcha/challenge` GET ip 60/60 s + device 30/300 s · `/captcha/verify` POST ip 30/60 s + account 20/300 s + device 30/300 s · `/captcha/config` GET ip 120/60 s |
+| Replay | normal `/api/**` nonce rule (the browser interceptor adds `X-Timestamp`/`X-Nonce`) |
+| Challenge single-use | `captcha:challenge:{nonce}` — `SET NX EX` at creation, `GETDEL` at verify |
+| Cache | all captcha endpoints: `Cache-Control: no-store` |
+| Secrets | `ALTCHA_HMAC_KEY` only in env; never logged, never sent to the client |
+| Audit | `CAPTCHA_*` security log with only `stage / provider / failureReason / tenantId / usernameHash / ipHash / requestId` — never the payload, the solution, the key or the full token |
+| Fail closed | Redis disabled/erroring, or `provider=tianai` without `TIANAI_BASE_URL` → HTTP 503 `CAPTCHA_SERVICE_UNAVAILABLE`; login is refused too |
 
 ---
 
-## 7. Frontend-only validation
+## 7. Configuration
 
-- `username` / `password` required; single-submit guard (`submittingRef`).
-- The captcha token is kept in a ref only and cleared after a successful login.
-- `captchaRetryRef` limits automatic retry after `4001x` to one attempt per submit.
-- Closing the stage-2 modal cancels the pending login and shows “已取消安全验证，登录未完成”.
-- Slider/rotate use an antd `Slider` ⇒ mouse, touch and keyboard all work; the modal width is
-  `min(canvasWidth + 96, 440)` with `max-width: 94vw` for phones.
+| Key | Type | Range / enum | Default |
+|---|---|---|---|
+| `sys.login.captcha.enabled` | bool | — | `true` |
+| `sys.login.captcha.mode` | enum | `off` \| `adaptive` \| `always` | `adaptive` |
+| `sys.login.captcha.provider` | enum | `altcha` \| `tianai` | `altcha` |
+| `sys.login.captcha.challengeTtlSeconds` | number | 30–900 | `180` |
+| `sys.login.captcha.tokenTtlSeconds` | number | 30–600 | `120` |
+| `sys.login.captcha.forceAfterFailures` | number | 1–100 | `3` |
+
+Environment variables: `ALTCHA_HMAC_KEY` (production fails to start without it, ≥ 32 chars, no
+`CHANGE_TO_*`), `ALTCHA_COST` (PoW difficulty, default 50 000), `TIANAI_BASE_URL` (only for
+`provider=tianai`), `CAPTCHA_DEV_BYPASS` (dev only; blocks production startup).
+
+Seed rows: `sql/Init.sql` (`000406`–`000411`) **and**
+`bls-server/migrations/20260922_017_login_captcha.sql`. Rows written by the earlier 9-parameter
+design (`silentThreshold`, `secondaryTypes`, `maxAttempts`) are obsolete; Dynamic Config ignores
+unknown keys, so they can simply be deleted.
+
+Immediate effect: the config CRUD `onWrite` → `invalidateConfigCache(tid)` drops `config:{tenantId}`.
 
 ---
 
 ## 8. Known gaps / discrepancies
 
-1. **Koa only.** `bls-java-server` and `bls-rust-server` have no `/api/auth/captcha/*`; selecting
-   them disables the feature (login stays compatible).
-2. `provider` only accepts `builtin`; there is no third-party adapter yet.
-3. PoW is accepted (`proof`) but never *required* — the challenge payload does not request it.
-4. The stage-2 image is generated as SVG from numbers only (no canvas dependency). A determined
-   bot can still template-match the puzzle hole; the jitter/noise only raises the cost.
-5. `/api/auth/captcha/image/:imageId` matches the generic `/api/**` GET rate-limit rule (`user`
-   dimension = `anonymous`), so image fetches share one bucket per 60 s window.
-6. Dev bypass (`CAPTCHA_DEV_BYPASS`) skips verification entirely — never use it outside local work.
+1. **Koa only.** `bls-java-server` / `bls-rust-server` do not implement `/api/auth/captcha/*` and
+   ignore `captchaToken`; the frontend degrades to the pre-captcha flow there.
+2. No image/audio fallback with the self-hosted provider (§1). Use ALTCHA Sentinel or
+   `provider=tianai` if a picture puzzle is mandatory.
+3. `captcha:challenge:{nonce}` cannot distinguish "expired" from "already used" — both report
+   `CHALLENGE_EXPIRED`. Acceptable: neither may proceed.
+4. `ALTCHA_COST` is an env knob, not a `sys_config` key (it is a CPU-cost decision for operators).
+5. `provider=tianai` proxies `<TIANAI_BASE_URL>/gen` and `/check`; the exact response envelope depends
+   on that service and must be confirmed against the deployed Tianai version.
+6. `CAPTCHA_DEV_BYPASS=true` skips verification entirely — never use it outside local work.
 
 ---
 
 ## 9. How to extend
 
-1. **Add a config key**: add it to `SCHEMA` + `KEY_MAP` + `DynamicConfig` in
-   `bls-server/src/config/dynamic-config.ts`, seed the default row in **`sql/Init.sql`** *and* a
-   matching `bls-server/migrations/*.sql` (pure seed data still needs the migration so deployed
-   databases are upgraded by `npm run db:migrate up` — see `00-common/07-database.md` §5),
-   document it in `00-common/07-database.md`, and expose it on the System parameters page
-   (`pages/system/config/components/CaptchaSettingPanel.tsx`).
+1. **Add a config key**: `SCHEMA` + `KEY_MAP` + `DynamicConfig` in
+   `bls-server/src/config/dynamic-config.ts`, seed it in `sql/Init.sql` **and** a matching
+   `bls-server/migrations/*.sql` (generate both from one source, then diff), document it in
+   `00-common/07-database.md`, and expose it in
+   `bls-admin/src/pages/system/config/components/CaptchaSettingPanel.tsx`.
 2. **Add a Redis key**: add the namespace + TTL row to `00-common/01-redis.md`.
-3. **Add a secondary type**: see §7 of [user-login.md](user-login.md).
-4. **Tune the policy**: edit `security/captcha/policy.ts` (force conditions) or
-   `security/captcha/silent.ts` (scoring) and extend
-   `security/captcha/__tests__/{silent,captcha-service}.test.ts`.
-5. Re-run `npm run lint && npm run test && npm run build && npm run openapi` in `bls-server`.
+3. **Change the PoW algorithm**: extend `deriveKeyFor()` in `security/captcha/altcha.ts`
+   (Argon2/Scrypt need the widget to import extra workers — see the ALTCHA README).
+4. **Tune the escalation**: edit `evaluateCaptchaPolicy()` and extend
+   `src/security/captcha/__tests__/captcha-service.test.ts`.
+5. Re-run `npm run lint && npm run test && npm run build && npm run openapi` in `bls-server` and
+   `npm run tsc && npm run build` in `bls-admin`.

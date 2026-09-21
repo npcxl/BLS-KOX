@@ -1,225 +1,124 @@
 /**
  * 登录人机验证（captcha）— 类型定义
  *
- * 两级验证：
- *   1. silent    —— 静默行为验证（无感），评分达到阈值即签发 captchaToken
- *   2. secondary —— 可视化验证（slider / rotate），答案只保存在 Redis，绝不下发前端
+ * 方案：集成 ALTCHA（https://github.com/altcha-org/altcha）自托管开源库。
+ * **不自研**滑块、图片裁切、轨迹识别或验证码算法；ALTCHA 只提供 Proof-of-Work。
+ *
+ * 两级语义（由服务端策略决定）：
+ *   - invisible：ALTCHA widget `display="invisible"` + `auto="onload"`，后台完成 PoW，用户无感；
+ *   - visible  ：策略要求人工交互时切换为 ALTCHA 可见组件（`display="standard"`）。
+ *
+ * 两层验证成功后，服务端签发项目内部的一次性 `captchaToken`，由 `POST /api/auth/login` 消费。
  */
-import type { CaptchaMode, CaptchaSecondaryType } from '../../config/dynamic-config';
+import type { CaptchaMode, CaptchaProvider } from '../../config/dynamic-config';
 
-export type { CaptchaMode, CaptchaSecondaryType };
+export type { CaptchaMode, CaptchaProvider };
 
-export type CaptchaStage = 'silent' | 'secondary';
+/** 前端应展示的 ALTCHA 组件形态 */
+export type CaptchaStage = 'invisible' | 'visible';
 
-/** 二级验证答案（仅 Redis 保存） */
-export interface SecondaryAnswer {
-  /** slider：正确切片的 x 坐标 */
-  x?: number;
-  /** rotate：服务端已施加的旋转角（度） */
-  angle?: number;
-}
+/** 验证失败原因枚举（写入安全审计，绝不包含 payload / 密钥） */
+export type CaptchaFailureReason =
+  | 'PAYLOAD_MISSING'
+  | 'PAYLOAD_MALFORMED'
+  | 'ALGORITHM_UNSUPPORTED'
+  | 'CHALLENGE_EXPIRED'
+  | 'SIGNATURE_INVALID'
+  | 'SOLUTION_INVALID'
+  /** challenge 中签名绑定的租户 / username 与当前请求不一致 */
+  | 'BINDING_MISMATCH'
+  | 'PROVIDER_UNAVAILABLE'
+  /** 策略要求可见交互（连续登录失败 / 高风险 / 超管账号 / mode=always） */
+  | 'VISIBLE_REQUIRED'
+  /** 强制策略命中的内部原因 */
+  | 'ACCOUNT_FAILURES'
+  | 'IP_ACCOUNT_FANOUT'
+  | 'IP_RISK_HIGH'
+  | 'RATE_LIMIT_PRESSURE'
+  | 'PRIVILEGED_ACCOUNT'
+  | 'DEVICE_ANOMALY'
+  | 'MODE_ALWAYS';
 
-/** challenge 记录（Redis） */
-export interface ChallengeRecord {
-  challengeId: string;
-  /** 绑定租户 */
+/** captchaToken 在 Redis 中的记录（Redis key 里只出现 token 的 sha256） */
+export interface CaptchaTokenRecord {
+  provider: CaptchaProvider;
+  /** 绑定当前租户 */
   tenantId: string;
-  /** 绑定租户域名 hash */
+  /** 绑定当前域名 hash */
   domainHash: string;
-  /** 绑定登录 username hash */
+  /** 绑定登录 username 的 hash */
   usernameHash: string;
   /** 绑定 IP hash */
   ipHash: string;
   /** 绑定 User-Agent hash */
   uaHash: string;
-  stage: CaptchaStage;
-  secondaryType?: CaptchaSecondaryType;
-  /** 二级验证正确答案（仅服务端可见） */
-  answer?: SecondaryAnswer;
-  /** challenge nonce（crypto.randomBytes） */
-  nonce: string;
-  /** 是否由强制策略（风险/失败次数/超管）强制进入二级 */
-  forced: boolean;
-  createdAt: number;
-  expiresAt: number;
-  /** 已下发的图片 id（用于失效时清理） */
-  imageIds?: string[];
-}
-
-/** captchaToken 记录（Redis，仅保存 Token hash 对应记录） */
-export interface CaptchaTokenRecord {
-  challengeId: string;
-  tenantId: string;
-  domainHash: string;
-  usernameHash: string;
-  ipHash: string;
-  uaHash: string;
+  /** 签发时的组件形态（审计用） */
   stage: CaptchaStage;
   issuedAt: number;
   expiresAt: number;
 }
 
-/** captchaToken 载荷（签名部分，不含任何隐私数据） */
-export interface CaptchaTokenPayload {
-  v: 1;
-  /** challengeId */
-  c: string;
-  /** 租户 */
-  t: string;
-  /** 过期时间（秒） */
-  e: number;
+/** `/captcha/config` 的下发结构 */
+export interface CaptchaPublicConfig {
+  enabled: boolean;
+  mode: CaptchaMode;
+  provider: CaptchaProvider;
+  /** 本轮应展示的 ALTCHA 组件形态 */
+  display: CaptchaStage;
+  /** display=visible 时为命中原因（用于前端文案，不含内部阈值） */
+  reason?: CaptchaFailureReason;
+  /** widget 应使用的 challenge 地址 */
+  challengeUrl: string;
+  /** widget 隐藏域字段名 */
+  fieldName: string;
 }
 
-/** ============ 前端上报的交互统计（仅统计值，禁止轨迹 / 按键内容） ============ */
-export interface PointerSummary {
-  /** 事件总数 */
-  count?: number;
-  /** 移动事件数 */
-  moves?: number;
-  /** 平均速度 px/ms */
-  avgSpeed?: number;
-  /** 最大速度 px/ms */
-  maxSpeed?: number;
-  /** 平均事件间隔 ms */
-  avgInterval?: number;
-  /** 事件间隔标准差 ms */
-  stdInterval?: number;
-  /** 轨迹直线度 0-1 */
-  straightness?: number;
-}
-
-export interface KeyboardSummary {
-  count?: number;
-  avgInterval?: number;
-  stdInterval?: number;
-}
-
-export interface FocusSummary {
-  blurCount?: number;
-  visibilityChanges?: number;
-  hiddenMs?: number;
-}
-
-export interface AutomationSummary {
-  webdriver?: boolean;
-  headless?: boolean;
-  /** navigator.plugins.length */
-  plugins?: number;
-  /** navigator.languages.length */
-  languages?: number;
-  /** 浏览器指纹声明为自动化工具（如 "HeadlessChrome" 出现在 UA 中时由服务端补充） */
-  suspicious?: boolean;
-}
-
-export interface InteractionSummary {
-  /** 页面停留时间（ms），服务端会以自身观测值做上界裁剪 */
-  dwellMs?: number;
-  mouse?: PointerSummary;
-  touch?: PointerSummary;
-  keyboard?: KeyboardSummary;
-  focus?: FocusSummary;
-  automation?: AutomationSummary;
-}
-
-/** 静默验证失败原因枚举（写入安全审计） */
-export type SilentReason =
-  | 'AUTOMATION_DETECTED'
-  | 'TOO_FAST'
-  | 'NO_HUMAN_SIGNAL'
-  | 'IRREGULAR_TIMING'
-  | 'LOW_SCORE'
-  | 'NONCE_REPLAY'
-  | 'POW_INVALID'
-  | 'RISK_FORCED'
-  | 'ACCOUNT_FAILURES'
-  | 'IP_ACCOUNT_FANOUT'
-  | 'IP_RISK_HIGH'
-  | 'DEVICE_ANOMALY'
-  | 'PRIVILEGED_ACCOUNT'
-  | 'RATE_LIMIT_PRESSURE'
-  | 'CHALLENGE_EXPIRED'
-  | 'CHALLENGE_NOT_FOUND'
-  | 'CHALLENGE_STAGE_MISMATCH';
-
-/** 二级验证失败原因枚举 */
-export type SecondaryReason =
-  | 'ANSWER_MISMATCH'
-  | 'MAX_ATTEMPTS'
-  | 'CHALLENGE_EXPIRED'
-  | 'CHALLENGE_NOT_FOUND'
-  | 'CHALLENGE_STAGE_MISMATCH'
-  | 'MISSING_ANSWER'
-  | 'TOKEN_BINDING_MISMATCH';
-
-/** 静默评分结果 */
-export interface SilentScoreResult {
-  score: number;
+/** `/captcha/verify` 的返回结构 */
+export interface CaptchaVerifyResult {
   passed: boolean;
-  reasons: SilentReason[];
-  /** 命中的自动化标识等 */
-  signals: {
-    humanInteractions: number;
-    modals: string[];
-  };
+  /** 一次性 captchaToken（仅 passed=true 时返回） */
+  captchaToken?: string;
+  expiresAt?: number;
+  /** 策略要求可见交互：前端需切换为可见 ALTCHA 组件后重新验证 */
+  requireVisible?: boolean;
+  /** 失败原因（枚举） */
+  reason?: CaptchaFailureReason;
+  /** 剩余可见交互前需要的重试提示（前端文案） */
+  message?: string;
 }
 
-/** 二级 challenge 下发给前端的载荷（不含答案） */
-export interface SecondaryPayload {
-  /** 图片/滑块尺寸 */
-  canvasWidth: number;
-  canvasHeight: number;
-  /** slider：拼图块尺寸与初始 y，x 由用户拖动决定 */
-  pieceSize?: number;
-  pieceY?: number;
-  /** slider：背景图（缺角） */
-  backgroundImageUrl?: string;
-  /** slider：拼图块图 */
-  pieceImageUrl?: string;
-  /** rotate：待回正的图片 */
-  imageUrl?: string;
-  /** 允许误差（px 或 度）—— 不泄露答案位置 */
-  tolerance?: number;
-  /** 无障碍：键盘操作说明（预留键盘可操作替代方式） */
-  keyboardHint?: string;
-  /** 无障碍：键盘步长 */
-  keyboardStep?: number;
-  /** 提示文案 */
-  hint?: string;
+/** 强制可见交互的判定输入 */
+export interface CaptchaPolicyInput {
+  mode: CaptchaMode;
+  forceAfterFailures: number;
+  accountFailures: number;
+  ipAccountCount: number;
+  ipRiskScore: number;
+  ipRiskLevel: string;
+  rateLimitPressure: number;
+  privilegedAccount: boolean;
+  deviceAnomalous: boolean;
 }
 
-/** challenge 下发结构 */
-export interface ChallengeResponse {
-  challengeId: string;
-  stage: CaptchaStage;
-  expiresAt: number;
-  nonce: string;
-  secondaryType?: CaptchaSecondaryType;
-  payload?: SecondaryPayload | null;
+export interface CaptchaPolicyDecision {
+  display: CaptchaStage;
+  reason?: CaptchaFailureReason;
 }
 
-/** 静默验证结果 */
-export type SilentVerifyResult =
-  | { passed: true; captchaToken: string; expiresAt: number }
-  | { passed: false; nextStage: 'secondary'; secondaryChallenge: ChallengeResponse };
-
-/** 二级验证结果 */
-export type SecondaryVerifyResult =
-  | { passed: true; captchaToken: string; expiresAt: number }
-  | { passed: false; retryable: boolean; remainingAttempts: number; reason: SecondaryReason };
-
-/** 二级验证类型（第一版：滑块拼图 / 图像旋转） */
-export const SECONDARY_TYPE_SLIDER: CaptchaSecondaryType = 'slider';
-export const SECONDARY_TYPE_ROTATE: CaptchaSecondaryType = 'rotate';
-
-/** 默认误差范围 */
-export const SLIDER_TOLERANCE_PX = 8;
-export const ROTATE_TOLERANCE_DEG = 15;
-
-/** 静默验证失败计数窗口（秒） */
+/** 连续失败计数窗口（秒） */
 export const FAILURE_WINDOW_SECONDS = 900;
 
-/** 二级图片尺寸 */
-export const SLIDER_CANVAS_WIDTH = 320;
-export const SLIDER_CANVAS_HEIGHT = 160;
-export const SLIDER_PIECE_SIZE = 44;
-export const ROTATE_CANVAS_SIZE = 200;
+/** 同一 IP 在窗口内尝试过的不同账号数达到该值 → 要求可见交互 */
+export const IP_ACCOUNT_FANOUT_THRESHOLD = 3;
+
+/** Rate Limit 压力阈值（同一 IP 在登录限流窗口内的计数） */
+export const RATE_LIMIT_PRESSURE_THRESHOLD = 10;
+
+/** IP 风险评分阈值（Security Event Center 规则引擎） */
+export const IP_RISK_SCORE_THRESHOLD = 70;
+
+/** config / verify 接口暴露的字段名（与 widget `name` 属性一致） */
+export const CAPTCHA_FIELD_NAME = 'altchaPayload';
+export const CAPTCHA_CHALLENGE_URL = '/api/auth/captcha/challenge';
+export const CAPTCHA_VERIFY_URL = '/api/auth/captcha/verify';
+export const CAPTCHA_CONFIG_URL = '/api/auth/captcha/config';

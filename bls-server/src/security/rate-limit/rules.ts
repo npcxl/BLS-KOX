@@ -5,15 +5,12 @@ export const defaultRateLimitRules: RateLimitRule[] = [
   { path: '/api/auth/login', methods: ['POST'], dimensions: ['ip'], limit: 20, windowSeconds: 60 },
   { path: '/api/auth/login', methods: ['POST'], dimensions: ['account'], limit: 5, windowSeconds: 300 },
 
-  // 登录人机验证：IP / account / device 三维度，防止无限创建 challenge 消耗 Redis 与 CPU
-  { path: '/api/auth/captcha/challenge', methods: ['POST'], dimensions: ['ip'], limit: 30, windowSeconds: 60 },
-  { path: '/api/auth/captcha/challenge', methods: ['POST'], dimensions: ['account'], limit: 10, windowSeconds: 300 },
-  { path: '/api/auth/captcha/challenge', methods: ['POST'], dimensions: ['device'], limit: 20, windowSeconds: 300 },
-  { path: '/api/auth/captcha/silent/verify', methods: ['POST'], dimensions: ['ip'], limit: 60, windowSeconds: 60 },
-  { path: '/api/auth/captcha/silent/verify', methods: ['POST'], dimensions: ['account'], limit: 20, windowSeconds: 300 },
-  { path: '/api/auth/captcha/secondary/verify', methods: ['POST'], dimensions: ['ip'], limit: 30, windowSeconds: 60 },
-  { path: '/api/auth/captcha/secondary/verify', methods: ['POST'], dimensions: ['account'], limit: 15, windowSeconds: 300 },
-  { path: '/api/auth/captcha/secondary/verify', methods: ['POST'], dimensions: ['device'], limit: 30, windowSeconds: 300 },
+  // 登录人机验证（ALTCHA）：IP / account / device 三维度，防止无限创建 challenge 消耗 Redis 与 CPU
+  { path: '/api/auth/captcha/challenge', methods: ['GET'], dimensions: ['ip'], limit: 60, windowSeconds: 60 },
+  { path: '/api/auth/captcha/challenge', methods: ['GET'], dimensions: ['device'], limit: 30, windowSeconds: 300 },
+  { path: '/api/auth/captcha/verify', methods: ['POST'], dimensions: ['ip'], limit: 30, windowSeconds: 60 },
+  { path: '/api/auth/captcha/verify', methods: ['POST'], dimensions: ['account'], limit: 20, windowSeconds: 300 },
+  { path: '/api/auth/captcha/verify', methods: ['POST'], dimensions: ['device'], limit: 30, windowSeconds: 300 },
   { path: '/api/auth/captcha/config', methods: ['GET'], dimensions: ['ip'], limit: 120, windowSeconds: 60 },
 
   // 导出：user + tenant

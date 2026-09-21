@@ -10,8 +10,11 @@
 - JDK 21 at `C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot`; default `mvn` runs JDK 8 →
   set `JAVA_HOME`. `bls-java-server` cannot fetch deps here (Maven Central unreachable,
   `io.jsonwebtoken:jjwt-bom:0.12.6` missing) → `mvn compile/test` fails.
-- **Editing `sql/Init.sql` via the IDE edit tool is silently dropped** (reports success, nothing on
-  disk). Write it with a shell/Node script and verify via `git diff sql/Init.sql`.
+- **Writing any `.sql` file with the IDE edit/write tools can silently fail** — `sql/Init.sql` edits
+  are dropped (reports success, nothing on disk), and `bls-server/migrations/*.sql` created with
+  `write_to_file` can land as a **0-byte file** (this is how the login-captcha migration got
+  committed empty in `753d86a`). Always generate `.sql` with a Node/shell script, then **verify**
+  (`git diff sql/Init.sql` / `git status` / read the size) — never trust the tool's success message.
 - PowerShell caveats: `Get-Content`/`Select-String` decode as ANSI (UTF-8 Chinese → mojibake; judge by
   `git diff`); `node -e "..."` swallows quotes and treats the backtick as an escape char (a regex
   containing a SQL backtick matches nothing — use a temp `.js` file, or `[\x60]`); `findstr` piped
@@ -53,13 +56,27 @@
   **even for pure seed data with no DDL** (reference: `20260922_017_login_captcha.sql` ↔ the 9
   `sys.login.captcha.*` rows in `Init.sql`) — never substitute "the operator will run the Init.sql
   block by hand". Generate both from one source and diff both afterwards.
-- **Login captcha (2026-09-21)**: two-stage (`silent` behaviour score → `slider`/`rotate`) in the **Koa backend only**
-  (`bls-server/src/security/captcha/*`, public routes `bls-server/src/api/auth/captcha/index.ts`, mounted at
-  `/api/auth/captcha/*`). Config = 9 `sys.login.captcha.*` keys read through Dynamic Config; the public config endpoint
-  exposes **only** `{enabled, mode, secondaryTypes}`. Login consumes a one-shot `captchaToken` (HMAC-signed with
-  `CAPTCHA_SECRET`, only `sha256(token)` stored in Redis, `SET NX EX` + `GETDEL`, bound to challenge / tenant domain /
-  username / IP / UA hashes) *before* any username/password check; errors `40010-40013` / `50301`, all captcha Redis ops
-  fail closed. Full memory: `bls-memory/pages/login-captcha.md`; also `docs/login-captcha.md`.
+- **NEVER self-implement captcha algorithms** (user rule, 2026-09-21): no slider, no image slicing, no
+  pointer-trajectory recognition, no custom captcha maths, no browser fingerprinting. Integrate a mature
+  open-source project instead. The login captcha uses **ALTCHA** (self-hosted, <https://github.com/altcha-org/altcha>,
+  npm `altcha` v3) in the **Koa backend only** (`bls-server/src/security/captcha/*`,
+  `altcha.ts` wraps `altcha/lib`; public routes in `api/auth/captcha/index.ts`).
+- **Login captcha (ALTCHA, 2026-09-21)** — `invisible` PoW first (`<altcha-widget>` `auto="onload"`), escalated to the
+  official **visible** component by a server-side policy (consecutive failures / IP risk / super-admin / `mode=always`);
+  `GET /captcha/config` (enveloped), `GET /captcha/challenge` (**official ALTCHA object, no `{code,…}` envelope** —
+  the widget consumes it), `POST /captcha/verify` → one-shot `captchaToken` (32 random bytes, only `sha256` in Redis,
+  TTL 120 s, bound to domain/username/IP/UA, `SET NX EX` + `GETDEL`) which `POST /api/auth/login` consumes *before*
+  reading `sys_user` (errors `40010-40013` / `50301`; Redis down ⇒ fail closed). Config = 6 `sys.login.captcha.*` keys
+  (`provider` = `altcha` | `tianai`); env = `ALTCHA_HMAC_KEY` (prod required), `ALTCHA_COST`, `TIANAI_BASE_URL`,
+  `CAPTCHA_DEV_BYPASS`. Self-hosted ALTCHA has **no image/audio code challenge** (that is Sentinel/Cloud) — if a
+  picture puzzle is mandatory, run Tianai CAPTCHA as a separate service and let Koa proxy it (never port the Java
+  algorithm to TS). Full memory: `bls-memory/pages/login-captcha.md`; also `docs/login-captcha.md`.
+- **Frontend CSP must allow `worker-src 'self' blob: data:`** — the official ALTCHA bundle creates its Proof-of-Work
+  Web Worker from an inline `data:` URL, which `default-src 'self'` blocks (`bls-admin-nginx.conf` was updated). The
+  widget also needs a secure context (HTTPS / `localhost`).
+- **ESM-only npm deps from this CommonJS backend**: `altcha` is `"type": "module"`, so a static `import` gives
+  TS1479 and a type-only import gives TS1541/TS1542. Load it with a **lazy dynamic `import()`** (cached promise) and
+  declare the needed data shapes locally instead of importing its types.
 - **Router scan convention**: `bls-server/src/core/router.ts` now recurses into sub-directories **even when the parent has
   an `index.ts`**, which is how `api/auth/index.ts` (function routes) and `api/auth/captcha/index.ts` (custom router)
   coexist. A nested custom module must put the full path after `/api` in its own `new Router({ prefix: '/x/y' })`.

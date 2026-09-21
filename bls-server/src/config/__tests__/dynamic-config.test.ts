@@ -172,18 +172,15 @@ describe('Dynamic Config', () => {
 // 登录人机验证参数（sys.login.captcha.*）
 // ============================================================
 describe('Dynamic Config — 登录人机验证参数', () => {
-  it('默认值完整（9 个参数）', () => {
-    expect(CAPTCHA_CONFIG_KEYS.length).toBe(9);
+  it('默认值完整（6 个参数，provider 默认 altcha）', () => {
+    expect(CAPTCHA_CONFIG_KEYS.length).toBe(6);
     const c = parseConfigValue({});
     expect(c.captchaEnabled).toBe(true);
     expect(c.captchaMode).toBe('adaptive');
-    expect(c.captchaSilentThreshold).toBe(70);
-    expect(c.captchaForceAfterFailures).toBe(3);
+    expect(c.captchaProvider).toBe('altcha');
     expect(c.captchaChallengeTtlSeconds).toBe(180);
     expect(c.captchaTokenTtlSeconds).toBe(120);
-    expect(c.captchaSecondaryTypes).toEqual(['slider', 'rotate']);
-    expect(c.captchaMaxAttempts).toBe(5);
-    expect(c.captchaProvider).toBe('builtin');
+    expect(c.captchaForceAfterFailures).toBe(3);
   });
 
   it('bool 严格解析（"1"/"true"/"0"/"false"，其他回退默认）', () => {
@@ -200,38 +197,27 @@ describe('Dynamic Config — 登录人机验证参数', () => {
   });
 
   it('数值范围校验：越界 / 非数字回退默认', () => {
-    expect(parseConfigValue({ 'sys.login.captcha.silentThreshold': '85' }).captchaSilentThreshold).toBe(85);
-    expect(parseConfigValue({ 'sys.login.captcha.silentThreshold': '120' }).captchaSilentThreshold).toBe(70);
-    expect(parseConfigValue({ 'sys.login.captcha.silentThreshold': '-1' }).captchaSilentThreshold).toBe(70);
-    expect(parseConfigValue({ 'sys.login.captcha.silentThreshold': 'abc' }).captchaSilentThreshold).toBe(70);
     expect(parseConfigValue({ 'sys.login.captcha.forceAfterFailures': '0' }).captchaForceAfterFailures).toBe(3);
     expect(parseConfigValue({ 'sys.login.captcha.forceAfterFailures': '10' }).captchaForceAfterFailures).toBe(10);
     expect(parseConfigValue({ 'sys.login.captcha.challengeTtlSeconds': '10' }).captchaChallengeTtlSeconds).toBe(180);
     expect(parseConfigValue({ 'sys.login.captcha.challengeTtlSeconds': '900' }).captchaChallengeTtlSeconds).toBe(900);
     expect(parseConfigValue({ 'sys.login.captcha.tokenTtlSeconds': '9999' }).captchaTokenTtlSeconds).toBe(120);
-    expect(parseConfigValue({ 'sys.login.captcha.maxAttempts': '3' }).captchaMaxAttempts).toBe(3);
-    expect(parseConfigValue({ 'sys.login.captcha.maxAttempts': '99' }).captchaMaxAttempts).toBe(5);
+    expect(parseConfigValue({ 'sys.login.captcha.tokenTtlSeconds': '120' }).captchaTokenTtlSeconds).toBe(120);
   });
 
-  it('secondaryTypes 枚举校验：非法项剔除，全部非法回退默认', () => {
-    expect(parseConfigValue({ 'sys.login.captcha.secondaryTypes': 'slider' }).captchaSecondaryTypes).toEqual(['slider']);
-    expect(parseConfigValue({ 'sys.login.captcha.secondaryTypes': 'rotate' }).captchaSecondaryTypes).toEqual(['rotate']);
-    expect(parseConfigValue({ 'sys.login.captcha.secondaryTypes': 'slider,image' }).captchaSecondaryTypes).toEqual(['slider']);
-    expect(parseConfigValue({ 'sys.login.captcha.secondaryTypes': 'image,audio' }).captchaSecondaryTypes).toEqual(['slider', 'rotate']);
-    expect(parseConfigValue({ 'sys.login.captcha.secondaryTypes': '' }).captchaSecondaryTypes).toEqual(['slider', 'rotate']);
+  it('provider 枚举校验：altcha（默认）/ tianai 合法，其他回退 altcha', () => {
+    expect(parseConfigValue({ 'sys.login.captcha.provider': 'altcha' }).captchaProvider).toBe('altcha');
+    expect(parseConfigValue({ 'sys.login.captcha.provider': 'tianai' }).captchaProvider).toBe('tianai');
+    expect(parseConfigValue({ 'sys.login.captcha.provider': 'geetest' }).captchaProvider).toBe('altcha');
+    expect(parseConfigValue({ 'sys.login.captcha.provider': 'builtin' }).captchaProvider).toBe('altcha');
   });
 
-  it('provider 枚举校验：仅 builtin', () => {
-    expect(parseConfigValue({ 'sys.login.captcha.provider': 'builtin' }).captchaProvider).toBe('builtin');
-    expect(parseConfigValue({ 'sys.login.captcha.provider': 'geetest' }).captchaProvider).toBe('builtin');
-  });
-
-  it('公开配置投影只含 enabled / mode / secondaryTypes，不泄露阈值与内部规则', () => {
+  it('公开配置投影只含 enabled / mode / provider，不泄露阈值与内部规则', () => {
     const pub = toPublicCaptchaConfig(parseConfigValue({}));
-    expect(Object.keys(pub).sort()).toEqual(['enabled', 'mode', 'secondaryTypes']);
-    expect(JSON.stringify(pub)).not.toContain('Threshold');
-    expect(JSON.stringify(pub)).not.toContain('maxAttempts');
+    expect(Object.keys(pub).sort()).toEqual(['enabled', 'mode', 'provider']);
     expect(JSON.stringify(pub)).not.toContain('forceAfterFailures');
+    expect(JSON.stringify(pub)).not.toContain('cost');
+    expect(JSON.stringify(pub)).not.toContain('Ttl');
   });
 
   it('enabled=false 或 mode=off → 对前端而言为关闭', () => {

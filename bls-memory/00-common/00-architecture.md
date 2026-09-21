@@ -2,8 +2,9 @@
 
 > **Document version:** 1.3.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
 >
-> *Uncommitted note:* the `4001x`/`50301` captcha error codes and the router sub-directory
-> recursion were verified against `61aaf9a` + uncommitted captcha changes.
+> *Uncommitted note:* the `4001x`/`50301` captcha error codes, the router sub-directory recursion
+> and the envelope-less `/api/auth/captcha/challenge` exception were verified against `753d86a` +
+> uncommitted captcha changes.
 
 This document describes the parts of BLS-KOX that every page depends on.
 Read it once; page documents assume it.
@@ -107,10 +108,10 @@ Special security error codes:
 | 40301 | Package entitlement missing (phase 3) — `EntitlementError`, HTTP 403 |
 | 40905 | Quota exceeded (phase 3) — `QuotaExceededError`, HTTP 409 |
 | 40010 | `CAPTCHA_REQUIRED` — login captcha is enabled but `captchaToken` is missing (`CaptchaRequiredError`, HTTP 400) |
-| 40011 | `CAPTCHA_INVALID` — bad signature or binding mismatch (`CaptchaInvalidError`, HTTP 400) |
-| 40012 | `CAPTCHA_EXPIRED` — captchaToken/challenge timed out (`CaptchaExpiredError`, HTTP 400) |
+| 40011 | `CAPTCHA_INVALID` — unknown token or binding mismatch (`CaptchaInvalidError`, HTTP 400) |
+| 40012 | `CAPTCHA_EXPIRED` — captchaToken timed out (`CaptchaExpiredError`, HTTP 400) |
 | 40013 | `CAPTCHA_REPLAYED` — captchaToken already consumed (`CaptchaReplayedError`, HTTP 400) |
-| 50301 | `CAPTCHA_SERVICE_UNAVAILABLE` — Redis unavailable, verification refused (`CaptchaUnavailableError`, HTTP 503) |
+| 50301 | `CAPTCHA_SERVICE_UNAVAILABLE` — Redis unavailable / provider not configured (`CaptchaUnavailableError`, HTTP 503) |
 
 `4001x` / `50301` responses also carry `details.errorCode` with the string constant, so the
 frontend can branch on either the number or the name.

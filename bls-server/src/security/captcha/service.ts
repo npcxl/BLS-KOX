@@ -1,19 +1,20 @@
 /**
- * 登录人机验证服务（两级）
+ * 登录人机验证服务（ALTCHA）
  *
  * 流程：
- *   POST /api/auth/captcha/challenge          → 创建 challenge（silent 或 secondary）
- *   POST /api/auth/captcha/silent/verify      → 静默评分；通过签发 captchaToken，否则下发二级验证
- *   POST /api/auth/captcha/secondary/verify   → 二级验证；通过签发 captchaToken
- *   POST /api/auth/login (captchaToken)       → 一次性消费 captchaToken，通过后才检查用户名 / 密码
+ *   GET  /api/auth/captcha/config     → 公开配置 + 本轮应使用的 ALTCHA 组件形态（invisible / visible）
+ *   GET  /api/auth/captcha/challenge  → 官方 ALTCHA challenge（widget 直接消费，原样返回）
+ *   POST /api/auth/captcha/verify     → 服务端校验 ALTCHA payload → 签发一次性 captchaToken
+ *   POST /api/auth/login              → 先消费 captchaToken，再校验用户名 / 密码
  *
- * 安全约束：
- *   - challengeId / nonce 使用 crypto.randomBytes；Token 比较使用 timingSafeEqual
- *   - 答案只写 Redis；captchaToken 只存 hash；一次消费（SET NX EX）；绑定 challenge / 租户域名 /
- *     username hash / IP hash / UA hash
- *   - 审计只记录 challengeId、验证类型、风险分数、失败原因枚举、tenantId、usernameHash、IP hash、requestId
- *   - Redis 不可用时 fail closed（503 CAPTCHA_SERVICE_UNAVAILABLE）
+ * 方案约束（用户要求）：
+ *   - 禁止自研滑块、图片裁切、轨迹识别、验证码算法 —— 全部交给官方 `altcha/lib`；
+ *   - challenge 与 payload 必须在**服务端**校验（HMAC 签名 + PoW 重算），不信任前端回调；
+ *   - 不采集鼠标轨迹、不做浏览器指纹识别（只用 IP / UA 头 / 安全事件中心聚合风险）；
+ *   - captchaToken 只存 hash、一次性消费、绑定域名 / username / IP / UA；
+ *   - Redis 不可用 → 生产环境 fail closed（503 CAPTCHA_SERVICE_UNAVAILABLE）。
  */
+import { randomBytes } from 'node:crypto';
 import { env } from '../../config/env';
 import { getDynamicConfig, type DynamicConfig } from '../../config/dynamic-config';
 import {
@@ -21,44 +22,29 @@ import {
   CaptchaInvalidError,
   CaptchaReplayedError,
   CaptchaRequiredError,
+  CaptchaUnavailableError,
   UnauthorizedError,
   ValidationError,
 } from '../../core/errors';
 import { logger } from '../../core/logger';
-import { SecurityEventType, RiskLevel, writeSecurityLog, type SecurityLogInput } from '../../core/security-audit';
+import { RiskLevel, SecurityEventType, writeSecurityLog, type SecurityLogInput } from '../../core/security-audit';
 import { queryOne } from '../../core/database';
 import { findTenantByDomain, findTenantById } from '../../services/tenant-lifecycle';
 import { PLATFORM_TENANT_ID } from '../../shared/constants/tenant';
 import { CAPTCHA_KEY, CaptchaStore, captchaStore } from './store';
-import { isCaptchaActive, loadCaptchaConfig, publicConfig, type CaptchaRuntimeConfig } from './config';
+import { isCaptchaActive, isProviderUsable, loadCaptchaConfig, publicConfig, type CaptchaRuntimeConfig } from './config';
+import { captchaTokenHash, safeEqual, sha256Hex } from './crypto-utils';
+import { createDefaultRiskProvider, evaluateCaptchaPolicy, uaLooksAutomated, type IpRisk, type RiskProvider } from './policy';
+import { classifyAltchaFailure, createAltchaChallenge, decodeAltchaPayload, verifyAltchaPayload } from './altcha';
 import {
-  angleDelta,
-  captchaTokenHash,
-  parseCaptchaToken,
-  pickOne,
-  randomId,
-  safeEqual,
-  sha256Hex,
-  signCaptchaToken,
-} from './crypto-utils';
-import { createDefaultRiskProvider, evaluateForceSecondary, type IpRisk, type RiskProvider } from './policy';
-import { generateRotateImage, generateSliderImages } from './image';
-import { sanitizeInteractionSummary, scoreSilent, uaLooksAutomated, verifyPow } from './silent';
-import {
+  CAPTCHA_CHALLENGE_URL,
+  CAPTCHA_FIELD_NAME,
   FAILURE_WINDOW_SECONDS,
-  ROTATE_TOLERANCE_DEG,
-  SLIDER_TOLERANCE_PX,
-  type CaptchaSecondaryType,
+  type CaptchaFailureReason,
+  type CaptchaPublicConfig,
   type CaptchaStage,
-  type CaptchaTokenPayload,
   type CaptchaTokenRecord,
-  type ChallengeRecord,
-  type ChallengeResponse,
-  type InteractionSummary,
-  type SecondaryReason,
-  type SecondaryVerifyResult,
-  type SilentReason,
-  type SilentVerifyResult,
+  type CaptchaVerifyResult,
 } from './types';
 
 // ==================== 依赖注入 ====================
@@ -78,16 +64,12 @@ export interface CaptchaServiceDeps {
   resolveTenant?: (domainName: string) => Promise<string | null>;
   /** 是否平台超管账号 */
   isPrivilegedAccount?: (tenantId: string, username: string) => Promise<boolean>;
-  /** captchaToken 签名密钥 */
-  secret?: string;
-}
-
-export interface CaptchaBindings {
-  tenantId: string;
-  domainHash: string;
-  usernameHash: string;
-  ipHash: string;
-  uaHash: string;
+  /** ALTCHA HMAC 密钥 */
+  hmacKey?: string;
+  /** provider=tianai 时的独立服务地址 */
+  tianaiBaseUrl?: string;
+  /** Proof-of-Work 难度（PBKDF2 迭代次数），默认取 env.captcha.cost */
+  cost?: number;
 }
 
 export interface CaptchaRequestMeta {
@@ -100,14 +82,20 @@ export interface CaptchaRequestMeta {
   method?: string | null;
 }
 
+export interface CaptchaBindings {
+  tenantId: string;
+  domainHash: string;
+  usernameHash: string;
+  ipHash: string;
+  uaHash: string;
+}
+
 /** 审计只允许这几个字段 */
 interface CaptchaAuditInput {
   eventType: SecurityEventType;
   riskLevel?: RiskLevel;
-  challengeId?: string;
   stage?: CaptchaStage;
-  secondaryType?: CaptchaSecondaryType;
-  score?: number;
+  provider?: string;
   reason?: string;
   tenantId: string;
   usernameHash?: string;
@@ -119,12 +107,12 @@ interface CaptchaAuditInput {
   method?: string | null;
 }
 
-const CAPTCHA_AUDIT_TITLES: Record<string, string> = {
-  CAPTCHA_SILENT_PASSED: '静默人机验证通过',
-  CAPTCHA_SILENT_FAILED: '静默人机验证未通过',
-  CAPTCHA_SECONDARY_REQUIRED: '强制进入二次人机验证',
-  CAPTCHA_SECONDARY_PASSED: '二次人机验证通过',
-  CAPTCHA_SECONDARY_FAILED: '二次人机验证失败',
+const AUDIT_TITLES: Record<string, string> = {
+  CAPTCHA_POW_PASSED: 'ALTCHA 静默验证通过',
+  CAPTCHA_POW_FAILED: 'ALTCHA 静默验证失败',
+  CAPTCHA_VISIBLE_REQUIRED: '要求可见人机验证',
+  CAPTCHA_VISIBLE_PASSED: 'ALTCHA 可见验证通过',
+  CAPTCHA_VISIBLE_FAILED: 'ALTCHA 可见验证失败',
   CAPTCHA_TOKEN_INVALID: '人机验证凭证无效',
   CAPTCHA_TOKEN_REPLAYED: '人机验证凭证重放',
   CAPTCHA_SERVICE_UNAVAILABLE: '人机验证服务不可用',
@@ -134,13 +122,11 @@ function defaultAudit(input: CaptchaAuditInput): Promise<void> {
   return writeSecurityLog({
     eventType: input.eventType,
     riskLevel: input.riskLevel,
-    title: CAPTCHA_AUDIT_TITLES[input.eventType] ?? input.eventType,
-    // 只保存允许的字段：challengeId / 验证类型 / 风险分数 / 失败原因 / tenantId / usernameHash / IP hash / requestId
+    title: AUDIT_TITLES[input.eventType] ?? input.eventType,
+    // 只保存允许的字段：阶段 / provider / 失败原因 / tenantId / usernameHash / IP hash / requestId
     detail: {
-      challengeId: input.challengeId ?? null,
       stage: input.stage ?? null,
-      secondaryType: input.secondaryType ?? null,
-      riskScore: input.score ?? null,
+      provider: input.provider ?? null,
       failureReason: input.reason ?? null,
       tenantId: input.tenantId,
       usernameHash: input.usernameHash ?? null,
@@ -170,7 +156,7 @@ async function defaultResolveTenant(domainName: string): Promise<string | null> 
   return null;
 }
 
-/** 平台超级管理员：is_admin=1（含平台租户内置超管） */
+/** 平台超级管理员：is_admin=1 */
 async function defaultIsPrivilegedAccount(tenantId: string, username: string): Promise<boolean> {
   if (!username) return false;
   try {
@@ -187,6 +173,9 @@ async function defaultIsPrivilegedAccount(tenantId: string, username: string): P
   }
 }
 
+/** ALTCHA challenge 一次性重试次数 */
+const CHALLENGE_CLAIM_ATTEMPTS = 3;
+
 // ==================== 服务 ====================
 
 export class CaptchaService {
@@ -197,7 +186,9 @@ export class CaptchaService {
   private audit: (input: SecurityLogInput) => Promise<void>;
   private resolveTenant: (domainName: string) => Promise<string | null>;
   private isPrivilegedAccount: (tenantId: string, username: string) => Promise<boolean>;
-  private secret: string;
+  private hmacKey: string;
+  private tianaiBaseUrl: string;
+  private cost: number;
 
   /** 开发环境显式绕过（CAPTCHA_DEV_BYPASS=true，生产环境启动会被阻止） */
   readonly devBypass: boolean;
@@ -210,19 +201,19 @@ export class CaptchaService {
     this.audit = deps.audit ?? ((input) => defaultAudit(input as unknown as CaptchaAuditInput));
     this.resolveTenant = deps.resolveTenant ?? defaultResolveTenant;
     this.isPrivilegedAccount = deps.isPrivilegedAccount ?? defaultIsPrivilegedAccount;
-    this.secret = deps.secret ?? env.captcha.secret;
+    this.hmacKey = deps.hmacKey ?? env.captcha.hmacKey;
+    this.tianaiBaseUrl = deps.tianaiBaseUrl ?? env.captcha.tianaiUrl;
+    this.cost = deps.cost ?? env.captcha.cost;
     this.devBypass = deps.devBypass ?? env.captcha.devBypass;
   }
 
-  // ---------- 公共配置 ----------
-
-  async getPublicConfig(domainName: string): Promise<{ enabled: boolean; mode: string; secondaryTypes: CaptchaSecondaryType[] }> {
-    if (this.devBypass) return { enabled: false, mode: 'off', secondaryTypes: [] };
-    const tenantId = await this.resolveTenantSafe(domainName);
-    if (!tenantId) return { enabled: false, mode: 'off', secondaryTypes: [] };
+  /** 动态配置 + 注入的密钥 / 难度 → 运行时配置 */
+  private async loadCfg(tenantId: string): Promise<CaptchaRuntimeConfig> {
     const cfg = await loadCaptchaConfig(tenantId, this.getConfigFn);
-    return publicConfig(cfg);
+    return { ...cfg, hmacKey: this.hmacKey, tianaiBaseUrl: this.tianaiBaseUrl, cost: this.cost };
   }
+
+  // ---------- 内部工具 ----------
 
   private async resolveTenantSafe(domainName: string): Promise<string | null> {
     try {
@@ -247,169 +238,131 @@ export class CaptchaService {
     };
   }
 
+  /** 采集策略输入（并行，任一失败都降级为安全默认值） */
+  private async policyInputs(b: CaptchaBindings, cfg: CaptchaRuntimeConfig, meta: CaptchaRequestMeta) {
+    const [accountFailures, ipAccountCount, ipRisk, rateLimitPressure, privileged] = await Promise.all([
+      this.store.getAccountFailures(b.tenantId, b.usernameHash).catch(() => 0),
+      this.store.getIpAccountCount(b.ipHash).catch(() => 0),
+      this.risk.getIpRisk(meta.ip).catch((): IpRisk => ({ score: 0, level: RiskLevel.LOW })),
+      this.store.getRateLimitPressure(meta.ip).catch(() => 0),
+      this.isPrivilegedAccount(b.tenantId, meta.username).catch(() => false),
+    ]);
+    return evaluateCaptchaPolicy({
+      mode: cfg.mode,
+      forceAfterFailures: cfg.forceAfterFailures,
+      accountFailures,
+      ipAccountCount,
+      ipRiskScore: ipRisk.score,
+      ipRiskLevel: ipRisk.level,
+      rateLimitPressure,
+      privilegedAccount: privileged,
+      deviceAnomalous: uaLooksAutomated(meta.userAgent),
+    });
+  }
+
+  // ---------- 公开配置 ----------
+
+  /**
+   * 公开配置 + 本轮应使用的 ALTCHA 组件形态。
+   * `display=visible` 时说明命中策略（连续登录失败 / 高风险 / 超管 / mode=always），
+   * 前端据此把 widget 从 `display="invisible"` 切成 `display="standard"`。
+   */
+  async getPublicConfig(meta: CaptchaRequestMeta): Promise<CaptchaPublicConfig> {
+    const base: CaptchaPublicConfig = {
+      enabled: false,
+      mode: 'off',
+      provider: 'altcha',
+      display: 'invisible',
+      challengeUrl: CAPTCHA_CHALLENGE_URL,
+      fieldName: CAPTCHA_FIELD_NAME,
+    };
+    if (this.devBypass) return base;
+
+    const tenantId = await this.resolveTenantSafe(meta.domainName);
+    if (!tenantId) return base;
+
+    const cfg = await this.loadCfg(tenantId);
+    if (!this.active(cfg)) return base;
+
+    const b = this.bindings(meta, tenantId);
+    const decision = await this.policyInputs(b, cfg, meta);
+
+    return {
+      ...publicConfig(cfg),
+      display: decision.display,
+      ...(decision.reason ? { reason: decision.reason } : {}),
+      challengeUrl: CAPTCHA_CHALLENGE_URL,
+      fieldName: CAPTCHA_FIELD_NAME,
+    };
+  }
+
   // ---------- challenge ----------
 
-  async createChallenge(
-    meta: CaptchaRequestMeta,
-    preferredStage?: CaptchaStage,
-  ): Promise<{ enabled: boolean; challenge: ChallengeResponse | null }> {
+  /**
+   * 生成一次性 ALTCHA challenge（官方结构原样返回，供 widget `challenge` 属性直接消费）。
+   * 返回对象**不带** `{code,message,data}` 外层封装 —— 与官方 widget 的约定一致。
+   */
+  async createChallenge(meta: CaptchaRequestMeta): Promise<Record<string, unknown>> {
     const tenantId = await this.resolveTenantSafe(meta.domainName);
     if (!tenantId) throw new UnauthorizedError('当前域名未绑定租户');
 
-    const cfg = await loadCaptchaConfig(tenantId, this.getConfigFn);
-    if (!this.active(cfg)) return { enabled: false, challenge: null };
+    const cfg = await this.loadCfg(tenantId);
+    if (!this.active(cfg)) throw new ValidationError('登录人机验证未开启');
+    if (!isProviderUsable({ ...cfg, tianaiBaseUrl: this.tianaiBaseUrl })) {
+      throw new CaptchaUnavailableError('人机验证服务未配置');
+    }
 
     const b = this.bindings(meta, tenantId);
     try {
       await this.store.recordIpAccount(b.ipHash, b.usernameHash, FAILURE_WINDOW_SECONDS);
     } catch { /* 风险信号失败不阻断主流程 */ }
 
-    const forceSecondary = preferredStage === 'secondary' || cfg.mode === 'always';
-    const challenge = forceSecondary
-      ? await this.buildSecondaryChallenge(cfg, b, true)
-      : await this.buildSilentChallenge(cfg, b);
-    return { enabled: true, challenge };
-  }
+    const decision = await this.policyInputs(b, cfg, meta);
 
-  private expiresAt(cfg: CaptchaRuntimeConfig): number {
-    return this.now() + cfg.challengeTtlSeconds * 1000;
-  }
-
-  private async buildSilentChallenge(cfg: CaptchaRuntimeConfig, b: CaptchaBindings): Promise<ChallengeResponse> {
-    const challengeId = randomId(18);
-    const nonce = randomId(24);
-
-    // nonce 首次占用失败（重放 / 碰撞）→ 直接进入第二层
-    const claimed = await this.store.claimNonce(nonce, cfg.challengeTtlSeconds);
-    if (!claimed) return this.buildSecondaryChallenge(cfg, b, true);
-
-    const now = this.now();
-    const record: ChallengeRecord = {
-      challengeId,
-      tenantId: b.tenantId,
-      domainHash: b.domainHash,
-      usernameHash: b.usernameHash,
-      ipHash: b.ipHash,
-      uaHash: b.uaHash,
-      stage: 'silent',
-      nonce,
-      forced: false,
-      createdAt: now,
-      expiresAt: this.expiresAt(cfg),
-    };
-    await this.store.saveChallenge(record, cfg.challengeTtlSeconds);
-    return { challengeId, stage: 'silent', expiresAt: record.expiresAt, nonce, payload: null };
-  }
-
-  private async buildSecondaryChallenge(cfg: CaptchaRuntimeConfig, b: CaptchaBindings, forced: boolean): Promise<ChallengeResponse> {
-    const challengeId = randomId(18);
-    const nonce = randomId(24);
-    const secondaryType = pickOne(cfg.secondaryTypes.length ? cfg.secondaryTypes : (['slider'] as CaptchaSecondaryType[]));
-    const now = this.now();
-    const expiresAt = this.expiresAt(cfg);
-
-    let payload: ChallengeResponse['payload'];
-    let answer: ChallengeRecord['answer'];
-    const imageIds: string[] = [];
-
-    if (secondaryType === 'rotate') {
-      const img = generateRotateImage();
-      const imageId = randomId(12);
-      await this.store.saveImage(imageId, img.svg, cfg.challengeTtlSeconds);
-      imageIds.push(imageId);
-      answer = { angle: img.angle };
-      payload = {
-        canvasWidth: img.canvasSize,
-        canvasHeight: img.canvasSize,
-        imageUrl: `/api/auth/captcha/image/${imageId}`,
-        tolerance: ROTATE_TOLERANCE_DEG,
-        keyboardStep: 5,
-        keyboardHint: '可用左右方向键旋转图片，Enter 提交',
-        hint: '旋转图片使其回正',
-      };
-    } else {
-      const img = generateSliderImages();
-      const bgId = randomId(12);
-      const pieceId = randomId(12);
-      await this.store.saveImage(bgId, img.backgroundSvg, cfg.challengeTtlSeconds);
-      await this.store.saveImage(pieceId, img.pieceSvg, cfg.challengeTtlSeconds);
-      imageIds.push(bgId, pieceId);
-      answer = { x: img.pieceX };
-      payload = {
-        canvasWidth: img.canvasWidth,
-        canvasHeight: img.canvasHeight,
-        pieceSize: img.pieceSize,
-        pieceY: img.pieceY,
-        backgroundImageUrl: `/api/auth/captcha/image/${bgId}`,
-        pieceImageUrl: `/api/auth/captcha/image/${pieceId}`,
-        tolerance: SLIDER_TOLERANCE_PX,
-        keyboardStep: 4,
-        keyboardHint: '可用左右方向键移动滑块，Enter 提交',
-        hint: '拖动滑块使拼图归位',
-      };
+    if (cfg.provider === 'tianai') {
+      return this.tianaiChallenge(decision.display);
     }
 
-    const record: ChallengeRecord = {
-      challengeId,
-      tenantId: b.tenantId,
-      domainHash: b.domainHash,
-      usernameHash: b.usernameHash,
-      ipHash: b.ipHash,
-      uaHash: b.uaHash,
-      stage: 'secondary',
-      secondaryType,
-      answer,
-      nonce,
-      forced,
-      createdAt: now,
-      expiresAt,
-      imageIds,
-    };
-    await this.store.saveChallenge(record, cfg.challengeTtlSeconds);
-    return { challengeId, stage: 'secondary', expiresAt, nonce, secondaryType, payload };
+    // ALTCHA：display 与绑定信息写入被 HMAC 签名的 parameters.data，客户端无法篡改
+    for (let attempt = 0; attempt < CHALLENGE_CLAIM_ATTEMPTS; attempt++) {
+      const challenge = await createAltchaChallenge({
+        hmacKey: this.hmacKey,
+        ttlSeconds: cfg.challengeTtlSeconds,
+        cost: cfg.cost,
+        data: { tenantId, usernameHash: meta.username ? b.usernameHash : '', display: decision.display },
+      });
+      const nonce = String(challenge.parameters?.nonce ?? '');
+      if (!nonce) continue;
+      const claimed = await this.store.claimChallengeNonce(nonce, cfg.challengeTtlSeconds);
+      if (claimed) return challenge as unknown as Record<string, unknown>;
+    }
+    throw new CaptchaUnavailableError('生成人机验证挑战失败，请稍后重试');
   }
 
-  // ---------- 图片（no-store 接口使用） ----------
+  // ---------- verify ----------
 
-  async getImage(imageId: string): Promise<string | null> {
-    if (!imageId || imageId.length > 128) return null;
-    return this.store.getImage(imageId);
-  }
-
-  // ---------- 第一层：静默验证 ----------
-
-  async verifySilent(
-    meta: CaptchaRequestMeta & {
-      challengeId: string;
-      nonce: string;
-      interactionSummary?: unknown;
-      proof?: unknown;
-      startedAt?: number;
-      finishedAt?: number;
-    },
-  ): Promise<SilentVerifyResult> {
+  /**
+   * 服务端校验 ALTCHA payload 并签发一次性 captchaToken。
+   * 校验顺序：payload 结构 → challenge 一次性 → 官方 PoW/签名 → 策略（是否需要可见交互）→ 签发。
+   */
+  async verifyPayload(meta: CaptchaRequestMeta & { payload?: unknown; stage?: CaptchaStage }): Promise<CaptchaVerifyResult> {
     const tenantId = await this.resolveTenantSafe(meta.domainName);
     if (!tenantId) throw new UnauthorizedError('当前域名未绑定租户');
-    const cfg = await loadCaptchaConfig(tenantId, this.getConfigFn);
+
+    const cfg = await this.loadCfg(tenantId);
     if (!this.active(cfg)) throw new ValidationError('登录人机验证未开启');
+    if (!isProviderUsable({ ...cfg, tianaiBaseUrl: this.tianaiBaseUrl })) {
+      throw new CaptchaUnavailableError('人机验证服务未配置');
+    }
 
     const b = this.bindings(meta, tenantId);
-    const now = this.now();
-    const record = await this.store.getChallenge(meta.challengeId);
+    const stage: CaptchaStage = meta.stage === 'visible' ? 'visible' : 'invisible';
 
-    const toSecondary = async (
-      eventType: SecurityEventType,
-      reason: SilentReason,
-      score: number,
-      stage: CaptchaStage = 'silent',
-      secondaryType?: CaptchaSecondaryType,
-    ): Promise<SilentVerifyResult> => {
+    const deny = async (reason: CaptchaFailureReason, eventType: SecurityEventType, extra?: { requireVisible?: boolean }): Promise<CaptchaVerifyResult> => {
       await this.safeAudit({
         eventType,
-        challengeId: meta.challengeId,
         stage,
-        secondaryType,
-        score,
+        provider: cfg.provider,
         reason,
         tenantId,
         usernameHash: b.usernameHash,
@@ -420,189 +373,68 @@ export class CaptchaService {
         route: meta.route,
         method: meta.method,
       });
-      const secondaryChallenge = await this.buildSecondaryChallenge(cfg, b, true);
-      return { passed: false, nextStage: 'secondary', secondaryChallenge };
+      return { passed: false, reason, ...(extra?.requireVisible ? { requireVisible: true } : {}) };
     };
 
-    // challenge 缺失 / 过期 / 阶段不符 → 一律进入第二层（不存在绕过路径）
-    if (!record) return toSecondary(SecurityEventType.CAPTCHA_SECONDARY_REQUIRED, 'CHALLENGE_NOT_FOUND', 0);
-    if (record.stage !== 'silent') {
-      return toSecondary(SecurityEventType.CAPTCHA_SECONDARY_REQUIRED, 'CHALLENGE_STAGE_MISMATCH', 0, record.stage, record.secondaryType);
-    }
-    if (record.expiresAt <= now) {
-      await this.store.deleteChallenge(record.challengeId).catch(() => { /* ignore */ });
-      return toSecondary(SecurityEventType.CAPTCHA_SECONDARY_REQUIRED, 'CHALLENGE_EXPIRED', 0);
-    }
-
-    // 绑定校验：challenge 必须与当前请求同租户 / 同域名 / 同账号 / 同设备
-    const bindingMismatch =
-      !safeEqual(record.tenantId, b.tenantId)
-      || !safeEqual(record.domainHash, b.domainHash)
-      || !safeEqual(record.usernameHash, b.usernameHash)
-      || !safeEqual(record.ipHash, b.ipHash)
-      || !safeEqual(record.uaHash, b.uaHash);
-
-    // nonce 重放
-    const nonceReplayed = !safeEqual(record.nonce, String(meta.nonce ?? ''));
-
-    const summary: InteractionSummary = sanitizeInteractionSummary(meta.interactionSummary);
-    const serverDwellMs = Math.max(0, now - record.createdAt);
-    const clientDwell =
-      typeof meta.finishedAt === 'number' && typeof meta.startedAt === 'number'
-        ? Math.max(0, meta.finishedAt - meta.startedAt)
-        : undefined;
-    const dwellMs = clientDwell !== undefined ? Math.min(clientDwell, serverDwellMs + 5000) : serverDwellMs;
-
-    const pow = meta.proof === undefined ? { provided: false, valid: false } : verifyPow(record.challengeId, meta.proof);
-
-    // 风险信号（并行采集，任一失败都降级为安全默认值）
-    const [accountFailures, ipAccountCount, ipRisk, rateLimitPressure, privileged] = await Promise.all([
-      this.store.getAccountFailures(record.tenantId, b.usernameHash).catch(() => 0),
-      this.store.getIpAccountCount(b.ipHash).catch(() => 0),
-      this.risk.getIpRisk(meta.ip).catch((): IpRisk => ({ score: 0, level: RiskLevel.LOW })),
-      this.store.getRateLimitPressure(meta.ip).catch(() => 0),
-      this.isPrivilegedAccount(record.tenantId, meta.username).catch(() => false),
-    ]);
-
-    const scoreResult = scoreSilent({
-      summary: { ...summary, dwellMs },
-      serverDwellMs,
-      userAgent: meta.userAgent,
-      threshold: cfg.silentThreshold,
-      pow,
-    });
-
-    const force = evaluateForceSecondary({
-      mode: cfg.mode,
-      forceAfterFailures: cfg.forceAfterFailures,
-      accountFailures,
-      ipAccountCount,
-      ipRisk,
-      rateLimitPressure,
-      nonceReplayed,
-      uaAnomalous: bindingMismatch || uaLooksAutomated(meta.userAgent),
-      privilegedAccount: privileged,
-    });
-
-    if (force.forced || !scoreResult.passed) {
-      const reason: SilentReason = force.forced
-        ? (force.reasons[0] ?? 'RISK_FORCED')
-        : (scoreResult.reasons[0] ?? 'LOW_SCORE');
-      const eventType = force.forced
-        ? SecurityEventType.CAPTCHA_SECONDARY_REQUIRED
-        : SecurityEventType.CAPTCHA_SILENT_FAILED;
-      return toSecondary(eventType, reason, scoreResult.score);
-    }
-
-    const issued = await this.issueToken(cfg, record.challengeId, b, 'silent', record.tenantId);
-    await this.safeAudit({
-      eventType: SecurityEventType.CAPTCHA_SILENT_PASSED,
-      challengeId: record.challengeId,
-      stage: 'silent',
-      score: scoreResult.score,
-      tenantId,
-      usernameHash: b.usernameHash,
-      ipHash: b.ipHash,
-      clientIp: meta.ip,
-      userAgent: meta.userAgent,
-      requestId: meta.requestId,
-      route: meta.route,
-      method: meta.method,
-    });
-    return { passed: true, captchaToken: issued.captchaToken, expiresAt: issued.expiresAt };
-  }
-
-  // ---------- 第二层：可视化验证 ----------
-
-  async verifySecondary(
-    meta: CaptchaRequestMeta & {
-      challengeId: string;
-      answer?: { x?: number; angle?: number };
-      nonce?: string;
-    },
-  ): Promise<SecondaryVerifyResult> {
-    const tenantId = await this.resolveTenantSafe(meta.domainName);
-    if (!tenantId) throw new UnauthorizedError('当前域名未绑定租户');
-    const cfg = await loadCaptchaConfig(tenantId, this.getConfigFn);
-    if (!this.active(cfg)) throw new ValidationError('登录人机验证未开启');
-
-    const b = this.bindings(meta, tenantId);
-
-    const deny = async (
-      reason: SecondaryReason,
-      retryable: boolean,
-      remainingAttempts: number,
-      stage: CaptchaStage = 'secondary',
-      secondaryType?: CaptchaSecondaryType,
-    ): Promise<SecondaryVerifyResult> => {
+    if (cfg.provider === 'tianai') {
+      const ok = await this.tianaiVerify(meta.payload);
+      if (!ok) return deny('SOLUTION_INVALID', SecurityEventType.CAPTCHA_POW_FAILED);
+      const issued = await this.issueToken(cfg, b, stage, tenantId);
       await this.safeAudit({
-        eventType: SecurityEventType.CAPTCHA_SECONDARY_FAILED,
-        challengeId: meta.challengeId,
-        stage,
-        secondaryType,
-        reason,
-        tenantId,
-        usernameHash: b.usernameHash,
-        ipHash: b.ipHash,
-        clientIp: meta.ip,
-        userAgent: meta.userAgent,
-        requestId: meta.requestId,
-        route: meta.route,
-        method: meta.method,
+        eventType: SecurityEventType.CAPTCHA_POW_PASSED, stage, provider: cfg.provider,
+        tenantId, usernameHash: b.usernameHash, ipHash: b.ipHash, clientIp: meta.ip,
+        userAgent: meta.userAgent, requestId: meta.requestId, route: meta.route, method: meta.method,
       });
-      return { passed: false, retryable, remainingAttempts, reason };
-    };
-
-    const record = await this.store.getChallenge(meta.challengeId);
-    const now = this.now();
-    if (!record) return deny('CHALLENGE_NOT_FOUND', false, 0);
-    if (record.stage !== 'secondary') return deny('CHALLENGE_STAGE_MISMATCH', false, 0, record.stage);
-    if (record.expiresAt <= now) {
-      await this.store.deleteChallenge(record.challengeId).catch(() => { /* ignore */ });
-      return deny('CHALLENGE_EXPIRED', false, 0, 'secondary', record.secondaryType);
+      return { passed: true, captchaToken: issued.captchaToken, expiresAt: issued.expiresAt };
     }
 
-    const bindingMismatch =
-      !safeEqual(record.tenantId, b.tenantId)
-      || !safeEqual(record.domainHash, b.domainHash)
-      || !safeEqual(record.usernameHash, b.usernameHash)
-      || !safeEqual(record.ipHash, b.ipHash)
-      || !safeEqual(record.uaHash, b.uaHash);
-    if (bindingMismatch) return deny('TOKEN_BINDING_MISMATCH', false, 0, record.stage, record.secondaryType);
-
-    // 尝试次数：超过上限立即失效
-    const attempts = await this.store.bumpAttempts(record.challengeId, cfg.challengeTtlSeconds);
-    if (attempts > cfg.maxAttempts) {
-      await this.store.deleteChallenge(record.challengeId).catch(() => { /* ignore */ });
-      return deny('MAX_ATTEMPTS', false, 0, record.stage, record.secondaryType);
+    // ---- ALTCHA ----
+    if (meta.payload === undefined || meta.payload === null || meta.payload === '') {
+      return deny('PAYLOAD_MISSING', SecurityEventType.CAPTCHA_POW_FAILED);
     }
-    const remainingAttempts = Math.max(0, cfg.maxAttempts - attempts);
+    const payload = decodeAltchaPayload(meta.payload);
+    if (!payload) return deny('PAYLOAD_MALFORMED', SecurityEventType.CAPTCHA_POW_FAILED);
 
-    if (!record.answer) return deny('MISSING_ANSWER', remainingAttempts > 0, remainingAttempts, record.stage, record.secondaryType);
-
-    const answer = meta.answer ?? {};
-    let correct = false;
-    if (record.secondaryType === 'rotate') {
-      const angle = Number(answer.angle);
-      if (!Number.isFinite(angle)) return deny('MISSING_ANSWER', remainingAttempts > 0, remainingAttempts, record.stage, record.secondaryType);
-      const expected = Number(record.answer.angle ?? 0);
-      correct = angleDelta(expected + angle, 0) <= ROTATE_TOLERANCE_DEG;
-    } else {
-      const x = Number(answer.x);
-      if (!Number.isFinite(x)) return deny('MISSING_ANSWER', remainingAttempts > 0, remainingAttempts, record.stage, record.secondaryType);
-      const expected = Number(record.answer.x ?? -1);
-      correct = Math.abs(x - expected) <= SLIDER_TOLERANCE_PX;
+    // 绑定校验（challenge 由本服务签发，data 在 HMAC 签名内，客户端无法伪造）
+    const data = (payload.challenge.parameters.data ?? {}) as Record<string, unknown>;
+    const boundTenant = String(data.tenantId ?? '');
+    const boundUsernameHash = String(data.usernameHash ?? '');
+    if (!safeEqual(boundTenant, tenantId)) {
+      return deny('BINDING_MISMATCH', SecurityEventType.CAPTCHA_POW_FAILED);
+    }
+    if (boundUsernameHash && !safeEqual(boundUsernameHash, b.usernameHash)) {
+      return deny('BINDING_MISMATCH', SecurityEventType.CAPTCHA_POW_FAILED);
     }
 
-    if (!correct) return deny('ANSWER_MISMATCH', remainingAttempts > 0, remainingAttempts, record.stage, record.secondaryType);
+    // challenge 一次性（官方要求：每个 challenge 只能使用一次）
+    const nonce = String(payload.challenge.parameters.nonce ?? '');
+    if (!nonce) return deny('PAYLOAD_MALFORMED', SecurityEventType.CAPTCHA_POW_FAILED);
 
-    await this.store.deleteChallenge(record.challengeId).catch(() => { /* ignore */ });
-    const issued = await this.issueToken(cfg, record.challengeId, b, 'secondary', record.tenantId);
+    // 策略复核：challenge 领取时可能还没带上 username，这里以**当前请求**重新评估。
+    // 策略要求可见交互时，invisible 提交一律拒绝（消耗 challenge 之前就拦下，避免白烧一次挑战）。
+    const decision = await this.policyInputs(b, cfg, meta);
+    const challengeDisplay = String(data.display ?? 'invisible');
+    if (stage === 'invisible' && (decision.display === 'visible' || challengeDisplay === 'visible')) {
+      return deny('VISIBLE_REQUIRED', SecurityEventType.CAPTCHA_VISIBLE_REQUIRED, { requireVisible: true });
+    }
+
+    const consumed = await this.store.consumeChallengeNonce(nonce);
+    if (!consumed) return deny('CHALLENGE_EXPIRED', SecurityEventType.CAPTCHA_POW_FAILED);
+
+    // 官方库校验：过期 → 签名 → PoW
+    const outcome = await verifyAltchaPayload({ payload, hmacKey: this.hmacKey });
+    if (!outcome.ok) {
+      const reason: CaptchaFailureReason = outcome.error === 'ALGORITHM_UNSUPPORTED' ? 'ALGORITHM_UNSUPPORTED' : 'PAYLOAD_MALFORMED';
+      return deny(reason, SecurityEventType.CAPTCHA_POW_FAILED);
+    }
+    const failure = classifyAltchaFailure(outcome.result);
+    if (failure) return deny(failure, SecurityEventType.CAPTCHA_POW_FAILED);
+
+    const issued = await this.issueToken(cfg, b, stage, tenantId);
     await this.safeAudit({
-      eventType: SecurityEventType.CAPTCHA_SECONDARY_PASSED,
-      challengeId: record.challengeId,
-      stage: 'secondary',
-      secondaryType: record.secondaryType,
+      eventType: stage === 'visible' ? SecurityEventType.CAPTCHA_VISIBLE_PASSED : SecurityEventType.CAPTCHA_POW_PASSED,
+      stage,
+      provider: cfg.provider,
       tenantId,
       usernameHash: b.usernameHash,
       ipHash: b.ipHash,
@@ -619,17 +451,16 @@ export class CaptchaService {
 
   private async issueToken(
     cfg: CaptchaRuntimeConfig,
-    challengeId: string,
     b: CaptchaBindings,
     stage: CaptchaStage,
     tenantId: string,
   ): Promise<{ captchaToken: string; expiresAt: number }> {
     const now = this.now();
     const expiresAt = now + cfg.tokenTtlSeconds * 1000;
-    const payload: CaptchaTokenPayload = { v: 1, c: challengeId, t: tenantId, e: Math.floor(expiresAt / 1000) };
-    const token = signCaptchaToken(payload, this.secret);
+    // 纯随机 Token（32 字节），Redis 只保存 sha256
+    const token = randomBytes(32).toString('base64url');
     const record: CaptchaTokenRecord = {
-      challengeId,
+      provider: cfg.provider,
       tenantId,
       domainHash: b.domainHash,
       usernameHash: b.usernameHash,
@@ -639,7 +470,6 @@ export class CaptchaService {
       issuedAt: now,
       expiresAt,
     };
-    // 只保存 Token hash
     await this.store.saveToken(captchaTokenHash(token), record, cfg.tokenTtlSeconds);
     return { captchaToken: token, expiresAt };
   }
@@ -651,18 +481,16 @@ export class CaptchaService {
   async consumeLoginToken(meta: CaptchaRequestMeta & { captchaToken?: string }): Promise<{ required: boolean; stage?: CaptchaStage }> {
     const tenantId = await this.resolveTenantSafe(meta.domainName);
     if (!tenantId) throw new UnauthorizedError('当前域名未绑定租户');
-    const cfg = await loadCaptchaConfig(tenantId, this.getConfigFn);
+
+    const cfg = await this.loadCfg(tenantId);
     if (!this.active(cfg)) return { required: false };
+    if (!isProviderUsable({ ...cfg, tianaiBaseUrl: this.tianaiBaseUrl })) {
+      throw new CaptchaUnavailableError('人机验证服务未配置');
+    }
 
     const b = this.bindings(meta, tenantId);
     const token = (meta.captchaToken ?? '').trim();
     if (!token) throw new CaptchaRequiredError();
-
-    const parsed = parseCaptchaToken(token, this.secret);
-    if (!parsed.ok) {
-      await this.tokenAudit(SecurityEventType.CAPTCHA_TOKEN_INVALID, 'SIGNATURE_INVALID', tenantId, b, meta);
-      throw new CaptchaInvalidError();
-    }
 
     const consumed = await this.store.consumeToken(captchaTokenHash(token), cfg.tokenTtlSeconds + 300);
     if (consumed.status === 'replayed') {
@@ -680,8 +508,7 @@ export class CaptchaService {
       || !safeEqual(rec.domainHash, b.domainHash)
       || !safeEqual(rec.usernameHash, b.usernameHash)
       || !safeEqual(rec.ipHash, b.ipHash)
-      || !safeEqual(rec.uaHash, b.uaHash)
-      || !safeEqual(rec.challengeId, parsed.payload.c);
+      || !safeEqual(rec.uaHash, b.uaHash);
     if (mismatch) {
       await this.tokenAudit(SecurityEventType.CAPTCHA_TOKEN_INVALID, 'BINDING_MISMATCH', tenantId, b, meta);
       throw new CaptchaInvalidError();
@@ -711,13 +538,13 @@ export class CaptchaService {
     });
   }
 
-  // ---------- 登录失败计数（用于 forceAfterFailures） ----------
+  // ---------- 登录失败计数 ----------
 
   async recordLoginFailure(meta: CaptchaRequestMeta): Promise<void> {
     try {
       const tenantId = await this.resolveTenantSafe(meta.domainName);
       if (!tenantId) return;
-      const cfg = await loadCaptchaConfig(tenantId, this.getConfigFn);
+      const cfg = await this.loadCfg(tenantId);
       if (!this.active(cfg)) return;
       const b = this.bindings(meta, tenantId);
       await this.store.recordAccountFailure(tenantId, b.usernameHash, FAILURE_WINDOW_SECONDS);
@@ -732,12 +559,47 @@ export class CaptchaService {
     try {
       const tenantId = await this.resolveTenantSafe(meta.domainName);
       if (!tenantId) return;
-      const cfg = await loadCaptchaConfig(tenantId, this.getConfigFn);
+      const cfg = await this.loadCfg(tenantId);
       if (!this.active(cfg)) return;
       const b = this.bindings(meta, tenantId);
       await this.store.resetAccountFailures(tenantId, b.usernameHash);
     } catch (err) {
       logger.warn('[captcha] reset login failures skipped', { error: String(err) });
+    }
+  }
+
+  // ---------- provider: tianai（可选，独立服务代理） ----------
+
+  /** 代理 Tianai CAPTCHA 的 challenge 获取（Koa 不参与算法实现）。 */
+  private async tianaiChallenge(display: CaptchaStage): Promise<Record<string, unknown>> {
+    const url = `${this.tianaiBaseUrl.replace(/\/+$/, '')}/gen?type=blockPuzzle&display=${display}`;
+    try {
+      const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(5000) });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      return (await res.json()) as Record<string, unknown>;
+    } catch (err) {
+      logger.error('[captcha] tianai challenge failed', { error: String(err) });
+      throw new CaptchaUnavailableError();
+    }
+  }
+
+  /** 代理 Tianai CAPTCHA 的校验（Koa 只做转发 + 签发内部 captchaToken）。 */
+  private async tianaiVerify(payload: unknown): Promise<boolean> {
+    if (!payload || typeof payload !== 'object') return false;
+    const url = `${this.tianaiBaseUrl.replace(/\/+$/, '')}/check`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return false;
+      const data: any = await res.json();
+      return data?.valid === true || data?.data === true;
+    } catch (err) {
+      logger.error('[captcha] tianai verify failed', { error: String(err) });
+      throw new CaptchaUnavailableError();
     }
   }
 

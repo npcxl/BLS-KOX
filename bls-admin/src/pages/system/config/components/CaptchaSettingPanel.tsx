@@ -1,14 +1,17 @@
 /**
- * 系统参数页 —— 「登录人机验证」开关与高级配置
+ * 系统参数页 —— 「登录人机验证」开关与高级配置（ALTCHA 方案）
  *
  * 直接读写 sys_config 中的 sys.login.captcha.* 参数（与系统参数表格同一份数据），
  * 保存后后端会清空 Dynamic Config 缓存，配置立即生效。
+ *
+ * 注意：ALTCHA 的 HMAC 密钥、PoW 难度、Tianai 服务地址等**密钥类配置来自环境变量**
+ * （`ALTCHA_HMAC_KEY` / `ALTCHA_COST` / `TIANAI_BASE_URL`），不在本页面暴露。
  */
 import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import {
+  Alert,
   Button,
   Card,
-  Checkbox,
   Collapse,
   Descriptions,
   Form,
@@ -29,48 +32,36 @@ const RESOURCE = { basePath: BASE_PATH, remove: false, status: false } as const;
 export const CAPTCHA_KEYS = {
   enabled: 'sys.login.captcha.enabled',
   mode: 'sys.login.captcha.mode',
-  silentThreshold: 'sys.login.captcha.silentThreshold',
-  forceAfterFailures: 'sys.login.captcha.forceAfterFailures',
+  provider: 'sys.login.captcha.provider',
   challengeTtlSeconds: 'sys.login.captcha.challengeTtlSeconds',
   tokenTtlSeconds: 'sys.login.captcha.tokenTtlSeconds',
-  secondaryTypes: 'sys.login.captcha.secondaryTypes',
-  maxAttempts: 'sys.login.captcha.maxAttempts',
-  provider: 'sys.login.captcha.provider',
+  forceAfterFailures: 'sys.login.captcha.forceAfterFailures',
 } as const;
 
-/** 行不存在时新建用的展示名与默认值（与后端 Dynamic Config 默认值保持一致） */
+/** 行不存在时新建用的展示名与默认值（与后端 Dynamic Config 默认值一致） */
 const KEY_META: Record<string, { name: string; defaultValue: string; remark: string }> = {
-  [CAPTCHA_KEYS.enabled]: { name: '登录人机验证开关', defaultValue: 'true', remark: '是否开启登录人机验证' },
+  [CAPTCHA_KEYS.enabled]: { name: '登录人机验证开关', defaultValue: 'true', remark: '是否开启登录人机验证（ALTCHA）' },
   [CAPTCHA_KEYS.mode]: { name: '登录人机验证模式', defaultValue: 'adaptive', remark: 'off/adaptive/always' },
-  [CAPTCHA_KEYS.silentThreshold]: { name: '静默验证通过阈值', defaultValue: '70', remark: '静默行为评分通过阈值 0-100' },
-  [CAPTCHA_KEYS.forceAfterFailures]: { name: '连续失败强制二级次数', defaultValue: '3', remark: '同账号近期连续登录失败达到该值强制二级验证' },
-  [CAPTCHA_KEYS.challengeTtlSeconds]: { name: '验证挑战有效期(秒)', defaultValue: '180', remark: 'challenge 有效期 30-900' },
-  [CAPTCHA_KEYS.tokenTtlSeconds]: { name: '登录验证凭证有效期(秒)', defaultValue: '120', remark: 'captchaToken 有效期 30-600' },
-  [CAPTCHA_KEYS.secondaryTypes]: { name: '二级验证类型', defaultValue: 'slider,rotate', remark: 'slider=滑块拼图,rotate=图像旋转' },
-  [CAPTCHA_KEYS.maxAttempts]: { name: '单挑战最大尝试次数', defaultValue: '5', remark: '同一 challenge 超过该次数立即失效 1-20' },
-  [CAPTCHA_KEYS.provider]: { name: '人机验证提供方', defaultValue: 'builtin', remark: '第一版仅内置实现 builtin' },
+  [CAPTCHA_KEYS.provider]: { name: '人机验证提供方', defaultValue: 'altcha', remark: 'altcha=自托管 ALTCHA(默认)；tianai=独立验证码服务' },
+  [CAPTCHA_KEYS.challengeTtlSeconds]: { name: '验证挑战有效期(秒)', defaultValue: '180', remark: 'ALTCHA challenge 有效期 30-900' },
+  [CAPTCHA_KEYS.tokenTtlSeconds]: { name: '登录验证凭证有效期(秒)', defaultValue: '120', remark: '一次性 captchaToken 有效期 30-600' },
+  [CAPTCHA_KEYS.forceAfterFailures]: { name: '连续失败要求可见验证次数', defaultValue: '3', remark: '同账号近期连续登录失败达到该值后不再完全静默 1-100' },
 };
 
 export interface CaptchaSettingValues {
   mode: 'off' | 'adaptive' | 'always';
-  silentThreshold: number;
-  forceAfterFailures: number;
+  provider: 'altcha' | 'tianai';
   challengeTtlSeconds: number;
   tokenTtlSeconds: number;
-  secondaryTypes: string[];
-  maxAttempts: number;
-  provider: string;
+  forceAfterFailures: number;
 }
 
 const DEFAULTS: CaptchaSettingValues = {
   mode: 'adaptive',
-  silentThreshold: 70,
-  forceAfterFailures: 3,
+  provider: 'altcha',
   challengeTtlSeconds: 180,
   tokenTtlSeconds: 120,
-  secondaryTypes: ['slider', 'rotate'],
-  maxAttempts: 5,
-  provider: 'builtin',
+  forceAfterFailures: 3,
 };
 
 function toBoolean(raw?: string | null): boolean {
@@ -80,21 +71,14 @@ function toBoolean(raw?: string | null): boolean {
 
 function toValues(rows: Map<string, ConfigRecord>): CaptchaSettingValues {
   const get = (key: string, fallback: string) => String(rows.get(key)?.configValue ?? fallback);
-  const types = get(CAPTCHA_KEYS.secondaryTypes, DEFAULTS.secondaryTypes.join(','))
-    .split(',')
-    .map((t) => t.trim())
-    .filter((t) => t === 'slider' || t === 'rotate');
+  const mode = get(CAPTCHA_KEYS.mode, DEFAULTS.mode);
+  const provider = get(CAPTCHA_KEYS.provider, DEFAULTS.provider);
   return {
-    mode: (['off', 'adaptive', 'always'].includes(get(CAPTCHA_KEYS.mode, DEFAULTS.mode))
-      ? get(CAPTCHA_KEYS.mode, DEFAULTS.mode)
-      : DEFAULTS.mode) as CaptchaSettingValues['mode'],
-    silentThreshold: Number(get(CAPTCHA_KEYS.silentThreshold, '70')) || DEFAULTS.silentThreshold,
-    forceAfterFailures: Number(get(CAPTCHA_KEYS.forceAfterFailures, '3')) || DEFAULTS.forceAfterFailures,
+    mode: (['off', 'adaptive', 'always'].includes(mode) ? mode : DEFAULTS.mode) as CaptchaSettingValues['mode'],
+    provider: (['altcha', 'tianai'].includes(provider) ? provider : DEFAULTS.provider) as CaptchaSettingValues['provider'],
     challengeTtlSeconds: Number(get(CAPTCHA_KEYS.challengeTtlSeconds, '180')) || DEFAULTS.challengeTtlSeconds,
     tokenTtlSeconds: Number(get(CAPTCHA_KEYS.tokenTtlSeconds, '120')) || DEFAULTS.tokenTtlSeconds,
-    secondaryTypes: types.length ? types : DEFAULTS.secondaryTypes,
-    maxAttempts: Number(get(CAPTCHA_KEYS.maxAttempts, '5')) || DEFAULTS.maxAttempts,
-    provider: get(CAPTCHA_KEYS.provider, DEFAULTS.provider),
+    forceAfterFailures: Number(get(CAPTCHA_KEYS.forceAfterFailures, '3')) || DEFAULTS.forceAfterFailures,
   };
 }
 
@@ -182,13 +166,10 @@ export default function CaptchaSettingPanel({ canEdit = true, onSaved }: Captcha
     try {
       await Promise.all([
         writeKey(CAPTCHA_KEYS.mode, values.mode),
-        writeKey(CAPTCHA_KEYS.silentThreshold, String(values.silentThreshold)),
-        writeKey(CAPTCHA_KEYS.forceAfterFailures, String(values.forceAfterFailures)),
+        writeKey(CAPTCHA_KEYS.provider, values.provider),
         writeKey(CAPTCHA_KEYS.challengeTtlSeconds, String(values.challengeTtlSeconds)),
         writeKey(CAPTCHA_KEYS.tokenTtlSeconds, String(values.tokenTtlSeconds)),
-        writeKey(CAPTCHA_KEYS.secondaryTypes, values.secondaryTypes.join(',')),
-        writeKey(CAPTCHA_KEYS.maxAttempts, String(values.maxAttempts)),
-        writeKey(CAPTCHA_KEYS.provider, values.provider),
+        writeKey(CAPTCHA_KEYS.forceAfterFailures, String(values.forceAfterFailures)),
       ]);
       message.success('登录人机验证配置已更新，立即生效');
       await load();
@@ -205,9 +186,9 @@ export default function CaptchaSettingPanel({ canEdit = true, onSaved }: Captcha
     const values = toValues(rows);
     return [
       { label: '验证模式', value: values.mode },
-      { label: '二级验证类型', value: values.secondaryTypes.join(' / ') },
-      { label: '静默阈值', value: String(values.silentThreshold) },
-      { label: '最大尝试次数', value: String(values.maxAttempts) },
+      { label: '提供方', value: values.provider === 'altcha' ? 'ALTCHA（自托管）' : 'Tianai CAPTCHA' },
+      { label: '凭证有效期', value: `${values.tokenTtlSeconds} 秒` },
+      { label: '挑战有效期', value: `${values.challengeTtlSeconds} 秒` },
     ];
   }, [rows]);
 
@@ -257,38 +238,42 @@ export default function CaptchaSettingPanel({ canEdit = true, onSaved }: Captcha
                     initialValues={DEFAULTS}
                     disabled={!canEdit}
                   >
+                    <Alert
+                      type="info"
+                      showIcon
+                      style={{ marginBottom: 16 }}
+                      message="ALTCHA 密钥、PoW 难度与 Tianai 服务地址来自环境变量"
+                      description="ALTCHA_HMAC_KEY（生产必填）、ALTCHA_COST、TIANAI_BASE_URL 由部署环境配置，不在本页面暴露。"
+                    />
                     <Form.Item
                       label="验证模式"
                       name="mode"
-                      extra="off=关闭；adaptive=静默评分不足或命中风险时进入二级；always=始终二级"
+                      extra="off=关闭；adaptive=默认静默（连续失败/高风险时转为可见验证）；always=始终显示可见组件"
                     >
                       <Select
                         options={[
                           { value: 'off', label: 'off（关闭）' },
-                          { value: 'adaptive', label: 'adaptive（自适应）' },
-                          { value: 'always', label: 'always（始终二级）' },
+                          { value: 'adaptive', label: 'adaptive（自适应，默认）' },
+                          { value: 'always', label: 'always（始终可见）' },
                         ]}
                       />
                     </Form.Item>
                     <Form.Item
-                      label="静默验证通过阈值"
-                      name="silentThreshold"
-                      extra="静默行为评分达到该值即无感放行（0-100）"
-                      rules={[{ required: true, message: '请输入阈值' }]}
+                      label="提供方"
+                      name="provider"
+                      extra="altcha=自托管 ALTCHA（默认，服务端校验 Proof-of-Work）；tianai=独立部署的 Tianai CAPTCHA 服务（仅在确需滑块拼图时启用，需配置 TIANAI_BASE_URL）"
                     >
-                      <InputNumber min={0} max={100} step={5} style={{ width: 180 }} />
-                    </Form.Item>
-                    <Form.Item
-                      label="连续失败强制二次验证次数"
-                      name="forceAfterFailures"
-                      extra="同一账号近期连续登录失败达到该次数后强制进入二级（1-100）"
-                      rules={[{ required: true, message: '请输入次数' }]}
-                    >
-                      <InputNumber min={1} max={100} style={{ width: 180 }} />
+                      <Select
+                        options={[
+                          { value: 'altcha', label: 'altcha（ALTCHA 自托管，默认）' },
+                          { value: 'tianai', label: 'tianai（Tianai CAPTCHA 独立服务）' },
+                        ]}
+                      />
                     </Form.Item>
                     <Form.Item
                       label="验证挑战有效期（秒）"
                       name="challengeTtlSeconds"
+                      extra="ALTCHA challenge 有效期（30-900）"
                       rules={[{ required: true, message: '请输入有效期' }]}
                     >
                       <InputNumber min={30} max={900} style={{ width: 180 }} />
@@ -296,36 +281,18 @@ export default function CaptchaSettingPanel({ canEdit = true, onSaved }: Captcha
                     <Form.Item
                       label="登录凭证有效期（秒）"
                       name="tokenTtlSeconds"
+                      extra="一次性 captchaToken 有效期，默认 120（30-600）"
                       rules={[{ required: true, message: '请输入有效期' }]}
                     >
                       <InputNumber min={30} max={600} style={{ width: 180 }} />
                     </Form.Item>
                     <Form.Item
-                      label="二级验证类型"
-                      name="secondaryTypes"
-                      extra="至少选择一种；两种都选时随机使用"
-                      rules={[{ required: true, message: '请至少选择一种验证类型' }]}
-                    >
-                      <Checkbox.Group
-                        options={[
-                          { value: 'slider', label: '滑块拼图' },
-                          { value: 'rotate', label: '图像旋转' },
-                        ]}
-                      />
-                    </Form.Item>
-                    <Form.Item
-                      label="单挑战最大尝试次数"
-                      name="maxAttempts"
-                      extra="同一 challenge 超过该次数立即失效（1-20）"
+                      label="连续失败要求可见验证次数"
+                      name="forceAfterFailures"
+                      extra="同一账号近期连续登录失败达到该值后，不再完全静默，改为展示 ALTCHA 可见组件（1-100）"
                       rules={[{ required: true, message: '请输入次数' }]}
                     >
-                      <InputNumber min={1} max={20} style={{ width: 180 }} />
-                    </Form.Item>
-                    <Form.Item label="提供方" name="provider" extra="第一版仅内置实现（builtin）">
-                      <Select
-                        style={{ width: 180 }}
-                        options={[{ value: 'builtin', label: 'builtin（内置）' }]}
-                      />
+                      <InputNumber min={1} max={100} style={{ width: 180 }} />
                     </Form.Item>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <Button

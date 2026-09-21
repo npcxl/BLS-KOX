@@ -2,8 +2,8 @@
 
 > **Document version:** 1.1.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
 >
-> *Uncommitted note:* the `CAPTCHA_*` event types and `rule_captcha_token_abuse` were verified
-> against `61aaf9a` + uncommitted captcha changes.
+> *Uncommitted note:* the `CAPTCHA_*` event types (ALTCHA names) and the captcha risk rules were
+> verified against `753d86a` + uncommitted captcha changes.
 
 This is what makes the **Security Center** page (`/system/security`) and the
 **Security Log** page (`/system/log/security`) show data.
@@ -35,10 +35,13 @@ IDEMPOTENCY_CONFLICT    RATE_LIMIT_EXCEEDED     FREQUENCY_LIMIT
 BATCH_EXPORT            ROLE_CHANGE             PERM_CHANGE
 REFRESH_TOKEN_REUSE     API_KEY_CREATED         API_KEY_REVOKED
 SENSITIVE_DATA_ACCESS   SECURITY_VALIDATION_FAILED
-CAPTCHA_SILENT_PASSED   CAPTCHA_SILENT_FAILED   CAPTCHA_SECONDARY_REQUIRED
-CAPTCHA_SECONDARY_PASSED CAPTCHA_SECONDARY_FAILED CAPTCHA_TOKEN_INVALID
+CAPTCHA_POW_PASSED      CAPTCHA_POW_FAILED      CAPTCHA_VISIBLE_REQUIRED
+CAPTCHA_VISIBLE_PASSED  CAPTCHA_VISIBLE_FAILED  CAPTCHA_TOKEN_INVALID
 CAPTCHA_TOKEN_REPLAYED  CAPTCHA_SERVICE_UNAVAILABLE
 ```
+
+Meanings: `POW_*` = the invisible ALTCHA stage, `VISIBLE_*` = the escalated stage where the policy
+requires the user to interact with the official widget.
 
 ### Login captcha audit payload
 
@@ -46,12 +49,11 @@ CAPTCHA_TOKEN_REPLAYED  CAPTCHA_SERVICE_UNAVAILABLE
 deliberately restricted to:
 
 ```
-challengeId · stage · secondaryType · riskScore · failureReason ·
-tenantId · usernameHash · ipHash · requestId
+stage · provider · failureReason · tenantId · usernameHash · ipHash · requestId
 ```
 
-Never stored: the answer (`x` / `angle`), the password, the behaviour trace
-(`interactionSummary`), the full `captchaToken`, or a plaintext username. See
+Never stored: the ALTCHA HMAC key, the full payload, the `solution`, the challenge `signature`,
+the full `captchaToken`, a plaintext username, or any behaviour trace. See
 [`pages/login-captcha.md`](../pages/login-captcha.md).
 
 ## 2. Risk levels and default mapping (`EVENT_RISK`)
@@ -70,8 +72,8 @@ Never stored: the answer (`x` / `angle`), the password, the behaviour trace
 | `PERM_CHANGE` | HIGH |
 | `SENSITIVE_DATA_ACCESS` | CRITICAL |
 | `SECURITY_VALIDATION_FAILED` | MEDIUM |
-| `CAPTCHA_SILENT_PASSED` / `CAPTCHA_SECONDARY_PASSED` | LOW |
-| `CAPTCHA_SILENT_FAILED` / `CAPTCHA_SECONDARY_REQUIRED` / `CAPTCHA_SECONDARY_FAILED` / `CAPTCHA_TOKEN_INVALID` | MEDIUM |
+| `CAPTCHA_POW_PASSED` / `CAPTCHA_VISIBLE_PASSED` | LOW |
+| `CAPTCHA_POW_FAILED` / `CAPTCHA_VISIBLE_REQUIRED` / `CAPTCHA_VISIBLE_FAILED` / `CAPTCHA_TOKEN_INVALID` | MEDIUM |
 | `CAPTCHA_TOKEN_REPLAYED` / `CAPTCHA_SERVICE_UNAVAILABLE` | HIGH |
 
 `writeSecurityLog()` also:
@@ -113,6 +115,7 @@ client-supplied `x-tenant-id`.
 | `rule_replay_attack` | Replay attack | `NONCE_REPLAY`, `REPLAY_DETECTED` | 60 s | 10 | HIGH | `BLOCK_IP` | 8 |
 | `rule_rate_limit` | High-frequency limiting | `RATE_LIMIT_EXCEEDED` | 60 s | 50 | MEDIUM | `ALERT_ONLY` | 4 |
 | `rule_captcha_token_abuse` | Captcha token abuse (invalid / replayed) | `CAPTCHA_TOKEN_INVALID`, `CAPTCHA_TOKEN_REPLAYED` | 300 s | 5 | HIGH | `ALERT_ONLY` | 6 |
+| `rule_captcha_pow_failed` | Repeated ALTCHA Proof-of-Work failures | `CAPTCHA_POW_FAILED`, `CAPTCHA_VISIBLE_FAILED` | 300 s | 20 | MEDIUM | `ALERT_ONLY` | 5 |
 
 ### Actions (`executeActions`)
 

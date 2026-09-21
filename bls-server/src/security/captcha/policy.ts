@@ -1,25 +1,30 @@
 /**
- * 强制二级验证策略
+ * 可见交互策略 + IP 风险提供者
  *
- * 即使处于 adaptive 模式且静默验证通过，命中以下任一条件也必须进入第二层：
- *   - 同一账号近期连续登录失败达到 forceAfterFailures
- *   - 同一 IP 短时间尝试多个账号
- *   - IP 已达到中高风险（Security Event Center 规则引擎评分）
- *   - nonce 重放
- *   - User-Agent / 设备特征明显异常
- *   - Security Event Center 判定为 HIGH / CRITICAL
- *   - 登录平台超级管理员账号
- *   - Rate Limit 压力过高
+ * `evaluateCaptchaPolicy()` 决定 ALTCHA 组件以 **invisible**（静默）还是 **visible**（人工交互）
+ * 形态展示。判定全部在服务端完成，客户端无法通过任何参数让自己“跳过”可见交互：
+ * 命中策略时 `/captcha/verify` 不会签发 captchaToken，只会返回 `requireVisible: true`。
  *
- * 全部条件在**服务端**评估，客户端无法通过任何参数跳过第二层。
+ * 注意：**安全控制始终是 ALTCHA 的服务端 PoW 校验**；可见交互是策略层面的升级
+ * （要求用户完成一次真实交互），不是密码学上的第二因子。详见
+ * bls-memory/pages/login-captcha.md 的「设计边界」一节。
+ *
+ * 本文件不做任何浏览器指纹识别 —— 只使用 IP 与安全事件中心的聚合风险评分。
  */
 import { logger } from '../../core/logger';
 import { RiskLevel } from '../../core/security-audit';
 import { query } from '../../core/database';
 import { getRedisClient } from '../../shared/utils/redis';
 import { evaluateRisk, getOverallRisk, DEFAULT_RULES } from '../event-center/risk-rules';
-import type { SilentReason } from './types';
-import type { CaptchaRuntimeConfig } from './config';
+import {
+  IP_ACCOUNT_FANOUT_THRESHOLD,
+  IP_RISK_SCORE_THRESHOLD,
+  RATE_LIMIT_PRESSURE_THRESHOLD,
+  type CaptchaFailureReason,
+  type CaptchaPolicyDecision,
+  type CaptchaPolicyInput,
+  type CaptchaStage,
+} from './types';
 
 export interface IpRisk {
   score: number;
@@ -40,7 +45,7 @@ const LOW_RISK: IpRisk = { score: 0, level: RiskLevel.LOW };
  * 默认风险提供者：
  *   1. 命中 IP 黑名单（Redis security:blocked_ip:*，由 Event Center 自动处置写入）→ HIGH；
  *   2. 否则复用 Security Event Center 的风险规则引擎，对近 5 分钟该 IP 的安全事件聚合评分。
- * 结果在进程内缓存 30s，避免每次静默验证都打 DB。
+ * 结果在进程内缓存 30s，避免每次校验都打 DB。
  */
 export function createDefaultRiskProvider(): RiskProvider {
   const cache = new Map<string, { at: number; value: IpRisk }>();
@@ -88,45 +93,43 @@ export function createDefaultRiskProvider(): RiskProvider {
   };
 }
 
-export interface ForceEvaluationInput {
-  mode: CaptchaRuntimeConfig['mode'];
-  forceAfterFailures: number;
-  accountFailures: number;
-  ipAccountCount: number;
-  ipRisk: IpRisk;
-  rateLimitPressure: number;
-  nonceReplayed: boolean;
-  uaAnomalous: boolean;
-  privilegedAccount: boolean;
-}
+/**
+ * 评估 ALTCHA 组件形态。
+ * 命中任一条件 → visible（不再完全静默），并给出原因枚举。
+ */
+export function evaluateCaptchaPolicy(input: CaptchaPolicyInput): CaptchaPolicyDecision {
+  if (input.mode === 'always') return { display: 'visible', reason: 'MODE_ALWAYS' };
 
-export interface ForceEvaluation {
-  forced: boolean;
-  reasons: SilentReason[];
-}
-
-/** 同一 IP 在窗口期内尝试过的不同账号数达到该值 → 强制二级 */
-export const IP_ACCOUNT_FANOUT_THRESHOLD = 3;
-/** Rate Limit 压力阈值（同一 IP 在登录限流窗口内的计数） */
-export const RATE_LIMIT_PRESSURE_THRESHOLD = 10;
-
-/** 评估是否强制进入第二层（mode=always 时由调用方直接判定） */
-export function evaluateForceSecondary(input: ForceEvaluationInput): ForceEvaluation {
-  if (input.mode === 'always') {
-    return { forced: true, reasons: ['RISK_FORCED'] };
-  }
-
-  const reasons: SilentReason[] = [];
-
+  const reasons: CaptchaFailureReason[] = [];
   if (input.accountFailures >= input.forceAfterFailures) reasons.push('ACCOUNT_FAILURES');
   if (input.ipAccountCount >= IP_ACCOUNT_FANOUT_THRESHOLD) reasons.push('IP_ACCOUNT_FANOUT');
-  if (input.ipRisk.level === RiskLevel.HIGH || input.ipRisk.level === RiskLevel.CRITICAL || input.ipRisk.score >= 70) {
+  if (
+    input.ipRiskLevel === RiskLevel.HIGH
+    || input.ipRiskLevel === RiskLevel.CRITICAL
+    || input.ipRiskScore >= IP_RISK_SCORE_THRESHOLD
+  ) {
     reasons.push('IP_RISK_HIGH');
   }
-  if (input.nonceReplayed) reasons.push('NONCE_REPLAY');
-  if (input.uaAnomalous) reasons.push('DEVICE_ANOMALY');
-  if (input.privilegedAccount) reasons.push('PRIVILEGED_ACCOUNT');
   if (input.rateLimitPressure >= RATE_LIMIT_PRESSURE_THRESHOLD) reasons.push('RATE_LIMIT_PRESSURE');
+  if (input.privilegedAccount) reasons.push('PRIVILEGED_ACCOUNT');
+  if (input.deviceAnomalous) reasons.push('DEVICE_ANOMALY');
 
-  return { forced: reasons.length > 0, reasons };
+  if (reasons.length === 0) return { display: 'invisible' };
+  return { display: 'visible', reason: reasons[0] };
 }
+
+/** 判定 User-Agent 是否明显异常（请求头层面的粗粒度检查，不做浏览器指纹识别） */
+const BOT_UA_PATTERNS: RegExp[] = [
+  /headlesschrome/i, /phantomjs/i, /selenium/i, /puppeteer/i, /playwright/i,
+  /python-requests/i, /python-urllib/i, /curl\//i, /wget/i, /httpclient/i,
+  /okhttp/i, /go-http-client/i, /node-fetch/i, /axios\//i, /scrapy/i, /\bbot\b/i,
+];
+
+export function uaLooksAutomated(userAgent?: string | null): boolean {
+  if (!userAgent) return true;
+  const ua = userAgent.trim();
+  if (ua.length < 10 || ua.length > 1024) return true;
+  return BOT_UA_PATTERNS.some((re) => re.test(ua));
+}
+
+export type { CaptchaStage };

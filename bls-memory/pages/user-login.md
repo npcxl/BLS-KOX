@@ -33,30 +33,29 @@ authenticated ones.
 | Load public system config | `publicSystemConfig()` — `bls-admin/src/services/ant-design-pro/api.ts` | GET | `/api/system/config/public-system` |
 | Load current user after login | `currentUser()` | GET | `/api/auth/profile` |
 | Restore session on app start | `ensureValidSession()` — `bls-admin/src/auth/auth-manager.ts` | POST | `/api/auth/refresh` |
-| *(captcha)* read public captcha config | `getCaptchaConfig()` — `bls-admin/src/services/auth/captcha.ts` | GET | `/api/auth/captcha/config` |
-| *(captcha)* create a challenge | `createCaptchaChallenge({username, stage?})` | POST | `/api/auth/captcha/challenge` |
-| *(captcha)* stage 1 silent verification | `verifyCaptchaSilent({...})` | POST | `/api/auth/captcha/silent/verify` |
-| *(captcha)* stage 2 visual verification | `verifyCaptchaSecondary({...})` | POST | `/api/auth/captcha/secondary/verify` |
+| *(captcha)* read config + component shape | `getCaptchaConfig({username?})` — `bls-admin/src/services/auth/captcha.ts` | GET | `/api/auth/captcha/config` |
+| *(captcha)* the official widget fetches a challenge itself | `<altcha-widget challenge="…">` | GET | `/api/auth/captcha/challenge` |
+| *(captcha)* submit the solved ALTCHA payload | `verifyCaptcha({payload, username, stage})` | POST | `/api/auth/captcha/verify` |
 
-### Login flow with the two-stage captcha
+### Login flow with the ALTCHA captcha
 
 `captchaConfig.enabled === false` → the original flow (submit → `POST /api/auth/login`).
-When enabled (component `useEffect` on mount):
+When enabled:
 
-1. `GET /api/auth/captcha/config`; if not enabled nothing else happens (back-compatible).
-2. `loginBehaviorCollector.start()` (`bls-admin/src/auth/behavior-collector.ts`) — collects **only
-   statistical values** (counts, interval mean/σ, speed, focus/blur, `navigator.webdriver`);
-   no coordinates, no keystrokes.
-3. Pre-warm a **silent** challenge with `POST /api/auth/captcha/challenge` (the response is
-   ignored when the server answers `stage:'secondary'`, so `mode=always` users are not
-   interrupted before they type).
-4. On submit: reuse the silent challenge (or create a fresh one when it expired) →
-   `POST /api/auth/captcha/silent/verify`.
-   - `passed:true` → keep the one-shot `captchaToken` in a ref.
-   - `passed:false` → open `CaptchaChallengeModal` with `nextStage/secondaryChallenge`.
+1. `GET /api/auth/captcha/config` on mount; when not enabled nothing else happens (back-compatible).
+2. `<AltchaCaptcha>` (`components/AltchaCaptcha/index.tsx`) mounts the **official**
+   `<altcha-widget>` with `challenge="/api/auth/captcha/challenge"`, `auto="onload"`,
+   `language="zh-cn"` and `display` taken from the config (`invisible` by default). The official
+   Web Worker solves the Proof-of-Work in the background — no custom code runs here.
+3. The widget dispatches `verified` with the payload; the page posts it to
+   `POST /api/auth/captcha/verify` and keeps the returned one-shot `captchaToken` in a ref.
+   - `requireVisible:true` → the page switches `display` to `visible`, re-mounts the widget
+     (`captchaInstance`) and shows “请完成下方安全验证”.
+   - any other `reason` → show the mapped Chinese hint and re-mount for a fresh challenge.
+4. `onExpired` (`statechange` → `expired`) re-mounts the widget so a new challenge is fetched.
 5. `POST /api/auth/login` with `captchaToken` in the body.
-6. Login errors `40010/40011/40012/40013` → drop the token and retry the captcha flow **once**
-   (`captchaRetryRef`); `50301` → show “人机验证服务暂不可用”.
+6. Login errors `40010/40011/40012/40013` → clear token + payload, re-read the config, retry the
+   captcha flow **once** (`captchaRetryRef`); `50301` → show “人机验证服务暂不可用”.
 
 ### Request body built by the frontend
 
@@ -95,7 +94,7 @@ A `submittingRef` guard prevents double submission.
 - Body: `{username?, password?, captchaToken?}` read inline. **No Zod schema.** Any client-supplied
   `tenantId` is ignored.
 - Behaviour (`AuthService.loginByDomain`):
-  0. **Captcha gate (only when the feature is active)**: `captchaService.consumeLoginToken()` —
+  0. **ALTCHA captcha gate (only when the feature is active)**: `captchaService.consumeLoginToken()` —
      missing token → `40010 CAPTCHA_REQUIRED`; bad signature / binding mismatch → `40011
      CAPTCHA_INVALID`; expired → `40012 CAPTCHA_EXPIRED`; already consumed → `40013
      CAPTCHA_REPLAYED`; Redis unavailable → `503 / 50301 CAPTCHA_SERVICE_UNAVAILABLE`
@@ -135,7 +134,7 @@ gender, email, phone, deptId, isAdmin, status`, plus `permissions`, `perms`,
 | IP block | global `blockedIpMiddleware` (Redis + `sys_ip_blacklist`) |
 | Session | login writes `auth:session:{jti}`, `auth:refresh:{jti}`, Session Center `acc:`/`ref:` entries |
 | Brute force | risk rule `rule_login_brute_force` (20 × `LOGIN_FAILED` / 300 s per IP → `BLOCK_IP` + `LOCK_ACCOUNT`) driven by the real `sys_login_log` rows written since the login-flow change, plus `LOGIN_BRUTE_FORCE` after 5 failures / 15 min for one account |
-| Captcha | two-stage login captcha (silent → slider/rotate), one-shot `captchaToken` consumed by the login handler. Rate limits: `/challenge` ip 30/60 s + account 10/300 s + device 20/300 s, `/silent/verify` ip 60/60 s + account 20/300 s, `/secondary/verify` ip 30/60 s + account 15/300 s + device 30/300 s, `/config` ip 120/60 s. Full table: [pages/login-captcha.md](login-captcha.md) |
+| Captcha | ALTCHA Proof-of-Work (official library) with an invisible→visible escalation, one-shot `captchaToken` consumed by the login handler. Rate limits: `/challenge` ip 60/60 s + device 30/300 s, `/verify` ip 30/60 s + account 20/300 s + device 30/300 s, `/config` ip 120/60 s. Full detail: [pages/login-captcha.md](login-captcha.md) |
 
 The frontend always sends `X-Timestamp` + `X-Nonce` (added by the request interceptor), which is
 what satisfies the nonce rule. Because there is no token yet, the nonce key is
@@ -158,7 +157,8 @@ what satisfies the nonce rule. Because there is no token yet, the nonce key is
 
 1. The template leftovers `pages.login.captcha.*` locale keys and `getFakeCaptcha` →
    `GET /api/login/captcha` (`bls-admin/src/services/ant-design-pro/login.ts`) are still dead code;
-   the real captcha lives in `bls-admin/src/services/auth/captcha.ts` + `components/CaptchaChallenge`.
+   the real captcha lives in `bls-admin/src/services/auth/captcha.ts` + `components/AltchaCaptcha`
+   (official ALTCHA widget).
 2. Captcha is implemented in the **Koa** backend only. `bls-java-server` / `bls-rust-server` do not
    implement `/api/auth/captcha/*` and ignore the `captchaToken` field, so when those backends are
    selected the login page simply keeps the pre-captcha behaviour (the frontend degrades gracefully:

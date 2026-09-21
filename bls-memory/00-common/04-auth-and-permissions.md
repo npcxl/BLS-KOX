@@ -40,24 +40,24 @@ even when the parent has its own `index.ts`).
 | POST | `/api/auth/logout` | public | Reads `Authorization` header; revokes the session + refresh keys. Always returns `code 200`. |
 | POST | `/api/auth/refresh` | public | `{refreshToken}` → `{token, refreshToken}` (rotation). Returns `code 400/401/500` in body (not thrown). |
 | GET | `/api/auth/profile` | **JWT** | Returns user fields + `permissions` + `perms` + `roles[{roleKey,dataScope}]` + `menus` (tree). |
-| GET | `/api/auth/captcha/config` | public | `{enabled, mode, secondaryTypes}` only |
-| POST | `/api/auth/captcha/challenge` | public | `{username?, stage?}` → challenge (silent or secondary) |
-| POST | `/api/auth/captcha/silent/verify` | public | stage-1 silent scoring → `captchaToken` or `nextStage:'secondary'` |
-| POST | `/api/auth/captcha/secondary/verify` | public | stage-2 slider / rotate → `captchaToken` |
-| GET | `/api/auth/captcha/image/:imageId` | public | Challenge SVG, `Cache-Control: no-store` |
+| GET | `/api/auth/captcha/config` | public | `{enabled, mode, provider, display, challengeUrl, fieldName}` |
+| GET | `/api/auth/captcha/challenge` | public | **official ALTCHA challenge object** (no `{code,…}` envelope — the widget consumes it directly) |
+| POST | `/api/auth/captcha/verify` | public | server-side ALTCHA payload verification → one-shot `captchaToken` (or `requireVisible`) |
 
 There is **no** `/api/auth/register` on the server. The register page posts to `/api/register`
 which has no handler (see `pages/user-register.md`).
 
 ### Login flow (`AuthService.loginByDomain`)
 
-0. **Captcha gate** (`captchaService.consumeLoginToken`) — only when
-   `sys.login.captcha.enabled=true` and `mode !== 'off'`. The one-shot `captchaToken` is consumed
-   **before** `sys_user` is touched: missing → `40010 CAPTCHA_REQUIRED`, bad signature / binding →
+0. **ALTCHA captcha gate** (`captchaService.consumeLoginToken`) — only when
+   `sys.login.captcha.enabled=true` and `mode !== 'off'`. The one-shot `captchaToken` (issued by
+   `POST /api/auth/captcha/verify` after the server verified the ALTCHA Proof-of-Work) is consumed
+   **before** `sys_user` is touched: missing → `40010 CAPTCHA_REQUIRED`, unknown / binding mismatch →
    `40011 CAPTCHA_INVALID`, expired → `40012 CAPTCHA_EXPIRED`, already used → `40013
-   CAPTCHA_REPLAYED`, Redis unavailable → `503 / 50301 CAPTCHA_SERVICE_UNAVAILABLE` (fail closed).
-   Because the check precedes the user lookup and both branches return the same shape, the flow
-   cannot be used to enumerate accounts. Full detail: `pages/login-captcha.md`.
+   CAPTCHA_REPLAYED`, Redis unavailable or provider unconfigured → `503 / 50301
+   CAPTCHA_SERVICE_UNAVAILABLE` (fail closed). Because the check precedes the user lookup and both
+   branches return the same shape, the flow cannot be used to enumerate accounts. Full detail:
+   `pages/login-captcha.md`.
 1. Resolve the tenant from the request **domain**, not from the body:
    `X-Forwarded-Host` (only when `TRUST_PROXY=true`) → `Host` (port stripped) → `Origin`
    → fallback `localhost`.

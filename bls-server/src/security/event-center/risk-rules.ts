@@ -105,6 +105,16 @@ export const DEFAULT_RULES: RiskRule[] = [
     actions: ['ALERT_ONLY'],
     weight: 6,
   },
+  {
+    id: 'rule_captcha_pow_failed',
+    name: 'ALTCHA Proof-of-Work 连续失败',
+    eventTypes: ['CAPTCHA_POW_FAILED', 'CAPTCHA_VISIBLE_FAILED'],
+    windowSeconds: 300,
+    threshold: 20,
+    riskLevel: RiskLevel.MEDIUM,
+    actions: ['ALERT_ONLY'],
+    weight: 5,
+  },
 ];
 
 /**

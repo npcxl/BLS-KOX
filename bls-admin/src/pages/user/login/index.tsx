@@ -5,16 +5,15 @@ import { Alert, App } from 'antd';
 import { createStyles } from 'antd-style';
 import React, { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 import { Footer } from '@/components';
-import CaptchaChallengeModal from '@/components/CaptchaChallenge';
+import AltchaCaptcha from '@/components/AltchaCaptcha';
 import { login } from '@/services/ant-design-pro/api';
 import {
-  createCaptchaChallenge,
+  CAPTCHA_REASON_TEXT,
   getCaptchaConfig,
-  verifyCaptchaSilent,
-  type CaptchaChallenge,
-  type CaptchaPublicConfig,
+  verifyCaptcha,
+  type CaptchaConfig,
+  type CaptchaDisplay,
 } from '@/services/auth/captcha';
-import { loginBehaviorCollector } from '@/auth/behavior-collector';
 import { tokenStore } from '@/auth/token-store';
 import Settings from '../../../../config/defaultSettings';
 
@@ -48,24 +47,19 @@ const LoginMessage: React.FC<{ content: string }> = ({ content }) => (
   <Alert style={{ marginBottom: 24 }} message={content} type="error" showIcon />
 );
 
-const CAPTCHA_DISABLED: CaptchaPublicConfig = { enabled: false, mode: 'off', secondaryTypes: [] };
+const CAPTCHA_DISABLED: CaptchaConfig = {
+  enabled: false,
+  mode: 'off',
+  provider: 'altcha',
+  display: 'invisible',
+  challengeUrl: '/api/auth/captcha/challenge',
+  fieldName: 'altchaPayload',
+};
+
 /** captcha 业务码：40010 缺失 / 40011 无效 / 40012 过期 / 40013 重放 / 50301 服务不可用 */
 const CAPTCHA_ERROR_CODES = [40010, 40011, 40012, 40013, 50301];
 
 type LoginValues = API.LoginParams & { rememberUsername?: boolean };
-
-/** 后端 challenge 响应 → 前端结构 */
-function toChallenge(data: any): CaptchaChallenge | null {
-  if (!data?.challengeId || !data?.stage || !data?.nonce) return null;
-  return {
-    challengeId: String(data.challengeId),
-    stage: data.stage,
-    expiresAt: Number(data.expiresAt ?? 0),
-    nonce: String(data.nonce),
-    secondaryType: data.secondaryType,
-    payload: data.payload ?? null,
-  };
-}
 
 const Login: React.FC = () => {
   const [userLoginState, setUserLoginState] = useState<API.LoginResult>({});
@@ -79,21 +73,17 @@ const Login: React.FC = () => {
   const appName = initialState?.systemMap?.['sys.app.name'] ?? Settings.title ?? 'title-default';
   const appLogo = initialState?.systemMap?.['sys.app.logo'] ?? Settings.logo;
 
-  // ===== 登录人机验证状态 =====
-  const [captchaConfig, setCaptchaConfig] = useState<CaptchaPublicConfig>(CAPTCHA_DISABLED);
-  const [captchaLoading, setCaptchaLoading] = useState(false);
-  const [secondaryOpen, setSecondaryOpen] = useState(false);
-  const [secondaryChallenge, setSecondaryChallenge] = useState<CaptchaChallenge | null>(null);
-  /** 已签发的一次性 captchaToken（登录成功后立即作废，重复使用会被服务端拒绝） */
+  // ===== 登录人机验证（ALTCHA）状态 =====
+  const [captchaConfig, setCaptchaConfig] = useState<CaptchaConfig>(CAPTCHA_DISABLED);
+  const [captchaDisplay, setCaptchaDisplay] = useState<CaptchaDisplay>('invisible');
+  const [captchaHint, setCaptchaHint] = useState<string | null>(null);
+  /** 每次需要刷新 challenge 时自增，用于重新挂载官方 widget */
+  const [captchaInstance, setCaptchaInstance] = useState(0);
+  /** 官方 widget 产出的 payload（一次性；提交后作废） */
+  const [altchaPayload, setAltchaPayload] = useState<string | null>(null);
+  /** 服务端签发的一次性 captchaToken */
   const captchaTokenRef = useRef<string | null>(null);
-  /** 第一层静默 challenge */
-  const silentChallengeRef = useRef<CaptchaChallenge | null>(null);
-  /** 等待第二层验证完成后继续登录的表单值 */
-  const pendingValuesRef = useRef<LoginValues | null>(null);
-  /** 当前验证码绑定的账号（用于二级验证弹窗提交） */
-  const captchaUsernameRef = useRef('');
   const captchaRetryRef = useRef(false);
-  /** 供弹窗成功回调复用最新的 handleSubmit */
   const handleSubmitRef = useRef<((values: LoginValues) => Promise<void>) | null>(null);
 
   useEffect(() => {
@@ -125,126 +115,74 @@ const Login: React.FC = () => {
     }
   };
 
-  /** 创建 challenge；stage=secondary 时（且允许）打开第二层弹窗 */
-  const createChallenge = useCallback(
-    async (
-      username?: string,
-      stage?: 'secondary',
-      openSecondary = true,
-    ): Promise<CaptchaChallenge | null> => {
-      setCaptchaLoading(true);
+  /** 重新拉取一次配置（策略可能因连续失败 / 风险升高而变化） */
+  const refreshCaptchaConfig = useCallback(async (username?: string): Promise<CaptchaConfig> => {
+    try {
+      const res = await getCaptchaConfig(username ? { username } : undefined);
+      const cfg = (res as any)?.data as CaptchaConfig | undefined;
+      const next = cfg?.enabled ? { ...CAPTCHA_DISABLED, ...cfg, enabled: true } : CAPTCHA_DISABLED;
+      setCaptchaConfig(next);
+      setCaptchaDisplay(next.display);
+      return next;
+    } catch {
+      setCaptchaConfig(CAPTCHA_DISABLED);
+      setCaptchaDisplay('invisible');
+      return CAPTCHA_DISABLED;
+    }
+  }, []);
+
+  // 挂载时读取公开配置：enabled=false 时保持原登录流程
+  useEffect(() => {
+    void refreshCaptchaConfig();
+  }, [refreshCaptchaConfig]);
+
+  /** 把官方 widget 的 payload 交给服务端校验 → 换取一次性 captchaToken */
+  const exchangePayload = useCallback(
+    async (payload: string, stage: CaptchaDisplay, username?: string): Promise<boolean> => {
       try {
-        const res = await createCaptchaChallenge({ username, stage });
-        const challenged = toChallenge((res as any)?.data ?? {});
-        if (!challenged) return null;
-        if (challenged.stage === 'secondary') {
-          if (openSecondary) {
-            setSecondaryChallenge(challenged);
-            setSecondaryOpen(true);
-          }
-          return null;
+        const res = await verifyCaptcha({ payload, username, stage });
+        const data: any = (res as any)?.data ?? {};
+        if (data.passed && data.captchaToken) {
+          captchaTokenRef.current = String(data.captchaToken);
+          setCaptchaHint(null);
+          return true;
         }
-        return challenged;
+        if (data.requireVisible) {
+          // 服务端要求人工交互：切换为官方可见组件并重新获取 challenge
+          setCaptchaDisplay('visible');
+          setCaptchaHint(CAPTCHA_REASON_TEXT[String(data.reason ?? '')] ?? '请完成下方安全验证');
+          setAltchaPayload(null);
+          setCaptchaInstance((n) => n + 1);
+          return false;
+        }
+        setCaptchaHint(CAPTCHA_REASON_TEXT[String(data.reason ?? '')] ?? '人机验证未通过，请重试');
+        setAltchaPayload(null);
+        setCaptchaInstance((n) => n + 1);
+        return false;
       } catch {
-        return null;
-      } finally {
-        setCaptchaLoading(false);
+        setCaptchaHint('人机验证服务暂不可用，请稍后重试');
+        return false;
       }
     },
     [],
   );
 
-  // 挂载时读取公开配置：enabled=false 时保持原登录流程
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const res = await getCaptchaConfig();
-        const cfg = (res as any)?.data as CaptchaPublicConfig | undefined;
-        if (!alive) return;
-        if (cfg?.enabled) {
-          setCaptchaConfig({ ...CAPTCHA_DISABLED, ...cfg, enabled: true });
-          loginBehaviorCollector.start();
-          // 只预热「静默」challenge：always / 高风险场景由提交时再进入第二层，避免用户还没输入就弹窗
-          silentChallengeRef.current = await createChallenge(undefined, undefined, false);
-        } else {
-          setCaptchaConfig(CAPTCHA_DISABLED);
-        }
-      } catch {
-        // 配置获取失败不阻断登录（后端仍会在登录时强制校验）
-        if (alive) setCaptchaConfig(CAPTCHA_DISABLED);
-      }
-    })();
-    return () => {
-      alive = false;
-      loginBehaviorCollector.stop();
-    };
-  }, [createChallenge]);
-
-  /** 第二层验证成功 → 用一次性 token 继续登录 */
-  const handleSecondarySuccess = useCallback(async (captchaToken: string) => {
-    captchaTokenRef.current = captchaToken;
-    setSecondaryOpen(false);
-    setSecondaryChallenge(null);
-    const values = pendingValuesRef.current;
-    pendingValuesRef.current = null;
-    if (values) await handleSubmitRef.current?.(values);
-  }, []);
-
-  const handleSecondaryClose = useCallback(() => {
-    setSecondaryOpen(false);
-    setSecondaryChallenge(null);
-    pendingValuesRef.current = null;
-    message.warning('已取消安全验证，登录未完成');
-  }, [message]);
-
-  /** 刷新验证码：重新申请一个二级挑战 */
-  const handleSecondaryRefresh = useCallback(async () => {
-    setSecondaryChallenge(null);
-    await createChallenge(captchaUsernameRef.current || undefined, 'secondary');
-  }, [createChallenge]);
-
-  /** 第一层：静默验证；通过返回 captchaToken，否则打开第二层弹窗并返回 null */
-  const runSilentVerify = useCallback(
-    async (username: string): Promise<string | null> => {
-      let challenge = silentChallengeRef.current;
-      if (!challenge || challenge.expiresAt <= Date.now()) {
-        challenge = await createChallenge(username);
-      }
-      if (!challenge) return null;
-
-      const summary = loginBehaviorCollector.summary();
-      const finishedAt = Date.now();
-      const startedAt = finishedAt - (summary.dwellMs || 0);
-
-      try {
-        const res = await verifyCaptchaSilent({
-          challengeId: challenge.challengeId,
-          nonce: challenge.nonce,
-          username,
-          startedAt,
-          finishedAt,
-          interactionSummary: summary,
-        });
-        const data: any = (res as any)?.data ?? {};
-        silentChallengeRef.current = null;
-        if (data.passed && data.captchaToken) {
-          captchaTokenRef.current = String(data.captchaToken);
-          return captchaTokenRef.current;
-        }
-        const next = toChallenge(data.secondaryChallenge);
-        if (next) {
-          setSecondaryChallenge(next);
-          setSecondaryOpen(true);
-        }
-        return null;
-      } catch {
-        silentChallengeRef.current = null;
-        return null;
-      }
+  /** 官方 widget 求解完成（invisible 无感 / visible 用户点击后） */
+  const handleAltchaVerified = useCallback(
+    async (payload: string) => {
+      setAltchaPayload(payload);
+      const username = String(formRef.current?.getFieldValue?.('username') ?? '');
+      await exchangePayload(payload, captchaDisplay, username || undefined);
     },
-    [createChallenge],
+    [captchaDisplay, exchangePayload],
   );
+
+  /** challenge 过期 → 重新拉取并求解 */
+  const handleAltchaReset = useCallback(() => {
+    setAltchaPayload(null);
+    captchaTokenRef.current = null;
+    setCaptchaInstance((n) => n + 1);
+  }, []);
 
   // ===== 登录 =====
   const doLogin = useCallback(
@@ -273,8 +211,9 @@ const Login: React.FC = () => {
         } else {
           tokenStore.clearRememberedUsername();
         }
-        // 一次性 token 已被服务端消费
+        // 一次性凭证与 payload 均已被服务端消费
         captchaTokenRef.current = null;
+        setAltchaPayload(null);
         message.success(
           intl.formatMessage({ id: 'pages.login.success', defaultMessage: '登录成功！' }),
         );
@@ -295,14 +234,14 @@ const Login: React.FC = () => {
     [initialState, intl, message, setInitialState],
   );
 
-  /** captcha 相关登录错误：清理一次性 token，并按需自动重试一次 */
+  /** captcha 相关登录错误：清理凭证，重新取 challenge 并重试一次 */
   const handleCaptchaLoginError = useCallback(
     async (error: any, values: LoginValues): Promise<boolean> => {
       const code = Number(error?.response?.data?.code);
       if (!CAPTCHA_ERROR_CODES.includes(code)) return false;
 
       captchaTokenRef.current = null;
-      silentChallengeRef.current = null;
+      setAltchaPayload(null);
 
       if (code === 50301) {
         message.error(error?.response?.data?.message ?? '人机验证服务暂不可用，请稍后重试');
@@ -312,12 +251,13 @@ const Login: React.FC = () => {
       if (!captchaRetryRef.current) {
         captchaRetryRef.current = true;
         try {
-          const token = await runSilentVerify(String(values.username ?? ''));
-          if (token) {
-            await doLogin(values, token);
-            return true;
+          const cfg = await refreshCaptchaConfig(String(values.username ?? ''));
+          setCaptchaHint('人机验证已失效，正在重新验证…');
+          setCaptchaInstance((n) => n + 1);
+          if (!cfg.enabled) {
+            // 配置已关闭 → 直接按原流程登录
+            await doLogin(values, null);
           }
-          message.warning('人机验证已失效，请重新验证');
           return true;
         } finally {
           captchaRetryRef.current = false;
@@ -327,7 +267,7 @@ const Login: React.FC = () => {
       message.warning(error?.response?.data?.message ?? '人机验证未通过，请重试');
       return true;
     },
-    [doLogin, message, runSilentVerify],
+    [doLogin, message, refreshCaptchaConfig],
   );
 
   const handleSubmit = async (values: LoginValues) => {
@@ -335,7 +275,6 @@ const Login: React.FC = () => {
     if (submittingRef.current) return;
     submittingRef.current = true;
     setSubmitting(true);
-    captchaUsernameRef.current = String(values.username ?? '');
     try {
       // 功能关闭 → 保持原登录流程
       if (!captchaConfig.enabled) {
@@ -343,18 +282,23 @@ const Login: React.FC = () => {
         return;
       }
 
-      if (captchaTokenRef.current) {
-        await doLogin(values, captchaTokenRef.current);
-        return;
+      let token = captchaTokenRef.current;
+      if (!token) {
+        if (!altchaPayload) {
+          setCaptchaDisplay('visible');
+          setCaptchaInstance((n) => n + 1);
+          message.warning(captchaHint ?? '请先完成下方安全验证');
+          return;
+        }
+        const ok = await exchangePayload(altchaPayload, captchaDisplay, String(values.username ?? '') || undefined);
+        if (!ok) {
+          message.warning(captchaHint ?? '请完成下方安全验证');
+          return;
+        }
+        token = captchaTokenRef.current;
       }
 
-      const token = await runSilentVerify(String(values.username ?? ''));
-      if (token) {
-        await doLogin(values, token);
-        return;
-      }
-      // 需要第二层验证：记录表单值，弹窗验证成功后继续登录
-      pendingValuesRef.current = values;
+      await doLogin(values, token);
     } catch (error: any) {
       setUserLoginState({
         status: 'error',
@@ -403,7 +347,7 @@ const Login: React.FC = () => {
               submitText: '登录',
             },
             submitButtonProps: {
-              loading: submitting || captchaLoading,
+              loading: submitting,
             },
           }}
         >
@@ -450,6 +394,21 @@ const Login: React.FC = () => {
             ]}
           />
 
+          {captchaConfig.enabled && (
+            <AltchaCaptcha
+              enabled={captchaConfig.enabled}
+              display={captchaDisplay}
+              challengeUrl={captchaConfig.challengeUrl}
+              fieldName={captchaConfig.fieldName}
+              instanceKey={captchaInstance}
+              solved={!!captchaTokenRef.current}
+              onVerified={handleAltchaVerified}
+              onExpired={handleAltchaReset}
+            />
+          )}
+
+          {captchaHint && <Alert style={{ marginBottom: 16 }} type="warning" showIcon message={captchaHint} />}
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
             <ProFormCheckbox name="rememberUsername" noStyle>
               记住用户名
@@ -461,16 +420,6 @@ const Login: React.FC = () => {
         </LoginForm>
       </div>
       <Footer />
-
-      <CaptchaChallengeModal
-        open={secondaryOpen}
-        challenge={secondaryChallenge}
-        username={captchaUsernameRef.current}
-        loading={captchaLoading}
-        onSuccess={handleSecondarySuccess}
-        onClose={handleSecondaryClose}
-        onRefresh={handleSecondaryRefresh}
-      />
     </div>
   );
 };

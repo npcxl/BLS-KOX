@@ -2,8 +2,8 @@
 
 > **Document version:** 1.2.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
 >
-> *Uncommitted note:* the `/api/auth/captcha/*` public endpoints were verified against `61aaf9a` +
-> uncommitted captcha changes.
+> *Uncommitted note:* the `/api/auth/captcha/*` public endpoints (ALTCHA) were verified against
+> `753d86a` + uncommitted captcha changes.
 
 How every request can reach the Koa backend, and how each entry point is authenticated.
 Also covers error formatting, HTTP metrics labels, Swagger and the OpenAPI generator.
@@ -41,9 +41,9 @@ Unauthenticated **business** routes (public by name or by being mounted on a cus
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/api/auth/login` / `logout` / `refresh` | public by function name |
-| GET | `/api/auth/captcha/config` | login captcha public config (`enabled`/`mode`/`secondaryTypes` only) |
-| POST | `/api/auth/captcha/challenge` · `/silent/verify` · `/secondary/verify` | login captcha; rate-limited by IP + account + device, `Cache-Control: no-store` |
-| GET | `/api/auth/captcha/image/:imageId` | challenge SVG, `no-store` |
+| GET | `/api/auth/captcha/config` | login captcha public config (`enabled`/`mode`/`provider`/`display`/`challengeUrl`/`fieldName`) |
+| GET | `/api/auth/captcha/challenge` | **official ALTCHA challenge object, returned without the `{code,message,data}` envelope** (the widget's `challenge` attribute consumes it) — `no-store` |
+| POST | `/api/auth/captcha/verify` | server-side ALTCHA payload verification; rate-limited by IP + account + device, `no-store` |
 | GET | `/api/system/config/public-system` · `/public-theme` · `/current` | public system/theme config subset |
 | GET | `/api/system/tenant/public-list` | Host-scoped tenant options |
 

@@ -2,8 +2,8 @@
 
 > **Document version:** 1.1.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
 >
-> *Uncommitted note:* the `device` dimension, the `account` fallback and the captcha rules were
-> verified against `61aaf9a` + uncommitted captcha changes.
+> *Uncommitted note:* the `device` dimension, the `account` fallback and the ALTCHA captcha rules
+> were verified against `753d86a` + uncommitted captcha changes.
 
 Implementation:
 
@@ -66,21 +66,19 @@ All matching rules for a path are evaluated; exact path rules beat wildcard rule
 | 3 | `/api/common/excel/export` | POST | `user` | 5 | 60 s |
 | 4 | `/api/common/excel/export` | POST | `tenant` | 200 | 3600 s |
 | 5 | `/api/system/storage/upload` | POST | `user` | 30 | 60 s |
-| 6 | `/api/auth/captcha/challenge` | POST | `ip` | 30 | 60 s |
-| 7 | `/api/auth/captcha/challenge` | POST | `account` | 10 | 300 s |
-| 8 | `/api/auth/captcha/challenge` | POST | `device` | 20 | 300 s |
-| 9 | `/api/auth/captcha/silent/verify` | POST | `ip` | 60 | 60 s |
-| 10 | `/api/auth/captcha/silent/verify` | POST | `account` | 20 | 300 s |
-| 11 | `/api/auth/captcha/secondary/verify` | POST | `ip` | 30 | 60 s |
-| 12 | `/api/auth/captcha/secondary/verify` | POST | `account` | 15 | 300 s |
-| 13 | `/api/auth/captcha/secondary/verify` | POST | `device` | 30 | 300 s |
-| 14 | `/api/auth/captcha/config` | GET | `ip` | 120 | 60 s |
-| 15 | `/api/**` | POST/PUT/PATCH/DELETE | `user` | 300 | 60 s |
-| 16 | `/api/**` | GET/HEAD/OPTIONS | `user` | 600 | 60 s |
+| 6 | `/api/auth/captcha/challenge` | GET | `ip` | 60 | 60 s |
+| 7 | `/api/auth/captcha/challenge` | GET | `device` | 30 | 300 s |
+| 8 | `/api/auth/captcha/verify` | POST | `ip` | 30 | 60 s |
+| 9 | `/api/auth/captcha/verify` | POST | `account` | 20 | 300 s |
+| 10 | `/api/auth/captcha/verify` | POST | `device` | 30 | 300 s |
+| 11 | `/api/auth/captcha/config` | GET | `ip` | 120 | 60 s |
+| 12 | `/api/**` | POST/PUT/PATCH/DELETE | `user` | 300 | 60 s |
+| 13 | `/api/**` | GET/HEAD/OPTIONS | `user` | 600 | 60 s |
 
 Rules 1+2 are both applied to login (two independent counters), 3+4 to export, and every captcha
 path expands to 1–3 counters (see the captcha page document). The captcha limits exist mainly to
-stop unlimited challenge creation from burning Redis memory and CPU.
+stop unlimited challenge creation / verification from burning CPU (ALTCHA Proof-of-Work costs real
+server CPU) and Redis memory.
 
 ### Page authors' cheat sheet
 
@@ -91,10 +89,9 @@ stop unlimited challenge creation from burning Redis memory and CPU.
 | File upload `POST /api/system/storage/upload` | 30 / min / user |
 | Excel export `POST /api/common/excel/export` | 5 / min / user **and** 200 / hour / tenant |
 | Login | 20 / min / IP **and** 5 / 5 min / account |
-| Captcha challenge | 30 / min / IP + 10 / 5 min / account + 20 / 5 min / device |
-| Captcha silent verify | 60 / min / IP + 20 / 5 min / account |
-| Captcha secondary verify | 30 / min / IP + 15 / 5 min / account + 30 / 5 min / device |
-| Captcha public config | 120 / min / IP |
+| Captcha challenge (`GET`) | 60 / min / IP + 30 / 5 min / device |
+| Captcha verify (`POST`) | 30 / min / IP + 20 / 5 min / account + 30 / 5 min / device |
+| Captcha public config (`GET`) | 120 / min / IP |
 
 Notes:
 

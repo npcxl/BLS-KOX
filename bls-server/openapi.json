@@ -1212,12 +1212,12 @@
       }
     },
     "/api/auth/captcha/challenge": {
-      "post": {
+      "get": {
         "tags": [
           "captcha"
         ],
-        "summary": "captcha - 提交 challenge",
-        "operationId": "post_api_auth_captcha_challenge",
+        "summary": "captcha - 获取 ALTCHA 挑战",
+        "operationId": "get_api_auth_captcha_challenge",
         "responses": {
           "200": {
             "description": "成功",
@@ -1254,7 +1254,7 @@
         "tags": [
           "captcha"
         ],
-        "summary": "captcha - 查询 config",
+        "summary": "captcha - 公开配置（登录人机验证）",
         "operationId": "get_api_auth_captcha_config",
         "responses": {
           "200": {
@@ -1287,100 +1287,13 @@
         }
       }
     },
-    "/api/auth/captcha/image/{imageId}": {
-      "get": {
-        "tags": [
-          "captcha"
-        ],
-        "summary": "captcha - 查询 :imageId",
-        "operationId": "get_api_auth_captcha_image_imageId_",
-        "responses": {
-          "200": {
-            "description": "成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "integer",
-                      "example": 200
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "操作成功"
-                    },
-                    "data": {
-                      "type": "object",
-                      "description": "响应数据"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "参数错误"
-          }
-        },
-        "parameters": [
-          {
-            "name": "imageId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "imageId"
-          }
-        ]
-      }
-    },
-    "/api/auth/captcha/secondary/verify": {
+    "/api/auth/captcha/verify": {
       "post": {
         "tags": [
           "captcha"
         ],
-        "summary": "captcha - 提交 verify",
-        "operationId": "post_api_auth_captcha_secondary_verify",
-        "responses": {
-          "200": {
-            "description": "成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "integer",
-                      "example": 200
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "操作成功"
-                    },
-                    "data": {
-                      "type": "object",
-                      "description": "响应数据"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "参数错误"
-          }
-        }
-      }
-    },
-    "/api/auth/captcha/silent/verify": {
-      "post": {
-        "tags": [
-          "captcha"
-        ],
-        "summary": "captcha - 提交 verify",
-        "operationId": "post_api_auth_captcha_silent_verify",
+        "summary": "captcha - 校验 ALTCHA payload 并签发一次性凭证",
+        "operationId": "post_api_auth_captcha_verify",
         "responses": {
           "200": {
             "description": "成功",

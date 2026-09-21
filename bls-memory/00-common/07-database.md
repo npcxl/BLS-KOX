@@ -3,7 +3,7 @@
 > **Document version:** 1.2.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
 >
 > *Uncommitted note:* `20260922_017_login_captcha.sql` (and the matching `sql/Init.sql` rows) were
-> verified against `61aaf9a` + uncommitted captcha changes.
+> verified against `753d86a` + uncommitted captcha changes.
 
 Single entry point for everything database-related: where the schema lives, the conventions,
 the full table inventory (all **40** tables), the migration workflow, and the **known drift**
@@ -214,7 +214,7 @@ Existing migrations:
 | `20260921_014_package_entitlements.sql` | creates `sys_package_feature`, `sys_package_quota`, `sys_tenant_quota_usage`; seeds features/quotas for `P001`/`P100` and the `system:quota:list` permission |
 | `20260921_015_password_reset_token.sql` | creates `sys_password_reset_token`; seeds `system:user:resetPassword` |
 | `20260921_016_api_key.sql` | creates `sys_api_key`; seeds `system:apikey:list/add/remove/status` |
-| `20260922_017_login_captcha.sql` | Seeds the 9 `sys.login.captcha.*` rows (`000406`–`000414`, tenant `000000`) — identical to `sql/Init.sql` lines 68–76, `INSERT IGNORE` so it is re-runnable. **No DDL**: `sys_security_log.event_type` is `varchar(64)`, so the new `CAPTCHA_*` event types need no schema change. |
+| `20260922_017_login_captcha.sql` | Seeds the 6 ALTCHA `sys.login.captcha.*` rows (`000406`–`000411`, tenant `000000`) — identical to the matching rows in `sql/Init.sql`, `INSERT IGNORE` so it is re-runnable. **No DDL**: `sys_security_log.event_type` is `varchar(64)`, so the `CAPTCHA_*` event types need no schema change. |
 
 ⚠ `ALTER TABLE` is DDL and implicitly commits in MySQL — it cannot be rolled back with a
 transaction. Keep such scripts idempotent.

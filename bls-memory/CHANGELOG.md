@@ -23,7 +23,84 @@ Rules: see the "Version metadata & maintenance" section of [`README.md`](README.
 
 ---
 
+## [1.7.0] — 2026-09-21
+
+**Login captcha re-implemented on ALTCHA — no self-written captcha algorithm.** The mechanism
+described in 1.6.0 (self-implemented slider/rotate images, behaviour-trajectory scoring, custom
+silent-verification engine) is **removed**. Requirement: *never implement sliders, image slicing,
+trajectory recognition or captcha algorithms yourself — integrate a mature open-source project.*
+Verified against the **working tree on top of `753d86a`** (uncommitted).
+
+### Added
+
+- `bls-server/src/security/captcha/altcha.ts` — thin wrapper around the official `altcha/lib`
+  (v3): lazy `import()` (the package is ESM-only while this backend is CommonJS), payload decoding,
+  `createChallenge` / `verifySolution` plumbing, algorithm→`deriveKey` mapping, failure
+  classification. Declares the official data shapes locally to avoid TS1541/TS1542.
+- `bls-admin/src/components/AltchaCaptcha/index.tsx` — React wrapper around the official
+  `<altcha-widget>`: `challenge`/`auto`/`display`/`language="zh-cn"`/`name` attributes, event
+  forwarding, and Ant Design theming via the official `--altcha-*` CSS variables. **ALTCHA's core
+  verification code is untouched.**
+- Dependency `altcha@^3` in both `bls-server` and `bls-admin`.
+- `bls-admin-nginx.conf`: CSP now allows `worker-src 'self' blob: data:` — the official bundle
+  creates its Proof-of-Work Worker from an inline `data:` URL, which `default-src 'self'` blocked.
+
+### Changed
+
+- **API surface** (`bls-memory/pages/login-captcha.md` v2.0.0, rewritten):
+  `GET /captcha/config` (now includes `provider`/`display`/`challengeUrl`/`fieldName`),
+  `GET /captcha/challenge` (**returns the official ALTCHA challenge verbatim, without the
+  `{code,message,data}` envelope** — the widget consumes it directly), `POST /captcha/verify`
+  (replaces `silent/verify` + `secondary/verify`). The self-made image endpoint is gone.
+- **Config**: 9 keys → 6 (`enabled`, `mode`, `provider`(**altcha**|tianai),
+  `challengeTtlSeconds`, `tokenTtlSeconds`, `forceAfterFailures`); `silentThreshold`,
+  `secondaryTypes` and `maxAttempts` were dropped (old rows are ignored by Dynamic Config).
+  Provider values changed from `builtin` to `altcha`/`tianai`.
+- **Env**: `CAPTCHA_SECRET` → **`ALTCHA_HMAC_KEY`** (production startup validation, ≥ 32 chars);
+  new `ALTCHA_COST` (PoW difficulty, default 50 000) and `TIANAI_BASE_URL` (only for
+  `provider=tianai`). `CAPTCHA_DEV_BYPASS` unchanged.
+- **`captchaToken`**: no longer HMAC-signed — 32 random bytes, only `sha256(token)` stored, TTL
+  default **120 s**, bound to domain / username / IP / User-Agent, one-shot (`SET NX EX` + `GETDEL`).
+- **Visible escalation** is now server-enforced inside `/captcha/verify` (policy re-evaluated with
+  the real username; a pre-fetched `invisible` challenge cannot dodge it) and happens **before** the
+  challenge is consumed.
+- **Audit events** renamed to ALTCHA semantics: `CAPTCHA_POW_PASSED/FAILED`,
+  `CAPTCHA_VISIBLE_REQUIRED/PASSED/FAILED` (+ unchanged `TOKEN_INVALID`, `TOKEN_REPLAYED`,
+  `SERVICE_UNAVAILABLE`); payload restricted to `stage · provider · failureReason · tenantId ·
+  usernameHash · ipHash · requestId`. New risk rule `rule_captcha_pow_failed`.
+- **Rate limits**: `/challenge` GET ip 60/60 s + device 30/300 s, `/verify` POST ip 30/60 s +
+  account 20/300 s + device 30/300 s, `/config` GET ip 120/60 s.
+
+### Removed
+
+- `bls-server/src/security/captcha/{image,silent}.ts` and their tests (self-implemented slider /
+  rotation rendering and behaviour-trajectory scoring).
+- `bls-admin/src/auth/behavior-collector.ts` and `bls-admin/src/components/CaptchaChallenge/`
+  (self-implemented trajectory collection and slider modal).
+
+### Docs
+
+- `pages/login-captcha.md` (2.0.0, full rewrite), `pages/user-login.md`, `pages/system-config.md`,
+  `00-common/00-architecture.md`, `01-redis.md`, `03-rate-limiting.md`, `04-auth-and-permissions.md`,
+  `05-security-log-and-event-center.md`, `07-database.md`, `08-external-api-and-service-auth.md`,
+  `12-frontend-data-layer.md`, plus `docs/login-captcha.md`.
+
+### Known limitation (documented, not hidden)
+
+Self-hosted ALTCHA cannot generate image/audio code challenges (`altcha/lib` has no generator);
+that capability belongs to ALTCHA Sentinel/Cloud. The visible stage therefore shows the official
+checkbox/switch PoW component with its built-in accessibility support. If a picture/slider puzzle is
+truly mandatory, switch `sys.login.captcha.provider=tianai` and run Tianai CAPTCHA as a separate
+internal service (Koa proxies and still issues its own `captchaToken`) — never port the Java
+algorithm into TypeScript.
+
+---
+
 ## [1.6.0] — 2026-09-21
+
+> **Superseded by 1.7.0** — the self-implemented captcha described below was replaced by ALTCHA.
+> Keep this entry only as history.
+
 
 **Login captcha — the last missing piece of the authentication loop.** Two-stage human
 verification (silent behaviour scoring → slider / rotate) with a one-shot, binding-scoped
