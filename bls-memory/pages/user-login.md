@@ -174,14 +174,17 @@ what satisfies the nonce rule. Because there is no token yet, the nonce key is
 
 ## 7. How to extend
 
-- **Change the captcha policy** (thresholds, TTLs, secondary types, mode): edit the
+- **Change the captcha policy** (TTLs, escalation threshold, mode, provider): edit the
   `sys.login.captcha.*` values in the System parameters page or `sql/Init.sql`
   (see [pages/system-config.md](system-config.md) and [pages/login-captcha.md](login-captcha.md)) —
   no code change is required.
-- **Add a new secondary challenge type**: extend `CAPTCHA_SECONDARY_TYPES` in
-  `bls-server/src/config/dynamic-config.ts`, add the generator in
-  `bls-server/src/security/captcha/image.ts`, the payload + verification branch in
-  `security/captcha/service.ts`, and the UI branch in `components/CaptchaChallenge/index.tsx`.
+- **Change the Proof-of-Work algorithm**: extend `deriveKeyFor()` in
+  `bls-server/src/security/captcha/altcha.ts` (Argon2/Scrypt additionally need the widget to import
+  the extra ALTCHA workers). Never write a captcha algorithm yourself — see the design rule in
+  [pages/login-captcha.md](login-captcha.md) §1.
+- **Switch provider**: `sys.login.captcha.provider=tianai` proxies an **independent** Tianai CAPTCHA
+  service (`TIANAI_BASE_URL`); Koa only forwards challenge/verify and still issues its own
+  `captchaToken`. Do **not** port the Java algorithm into TypeScript.
 - **Add a new login factor**: extend `AuthService.loginByTenant`, keep the response shape
   `{token, refreshToken, user}` unchanged so the frontend keeps working.
 - Update this document and the affected `00-common/*` tables after the change.

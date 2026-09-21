@@ -124,7 +124,8 @@ An invalid value (wrong type / out of range / unknown enum member / a CSV list t
 item) is **replaced by the declared default** and logged as
 `[dynamic-config] invalid … , using default`; it is never silently coerced. Numbers must match
 `^-?\d+(\.\d+)?$` (so `12abc` is rejected). `toPublicCaptchaConfig()` projects only
-`{enabled, mode, secondaryTypes}` for the public endpoint.
+`{enabled, mode, provider}` for the public endpoint
+(`GET /api/auth/captcha/config` additionally derives `display` from the escalation policy).
 
 Seed rows for the 6 captcha keys (tenant `000000`): `sql/Init.sql` (`000406`–`000411`) for fresh
 installs **and** `bls-server/migrations/20260922_017_login_captcha.sql` for already deployed

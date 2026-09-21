@@ -329,7 +329,7 @@ log names the module, table and field. Checks include:
 |---|---|
 | `REDIS_ENABLED=true` | sessions, nonce/replay, rate limiting and idempotency all depend on Redis |
 | `SECRET_ENCRYPTION_KEY` (base64, 32 bytes) | sensitive columns are stored with AES-256-GCM envelope encryption |
-| `JWT_SECRET` / `DB_PASSWORD` / `CORS_ORIGINS` / `API_SIGN_SECRET` / `INTERNAL_SECRET` / `CAPTCHA_SECRET` | no placeholders (`CHANGE_TO_*`), no weak defaults |
+| `JWT_SECRET` / `DB_PASSWORD` / `CORS_ORIGINS` / `API_SIGN_SECRET` / `INTERNAL_SECRET` / `ALTCHA_HMAC_KEY` | no placeholders (`CHANGE_TO_*`), no weak defaults; `ALTCHA_HMAC_KEY` also has a **minimum length of 32** (it signs and verifies the ALTCHA challenges) |
 | `INTERNAL_IP_ALLOWLIST` | must be valid CIDR / IP entries, otherwise startup fails |
 
 Environment switches introduced in phase 7 (both default to `false` in production):
