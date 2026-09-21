@@ -30,3 +30,22 @@ VALUES
 ('000409','000000','sys.login.captcha.challengeTtlSeconds','180','验证挑战有效期(秒)','sys','0','ALTCHA challenge 有效期 30-900',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
 ('000410','000000','sys.login.captcha.tokenTtlSeconds','120','登录验证凭证有效期(秒)','sys','0','一次性 captchaToken 有效期 30-600',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
 ('000411','000000','sys.login.captcha.forceAfterFailures','3','连续失败要求可见验证次数','sys','0','同账号近期连续登录失败达到该值后不再完全静默 1-100',0,'2026-09-21 00:00:00','2026-09-21 00:00:00');
+
+-- ============ 修订（ALTCHA 化后的存量数据修正，可重复执行）============
+-- 1) 早期版本写入的 provider='builtin' 已不在枚举内（现为 altcha / tianai），
+--    会导致每次配置解析都告警并回退默认值，这里统一纠正为 altcha。
+UPDATE `sys_config`
+   SET `config_value` = 'altcha', `update_time` = NOW()
+ WHERE `config_key` = 'sys.login.captcha.provider'
+   AND `config_value` NOT IN ('altcha', 'tianai');
+
+-- 2) 早期版本写入的 3 个参数已废弃（Dynamic Config 不再读取），软删除，
+--    避免残留在系统参数页面造成误导；如需保留历史值请注释掉本段。
+UPDATE `sys_config`
+   SET `deleted` = 1, `update_time` = NOW()
+ WHERE `deleted` = 0
+   AND `config_key` IN (
+     'sys.login.captcha.silentThreshold',
+     'sys.login.captcha.secondaryTypes',
+     'sys.login.captcha.maxAttempts'
+   );

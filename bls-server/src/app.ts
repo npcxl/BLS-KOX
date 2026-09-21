@@ -208,8 +208,12 @@ export function createApp(): Koa {
   });
   app.use(internalR.routes());
 
+  // 4xx 多为可预期的业务拒绝（人机验证未通过、鉴权失败、参数校验不通过等），
+  // 打成 ERROR 会造成日志噪音与误告警；只有 5xx / 未知异常才需要排查。
   app.on('error', (error) => {
-    logger.error('Unhandled application error', { error: String(error) });
+    const status = typeof (error as any)?.status === 'number' ? (error as any).status : 500;
+    if (status >= 500) logger.error('Unhandled application error', { error: String(error) });
+    else logger.warn('Request rejected', { error: String(error) });
   });
 
   return app;

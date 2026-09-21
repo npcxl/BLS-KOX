@@ -77,6 +77,11 @@ const Login: React.FC = () => {
   const [captchaConfig, setCaptchaConfig] = useState<CaptchaConfig>(CAPTCHA_DISABLED);
   const [captchaDisplay, setCaptchaDisplay] = useState<CaptchaDisplay>('invisible');
   const [captchaHint, setCaptchaHint] = useState<string | null>(null);
+  /**
+   * 静默验证是否已完成并拿到 captchaToken。
+   * 必须是 state —— 用 ref 不会触发重渲染，界面会一直停在「正在后台完成安全校验…」。
+   */
+  const [captchaSolved, setCaptchaSolved] = useState(false);
   /** 每次需要刷新 challenge 时自增，用于重新挂载官方 widget */
   const [captchaInstance, setCaptchaInstance] = useState(0);
   /** 官方 widget 产出的 payload（一次性；提交后作废） */
@@ -85,6 +90,10 @@ const Login: React.FC = () => {
   const captchaTokenRef = useRef<string | null>(null);
   const captchaRetryRef = useRef(false);
   const handleSubmitRef = useRef<((values: LoginValues) => Promise<void>) | null>(null);
+  /** 因人机验证失败而挂起的登录：widget 重新求解成功后自动补发一次，用户无需再点登录 */
+  const pendingLoginRef = useRef<LoginValues | null>(null);
+  /** doLogin 定义在下方，用 ref 转发避免 TDZ */
+  const doLoginRef = useRef<((values: LoginValues, captchaToken: string | null) => Promise<void>) | null>(null);
 
   useEffect(() => {
     const rememberedUsername = tokenStore.getRememberedUsername() ?? undefined;
@@ -145,6 +154,7 @@ const Login: React.FC = () => {
         if (data.passed && data.captchaToken) {
           captchaTokenRef.current = String(data.captchaToken);
           setCaptchaHint(null);
+          setCaptchaSolved(true);
           return true;
         }
         if (data.requireVisible) {
@@ -152,15 +162,18 @@ const Login: React.FC = () => {
           setCaptchaDisplay('visible');
           setCaptchaHint(CAPTCHA_REASON_TEXT[String(data.reason ?? '')] ?? '请完成下方安全验证');
           setAltchaPayload(null);
+          setCaptchaSolved(false);
           setCaptchaInstance((n) => n + 1);
           return false;
         }
         setCaptchaHint(CAPTCHA_REASON_TEXT[String(data.reason ?? '')] ?? '人机验证未通过，请重试');
         setAltchaPayload(null);
+        setCaptchaSolved(false);
         setCaptchaInstance((n) => n + 1);
         return false;
       } catch {
         setCaptchaHint('人机验证服务暂不可用，请稍后重试');
+        setCaptchaSolved(false);
         return false;
       }
     },
@@ -172,15 +185,30 @@ const Login: React.FC = () => {
     async (payload: string) => {
       setAltchaPayload(payload);
       const username = String(formRef.current?.getFieldValue?.('username') ?? '');
-      await exchangePayload(payload, captchaDisplay, username || undefined);
+      const ok = await exchangePayload(payload, captchaDisplay, username || undefined);
+
+      // 上一次登录因人机验证被拒（40010-40013）→ 拿到新凭证后自动补发登录
+      const pending = pendingLoginRef.current;
+      if (!ok || !pending) return;
+      pendingLoginRef.current = null;
+      setSubmitting(true);
+      try {
+        await doLoginRef.current?.(pending, captchaTokenRef.current);
+      } catch (error: any) {
+        setUserLoginState({ status: 'error', type: 'account' });
+        message.error(error?.response?.data?.message ?? '登录失败，请重试');
+      } finally {
+        setSubmitting(false);
+      }
     },
-    [captchaDisplay, exchangePayload],
+    [captchaDisplay, exchangePayload, message, setUserLoginState],
   );
 
   /** challenge 过期 → 重新拉取并求解 */
   const handleAltchaReset = useCallback(() => {
     setAltchaPayload(null);
     captchaTokenRef.current = null;
+    setCaptchaSolved(false);
     setCaptchaInstance((n) => n + 1);
   }, []);
 
@@ -233,6 +261,7 @@ const Login: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [initialState, intl, message, setInitialState],
   );
+  doLoginRef.current = doLogin;
 
   /** captcha 相关登录错误：清理凭证，重新取 challenge 并重试一次 */
   const handleCaptchaLoginError = useCallback(
@@ -242,6 +271,7 @@ const Login: React.FC = () => {
 
       captchaTokenRef.current = null;
       setAltchaPayload(null);
+      setCaptchaSolved(false);
 
       if (code === 50301) {
         message.error(error?.response?.data?.message ?? '人机验证服务暂不可用，请稍后重试');
@@ -257,6 +287,9 @@ const Login: React.FC = () => {
           if (!cfg.enabled) {
             // 配置已关闭 → 直接按原流程登录
             await doLogin(values, null);
+          } else {
+            // 仍开启 → 挂起这次登录，widget 重新求解成功后自动补发
+            pendingLoginRef.current = values;
           }
           return true;
         } finally {
@@ -271,6 +304,8 @@ const Login: React.FC = () => {
   );
 
   const handleSubmit = async (values: LoginValues) => {
+    // 用户手动提交：丢弃可能残留的自动补发，避免重复登录
+    pendingLoginRef.current = null;
     // Prevent duplicate submissions using a ref (synchronous guard)
     if (submittingRef.current) return;
     submittingRef.current = true;
@@ -401,7 +436,7 @@ const Login: React.FC = () => {
               challengeUrl={captchaConfig.challengeUrl}
               fieldName={captchaConfig.fieldName}
               instanceKey={captchaInstance}
-              solved={!!captchaTokenRef.current}
+              solved={captchaSolved}
               onVerified={handleAltchaVerified}
               onExpired={handleAltchaReset}
             />

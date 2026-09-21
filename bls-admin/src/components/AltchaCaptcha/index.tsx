@@ -122,7 +122,8 @@ const AltchaCaptcha: React.ForwardRefRenderFunction<AltchaCaptchaHandle, AltchaC
         <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
           为保障账号安全，请完成下方验证
         </Typography.Text>
-      ) : (
+      ) : solved ? null : (
+        // 静默验证已完成（已拿到 captchaToken）→ 不再展示加载提示，对用户完全无感
         <Typography.Text type="secondary" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
           <Spin size="small" /> 正在后台完成安全校验…
         </Typography.Text>
