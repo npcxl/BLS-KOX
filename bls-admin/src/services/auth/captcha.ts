@@ -1,49 +1,91 @@
 /**
- * 登录人机验证接口（ALTCHA，公共，无需认证）
+ * 登录人机验证接口（统一 Ticket 架构，公共，无需认证）
  *
- * 与后端 `bls-server/src/api/auth/captcha/index.ts` 一一对应。
- * - `challenge` 由官方 ALTCHA widget 直接通过 `challenge` 属性拉取（官方结构，无外层封装），
- *   因此这里**不**提供 challenge 的 request 封装。
- * - 其余调用统一 `skipErrorMessage`，错误提示由登录页控制。
+ * 与后端 `bls-server/src/api/captcha/index.ts` 一一对应：
+ *   GET  /api/captcha/config     公开配置（启用了哪个 provider / 统一入口地址）
+ *   POST /api/captcha/generate   统一生成：ALTCHA 本地 challenge / TIANAI 由 Koa 代理 Java 服务
+ *   POST /api/captcha/verify     统一校验：通过后由 Koa 签发**一次性 captchaTicket**
+ *
+ * 登录接口（`POST /api/auth/login`）只认 `captchaTicket`，不认任何 provider 的原始结果。
+ *
+ * **前端只被允许提交**：`scene` / `provider`（表达"想请求哪个 provider"）/ `username` /
+ * `payload`（ALTCHA 答案）/ `sessionId` + `data`（TIANAI 答案）。
+ * 阶段、ticket 内容、上游 challenge id、验证结论全部由服务端决定，前端传了也会被忽略。
  */
 import { request } from '@umijs/max';
 
-export type CaptchaMode = 'off' | 'adaptive' | 'always';
-export type CaptchaProvider = 'altcha' | 'tianai';
-/** ALTCHA 组件形态：invisible=静默，visible=需人工交互 */
-export type CaptchaDisplay = 'invisible' | 'visible';
+/** 与后端 CaptchaProviderName 对齐（**大写**） */
+export type CaptchaProviderName = 'ALTCHA' | 'TIANAI';
+export type CaptchaScene = 'LOGIN';
+/** 后端统一状态：passed=已签发 ticket；failed=用户没通过；technical_error=我方技术故障 */
+export type CaptchaVerifyStatus = 'passed' | 'failed' | 'technical_error';
+export type CaptchaSecondaryType = 'blockPuzzle' | 'clickWord';
 
+/** 统一入口（后端 CaptchaPublicConfig.generateUrl / verifyUrl 的兜底值） */
+export const CAPTCHA_CONFIG_URL = '/api/captcha/config';
+export const CAPTCHA_GENERATE_URL = '/api/captcha/generate';
+export const CAPTCHA_VERIFY_URL = '/api/captcha/verify';
+/** ALTCHA widget 隐藏域字段名（后端 CAPTCHA_FIELD_NAME） */
+export const CAPTCHA_FIELD_NAME = 'altchaPayload';
+
+/** `GET /api/captcha/config` 下发结构 */
 export interface CaptchaConfig {
   enabled: boolean;
-  mode: CaptchaMode;
-  provider: CaptchaProvider;
-  display: CaptchaDisplay;
-  /** display=visible 时命中策略的原因（用于文案） */
-  reason?: string;
-  /** ALTCHA widget 使用的 challenge 地址 */
-  challengeUrl: string;
-  /** ALTCHA widget 隐藏域字段名 */
+  /** 第一层（默认 ALTCHA 静默 PoW） */
+  primaryProvider: CaptchaProviderName;
+  /** 第二层（默认 TIANAI 图形验证） */
+  fallbackProvider: CaptchaProviderName;
+  /** 本部署是否启用 TIANAI（false 时风控命中也不会要求图形验证） */
+  tianaiEnabled: boolean;
+  generateUrl: string;
+  verifyUrl: string;
   fieldName: string;
 }
 
-export interface CaptchaVerifyResult {
-  passed: boolean;
-  captchaToken?: string;
-  expiresAt?: number;
-  /** 服务端要求切换为可见组件后重新验证 */
-  requireVisible?: boolean;
-  reason?: string;
-  message?: string;
+/** `POST /api/captcha/generate` 响应 */
+export interface CaptchaGenerateResult {
+  provider: CaptchaProviderName;
+  /** ALTCHA：官方 challenge 结构；TIANAI：Java 服务原始渲染字段 */
+  challenge: Record<string, unknown>;
+  /** TIANAI：Koa 签发的一次性会话 id（浏览器拿不到上游 challenge id） */
+  sessionId?: string;
+  expiresAt: number;
+  fieldName?: string;
 }
+
+/** `POST /api/captcha/verify` 响应 */
+export interface CaptchaVerifyResult {
+  status: CaptchaVerifyStatus;
+  provider: CaptchaProviderName;
+  /** status=passed 时返回：登录接口唯一认的凭证 */
+  captchaTicket?: string;
+  expiresAt?: number;
+  /** status=failed 时的通用原因（不含内部风控细节） */
+  reason?: string;
+  /** ALTCHA 通过但风控命中 → 需要继续完成 TIANAI 第二层 */
+  requireFallback?: boolean;
+  nextProvider?: CaptchaProviderName;
+}
+
+/** 第二层（Tianai）challenge —— 由前端把 `/generate` 结果归一化后交给 TianaiCaptcha 组件 */
+export interface SecondaryChallenge {
+  sessionId: string;
+  type: CaptchaSecondaryType;
+  expiresAt: number;
+  payload: Record<string, unknown>;
+}
+
+/** captcha 业务码：40010 缺失 / 40011 无效 / 40012 过期 / 40013 重放 / 50301 服务不可用 */
+export const CAPTCHA_ERROR_CODES = [40010, 40011, 40012, 40013, 50301] as const;
 
 const OPTIONS = { skipErrorMessage: true } as const;
 
-/** 读取公开配置与组件形态（可带 username 以获得更准确的策略判定） */
+/** 读取公开配置 */
 export async function getCaptchaConfig(
   params?: { username?: string },
   options?: Record<string, any>,
 ) {
-  return request<API.ResponseResult<CaptchaConfig>>('/api/auth/captcha/config', {
+  return request<API.ResponseResult<CaptchaConfig>>(CAPTCHA_CONFIG_URL, {
     method: 'GET',
     params,
     ...OPTIONS,
@@ -51,20 +93,55 @@ export async function getCaptchaConfig(
   });
 }
 
-/** 把 ALTCHA payload 提交给服务端校验 → 换取一次性 captchaToken */
-export async function verifyCaptcha(
-  data: { payload: string; username?: string; stage?: CaptchaDisplay },
+/**
+ * 统一生成入口。
+ * `provider` 只是"想请求哪个 provider"的意图，服务端仍会按配置与风控决定实际行为。
+ */
+export async function generateCaptcha(
+  data: { scene?: CaptchaScene; provider?: CaptchaProviderName; username?: string },
   options?: Record<string, any>,
 ) {
-  return request<API.ResponseResult<CaptchaVerifyResult>>('/api/auth/captcha/verify', {
+  return request<API.ResponseResult<CaptchaGenerateResult>>(CAPTCHA_GENERATE_URL, {
     method: 'POST',
-    data,
+    data: { scene: 'LOGIN', ...data },
     ...OPTIONS,
     ...(options || {}),
   });
 }
 
-/** 失败原因 → 中文提示 */
+/**
+ * 统一校验入口：通过后返回一次性 captchaTicket。
+ * ALTCHA 传 `payload`；TIANAI 传 `sessionId` + `data`（**不传 stage**）。
+ */
+export async function verifyCaptcha(
+  data: {
+    scene?: CaptchaScene;
+    provider?: CaptchaProviderName;
+    username?: string;
+    payload?: unknown;
+    sessionId?: string;
+    data?: Record<string, unknown>;
+  },
+  options?: Record<string, any>,
+) {
+  return request<API.ResponseResult<CaptchaVerifyResult>>(CAPTCHA_VERIFY_URL, {
+    method: 'POST',
+    data: { scene: 'LOGIN', ...data },
+    ...OPTIONS,
+    ...(options || {}),
+  });
+}
+
+/**
+ * 从上游 Tianai challenge 推断二级类型。
+ * 公开配置**不下发** secondaryType（属于内部策略），因此只能按上游返回的类型名映射。
+ */
+export function secondaryTypeOf(challenge: Record<string, unknown> | null | undefined): CaptchaSecondaryType {
+  const raw = String((challenge as any)?.type ?? '').toUpperCase();
+  return raw === 'WORD_IMAGE_CLICK' ? 'clickWord' : 'blockPuzzle';
+}
+
+/** 失败原因 → 中文提示（对外只有通用原因，不含内部风控细节） */
 export const CAPTCHA_REASON_TEXT: Record<string, string> = {
   PAYLOAD_MISSING: '请先完成人机验证',
   PAYLOAD_MALFORMED: '人机验证数据无效，请重试',
@@ -73,13 +150,11 @@ export const CAPTCHA_REASON_TEXT: Record<string, string> = {
   SIGNATURE_INVALID: '人机验证签名校验失败，请重新验证',
   SOLUTION_INVALID: '人机验证未通过，请重试',
   BINDING_MISMATCH: '验证环境发生变化，请重新验证',
+  STAGE_MISMATCH: '验证阶段不匹配，请刷新页面后重试',
   PROVIDER_UNAVAILABLE: '人机验证服务暂不可用，请稍后重试',
-  VISIBLE_REQUIRED: '请完成下方安全验证',
-  ACCOUNT_FAILURES: '请完成下方安全验证',
-  IP_ACCOUNT_FANOUT: '请完成下方安全验证',
-  IP_RISK_HIGH: '请完成下方安全验证',
-  RATE_LIMIT_PRESSURE: '请求过于频繁，请完成下方安全验证',
-  PRIVILEGED_ACCOUNT: '请完成下方安全验证',
-  DEVICE_ANOMALY: '请完成下方安全验证',
-  MODE_ALWAYS: '请完成下方安全验证',
+  INTERNAL_ERROR: '人机验证服务暂不可用，请稍后重试',
+  SECONDARY_REQUIRED: '需要完成额外安全验证',
+  UPSTREAM_TIMEOUT: '人机验证服务响应超时，请稍后重试',
+  UPSTREAM_UNREACHABLE: '人机验证服务暂不可用，请稍后重试',
+  UPSTREAM_BAD_RESPONSE: '人机验证服务异常，请稍后重试',
 };

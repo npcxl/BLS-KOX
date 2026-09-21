@@ -23,6 +23,88 @@ Rules: see the "Version metadata & maintenance" section of [`README.md`](README.
 
 ---
 
+## [1.8.0] — 2026-09-21
+
+**Login captcha split into two layers, with the stage decided by the server only.** The single-provider
+design from 1.7.0 (one `sys.login.captcha.provider`, ALTCHA `display="standard"` used as if it were a
+"second stage") is replaced by:
+
+- **layer 1 `silent`** — ALTCHA invisible Proof-of-Work (unchanged library, `display` always
+  `invisible`);
+- **layer 2 `secondary`** — **Tianai CAPTCHA** (`blockPuzzle` / `clickWord`), a separate service that
+  Koa only proxies.
+
+Verified against the **working tree on top of `753d86a`** (uncommitted).
+
+### Changed
+
+- **Config**: `sys.login.captcha.provider` → `primaryProvider` + `secondaryProvider` +
+  `secondaryType` (8 captcha keys total). `provider` / `silentThreshold` / `secondaryTypes` /
+  `maxAttempts` are soft-deleted by the migration; new rows use `000460`–`000462`.
+- **Security invariant — the stage can no longer be supplied by the client.** `POST
+  /api/auth/captcha/verify` ignores `stage` / `display` / `provider` in the body: the layer-1 stage is
+  read exclusively from the HMAC-signed `challenge.parameters.data.stage` (must be `silent`, otherwise
+  `STAGE_MISMATCH`). A signed challenge whose data says `secondary` is rejected on the layer-1 route.
+- **When the policy requires layer 2, layer 1 never issues a token** — the response is
+  `requiredStage: "secondary"` / `reason: "SECONDARY_REQUIRED"`. `captchaToken` therefore cannot be
+  forged by relabelling an invisible challenge.
+- **Public config no longer leaks policy reasons.** `GET /captcha/config` returns only
+  `enabled`, `mode`, the two providers, `secondaryType` and the server-decided `requiredStage`; the
+  internal cause (`ACCOUNT_FAILURES`, `IP_ACCOUNT_FANOUT`, `IP_RISK_HIGH`, `RATE_LIMIT_PRESSURE`,
+  `PRIVILEGED_ACCOUNT`, `DEVICE_ANOMALY`, `MODE_ALWAYS`) is written to the security log only.
+- **`captcha:ip-accounts:{ipHash}` records real usernames only** — anonymous requests no longer insert
+  an empty member, which used to distort the per-IP account fan-out statistic.
+- **Audit events renamed**: `CAPTCHA_VISIBLE_{REQUIRED,PASSED,FAILED}` →
+  `CAPTCHA_SECONDARY_{REQUIRED,PASSED,FAILED}` (layer 2); `rule_captcha_pow_failed` now matches
+  `CAPTCHA_POW_FAILED` + `CAPTCHA_SECONDARY_FAILED`.
+- **Routes**: `GET /captcha/challenge` + `POST /captcha/verify` (layer 1), `POST
+  /captcha/secondary/challenge` + `POST /captcha/secondary/verify` (layer 2). Rate-limit rules and the
+  cheat sheet were re-numbered accordingly.
+
+### Added
+
+- `bls-server/src/security/captcha/providers/altcha-provider.ts` (layer-1 adapter: challenge DTO +
+  verify DTO) and `providers/tianai-provider.ts` (layer-2 adapter: health check, `gen`/`check` proxy,
+  fail-closed error mapping).
+- **Layer-2 local one-shot session**: `sessionId` (24 random bytes) stored as
+  `captcha:secondary:{sessionId}` with tenant / domain / username / IP / UA binding + TTL, consumed
+  with `GETDEL`; the upstream challenge id is never trusted on its own.
+- **`POST /api/system/config/batch`** (`src/api/system/config/batch.ts`): single-transaction config
+  save restricted to managed keys, with a **Tianai health pre-check** before committing (unreachable or
+  missing `TIANAI_BASE_URL` ⇒ save rejected) so a config change can never lock out every login.
+- **Frontend state machine**: `pages/user/login/captcha-machine.ts` (pure reducer, 8 phases) +
+  `hooks/useLoginCaptcha.ts`; submission is blocked until the config is loaded, the username is
+  debounced 400 ms, stale responses are dropped via `cycleId`, the token expires via `expiresAt`, and
+  the local token is cleared after **every** `/login` call. `TianaiCaptcha` renders layer 2 (keyboard
+  operable); `AltchaCaptcha` accepts `invisible | standard` only.
+- **Frontend test infrastructure**: `bls-admin/vitest.config.ts` + `vitest.setup.ts` (jsdom,
+  `@testing-library/jest-dom`, DOM cleanup) — the previously unreferenced frontend tests
+  (`pages/user/login/index.test.tsx`, `pages/form/basic-form/index.test.tsx`,
+  `auth/__tests__/*`) now actually run.
+- **Layer-2 deployment support**: the Tianai upstream paths are no longer hard-coded —
+  `TIANAI_GEN_PATH` / `TIANAI_CHECK_PATH` / `TIANAI_HEALTH_PATH` (defaults `/gen`, `/check`,
+  `/health`) let a deployment match its own service without touching code. `docs/login-captcha.md` §6
+  now documents the contract to satisfy, a minimal bridge controller example, the curl self-check and
+  a "why it fails" table.
+- **50301 operability**: `service.ts` now logs a `warn` with a concrete `hint` whenever the layer-2
+  provider is unusable (`TIANAI_BASE_URL` missing / provider not `tianai`) and `app.ts` warns at
+  startup when `TIANAI_BASE_URL` is empty — the public response stays the same generic
+  `503 / 50301`, but the server log now names the cause. Troubleshooting table added to
+  `docs/login-captcha.md` §2.1 and this page's §5.
+- **Insecure-context handling**: ALTCHA v3 needs WebCrypto and therefore a **secure context**
+  (`https://…`, `http://localhost`, `http://127.0.0.1`) — under `http://<LAN-IP>` it throws
+  `Secure context (HTTPS) required.`. The hook now detects `window.isSecureContext === false`
+  (state `envBlocked`, event `ENV_UNSUPPORTED`) and shows an explicit message instead of hanging on
+  “正在后台完成安全校验…”, with submission blocked; `AltchaCaptcha` forwards the widget's
+  `statechange → error` through `onError`. Nothing is blocked while the feature is disabled.
+
+### Removed
+
+- `pendingLoginRef` / `captchaRetryRef` and the auto re-submission of the login form after a captcha
+  error; the ALTCHA `display="visible"` mapping (`standard` is not layer 2).
+
+---
+
 ## [1.7.0] — 2026-09-21
 
 **Login captcha re-implemented on ALTCHA — no self-written captcha algorithm.** The mechanism

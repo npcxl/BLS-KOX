@@ -5,13 +5,20 @@ export const defaultRateLimitRules: RateLimitRule[] = [
   { path: '/api/auth/login', methods: ['POST'], dimensions: ['ip'], limit: 20, windowSeconds: 60 },
   { path: '/api/auth/login', methods: ['POST'], dimensions: ['account'], limit: 5, windowSeconds: 300 },
 
-  // 登录人机验证（ALTCHA）：IP / account / device 三维度，防止无限创建 challenge 消耗 Redis 与 CPU
+  // 登录人机验证（两级）：IP / account / device 三维度，
+  // 防止无限创建 challenge（ALTCHA 与二级会话）消耗 Redis 与上游 CPU
+  { path: '/api/auth/captcha/config', methods: ['GET'], dimensions: ['ip'], limit: 120, windowSeconds: 60 },
+  // 第一层：ALTCHA 静默 PoW
   { path: '/api/auth/captcha/challenge', methods: ['GET'], dimensions: ['ip'], limit: 60, windowSeconds: 60 },
   { path: '/api/auth/captcha/challenge', methods: ['GET'], dimensions: ['device'], limit: 30, windowSeconds: 300 },
   { path: '/api/auth/captcha/verify', methods: ['POST'], dimensions: ['ip'], limit: 30, windowSeconds: 60 },
   { path: '/api/auth/captcha/verify', methods: ['POST'], dimensions: ['account'], limit: 20, windowSeconds: 300 },
-  { path: '/api/auth/captcha/verify', methods: ['POST'], dimensions: ['device'], limit: 30, windowSeconds: 300 },
-  { path: '/api/auth/captcha/config', methods: ['GET'], dimensions: ['ip'], limit: 120, windowSeconds: 60 },
+  // 第二层：Tianai 图形验证（会消耗上游资源，限流更严）
+  { path: '/api/auth/captcha/secondary/challenge', methods: ['POST'], dimensions: ['ip'], limit: 20, windowSeconds: 60 },
+  { path: '/api/auth/captcha/secondary/challenge', methods: ['POST'], dimensions: ['account'], limit: 10, windowSeconds: 300 },
+  { path: '/api/auth/captcha/secondary/verify', methods: ['POST'], dimensions: ['ip'], limit: 20, windowSeconds: 60 },
+  { path: '/api/auth/captcha/secondary/verify', methods: ['POST'], dimensions: ['account'], limit: 10, windowSeconds: 300 },
+  { path: '/api/auth/captcha/secondary/verify', methods: ['POST'], dimensions: ['device'], limit: 30, windowSeconds: 300 },
 
   // 导出：user + tenant
   { path: '/api/common/excel/export', methods: ['POST'], dimensions: ['user'], limit: 5, windowSeconds: 60 },

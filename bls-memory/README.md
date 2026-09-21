@@ -103,7 +103,7 @@ Pages talk to `/api/*`. Nginx (or `bls-admin/config/proxy.ts` in dev) decides wh
 | Page | Route | Memory file |
 |---|---|---|
 | Login | `/user/login` | [pages/user-login.md](pages/user-login.md) |
-| Login captcha (escalating: invisible → ALTCHA Proof-of-Work) | part of `/user/login` | [pages/login-captcha.md](pages/login-captcha.md) |
+| Login captcha (two-level: ALTCHA silent PoW → Tianai blockPuzzle/clickWord) | part of `/user/login` | [pages/login-captcha.md](pages/login-captcha.md) |
 | Register + result | `/user/register`, `/user/register-result` | [pages/user-register.md](pages/user-register.md) |
 
 ### Dashboard & personal

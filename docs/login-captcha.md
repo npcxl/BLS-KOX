@@ -1,4 +1,4 @@
-# 登录人机验证（ALTCHA）
+# 登录人机验证（两级：ALTCHA 静默 → Tianai 二次验证）
 
 > 适用范围：`bls-server`（Koa 后端）+ `bls-admin`（登录页 / 系统参数页）。
 > 页面级端到端记忆（含每个端点、每条校验、Redis key、审计字段、已知缺口）见
@@ -6,199 +6,321 @@
 
 ## 1. 方案与原则
 
-**不自研验证码。** 滑块拼图、图片裁切、鼠标轨迹识别、验证码算法一律不自己实现，改为集成成熟
-开源自托管项目 **ALTCHA**：
+**不自研验证码。** 滑块拼图、图片裁切、鼠标轨迹识别、验证码算法一律不自己实现：
 
-- 项目：<https://github.com/altcha-org/altcha>（npm 包 `altcha`，v3）
-- 服务端库：`altcha/lib` → `createChallenge()` / `verifySolution()`
-- 前端组件：官方 Web Component `<altcha-widget>`（React 直接挂载，核心代码不改）
-
-选择理由：开源可自托管、官方支持 TypeScript 服务端、提供 Web Component / React 用法、支持
-invisible 静默验证与 Proof-of-Work、内置无障碍支持、无需接入任何第三方云服务、不需要自己写滑块算法。
+- **第一层（静默）**：集成成熟开源自托管项目 **ALTCHA**（<https://github.com/altcha-org/altcha>，
+  npm 包 `altcha` v3）。服务端用 `altcha/lib` 的 `createChallenge()` / `verifySolution()`，
+  前端用官方 Web Component `<altcha-widget>`（React 直接挂载，核心代码不改）。
+- **第二层（显式）**：集成 **Tianai CAPTCHA** 作为**独立部署的图形验证码服务**
+  （`blockPuzzle` 滑块拼图 / `clickWord` 点选文字）。Koa 只做转发与本地会话管理，
+  **禁止把 Java 验证码算法复制或改写成 TypeScript**。
 
 职责边界：
 
 | 关注点 | 归属 |
 |---|---|
-| challenge 生成、HMAC 签名、有效期 | `altcha/lib` |
-| Proof-of-Work 求解（浏览器） | 官方 `<altcha-widget>`（Web Worker） |
-| payload 服务端校验（密码学） | `altcha/lib` `verifySolution()` |
-| `captchaToken`、Redis、绑定与一次性消费 | 本项目（不是验证码算法） |
+| 第一层 challenge 生成、HMAC 签名、有效期 | `altcha/lib` |
+| 第一层 Proof-of-Work 求解（浏览器） | 官方 `<altcha-widget>`（Web Worker） |
+| 第一层 payload 服务端校验（密码学） | `altcha/lib` `verifySolution()` |
+| 第二层图片生成与答案判定 | **Tianai CAPTCHA 服务**（独立部署） |
+| `captchaToken`、`sessionId`、Redis、绑定、阶段判定与一次性消费 | 本项目（不是验证码算法） |
 
 ### 两级语义
 
-- **invisible（第一层，默认）**：`display="invisible"` + `auto="onload"`，后台完成 PoW，用户无感；
-- **visible（第二层）**：命中策略时切换为官方可见组件（`display="standard"`），要求人工交互。
+| 层 | 阶段值 | 触发 | 前端组件 |
+|---|---|---|---|
+| 第一层 | `silent` | 始终执行 | ALTCHA `<altcha-widget display="invisible" auto="onload">`，后台解 PoW，用户无感 |
+| 第二层 | `secondary` | 服务端策略命中（`mode=always`、连续失败、IP 侧风险、超管账号、UA 异常等） | `TianaiCaptcha`（`blockPuzzle` / `clickWord`），**不复用 altcha-widget** |
 
-两层最终都由服务端校验 ALTCHA payload，然后签发**一次性 `captchaToken`**，由
-`POST /api/auth/login` 消费。
+两层都通过后，服务端签发**一次性 `captchaToken`**，由 `POST /api/auth/login` 消费。
+
+### ALTCHA 可见组件不是第二层（重要）
+
+ALTCHA 的 `display="standard"` 只是「需要用户点一下的 PoW」，脚本依然可以通过，**不能**当作
+图形人机验证。因此：
+
+- 第一层的 `display` 恒为 `invisible`（代码中类型只允许 `invisible | standard`，
+  `visible` 不是 ALTCHA 的合法取值，也**不映射**业务阶段）；
+- 真正的第二层只有 Tianai；未配置 Tianai 时第二层 **fail closed**，绝不会退化成「ALTCHA 可见组件」。
 
 ### 已知能力边界（如实说明）
 
-自托管 ALTCHA **不提供图片码 / 音频验证码生成**（`altcha/lib` 没有 code challenge 生成器，
-该能力属于 ALTCHA Sentinel / Cloud）。因此可见层展示的是官方复选框/开关式 PoW 组件（自带 WCAG
-无障碍支持），而不是图片拼图。
+- 自托管 ALTCHA 不提供图片码 / 音频验证码生成（`altcha/lib` 没有 code challenge 生成器，
+  该能力属于 ALTCHA Sentinel / Cloud），所有图片题都来自第二层 Tianai。
+- 第二层依赖外部服务：未配置 `TIANAI_BASE_URL`、健康检查失败、超时或上游报错，
+  一律按 `503 / 50301 CAPTCHA_SERVICE_UNAVAILABLE` **拒绝登录**（fail closed，绝不放行）。
+  为避免「保存配置后全员登不进去」，系统参数页保存前会先做一次 Tianai 可用性预检。
 
-如果产品**确实**必须有图片拼图：把 `sys.login.captcha.provider` 切到 `tianai`，把
-Tianai CAPTCHA 作为**独立内部服务**运行，Koa 只代理 challenge/verify 并照旧签发自己的
-`captchaToken`。**禁止把 Java 验证码算法复制或改写成 TypeScript。**
+### ⚠ 必须使用安全上下文（HTTPS / localhost）
 
-安全控制始终是服务端的 PoW 校验；可见层是策略/交互升级，不是第二个密码学因子。
+ALTCHA v3 的 Proof-of-Work 基于 **WebCrypto（`crypto.subtle`）**，浏览器只在**安全上下文**
+提供它。官方代码会直接抛错：
 
-## 2. 系统参数
+```
+Error: Secure context (HTTPS) required.
+    at verify (altcha/dist …)
+```
 
-| 参数 | 类型 | 范围 / 枚举 | 默认值 |
+因此用 `http://<局域网IP>:8000` 访问时**第一层根本无解**（没有开关可以绕过），登录会被卡住。
+`isSecureContext === true` 的场景：
+
+| 访问方式 | 可用 |
+|---|---|
+| `https://任意域名` | ✅ 生产必须如此 |
+| `http://localhost:8000` / `http://127.0.0.1:8000` | ✅ 本地开发推荐 |
+| `http://<局域网IP>:8000` | ❌ 报 Secure context 错误 |
+
+前端已对该情况做**显式处理**：检测到 `window.isSecureContext === false` 且验证码开启时，
+不再挂在「正在后台完成安全校验…」，而是直接提示
+「当前为非安全上下文（HTTP）：浏览器不允许执行人机验证，请改用 HTTPS 或 localhost 访问」，
+并禁止提交（验证码关闭时不做限制，原登录流程不受影响）。
+
+本地联调的三种做法：
+
+1. 用 `http://localhost:8000` 访问（最简单）；
+2. 给 dev server 配 HTTPS（`@umijs/max` dev 支持 `https: {}`）；
+3. Chrome 临时把该源标记为安全：`chrome://flags/#unsafely-treat-insecure-origin-as-secure`
+   填入 `http://192.168.x.x:8000`（仅调试用，生产环境必须 HTTPS）。
+
+## 2. 接口
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/auth/captcha/config` | 公开配置 + **服务端判定**的 `requiredStage` |
+| GET | `/api/auth/captcha/challenge` | 第一层 ALTCHA challenge（**官方结构原样返回**，无 `{code,...}` 包装，供 widget 直接消费） |
+| POST | `/api/auth/captcha/verify` | 第一层校验 → 一次性 `captchaToken` |
+| POST | `/api/auth/captcha/secondary/challenge` | 第二层 challenge（Tianai）+ 本地一次性 `sessionId` |
+| POST | `/api/auth/captcha/secondary/verify` | 第二层校验 → 一次性 `captchaToken` |
+
+全部为公共接口（无 `jwtAuth`），统一 `Cache-Control: no-store`。
+
+```json
+// GET /config 的 data
+{
+  "enabled": true, "mode": "adaptive",
+  "primaryProvider": "altcha", "secondaryProvider": "tianai", "secondaryType": "blockPuzzle",
+  "requiredStage": "silent",
+  "challengeUrl": "/api/auth/captcha/challenge",
+  "secondaryChallengeUrl": "/api/auth/captcha/secondary/challenge",
+  "fieldName": "altchaPayload"
+}
+
+// 通过
+{ "passed": true, "stage": "silent", "captchaToken": "<one-shot>", "expiresAt": 1700000000000 }
+// 需要第二层
+{ "passed": false, "reason": "SECONDARY_REQUIRED", "requiredStage": "secondary", "message": "需要完成额外安全验证" }
+// 失败
+{ "passed": false, "reason": "SOLUTION_INVALID" }
+```
+
+**不下发**阈值（`forceAfterFailures` / `cost`）、失败计数与内部风控原因；原因只写安全审计。
+
+## 2.1 排障：登录报 `50301 CAPTCHA_SERVICE_UNAVAILABLE`
+
+50301 只有两个来源，先看**是哪个请求**返回的（浏览器 Network）：
+
+| 返回 50301 的请求 | 原因 | 处理 |
+|---|---|---|
+| `POST /api/auth/captcha/secondary/challenge`（或 `/secondary/verify`） | **策略要求第二层，但 Tianai 不可用**：`TIANAI_BASE_URL` 为空、服务不可达、超时、上游报错；或 `secondaryProvider` 被设成非 `tianai`（altcha 不提供图形验证码） | 部署 Tianai 并配置 `TIANAI_BASE_URL`；或临时把 `sys.login.captcha.mode` 设为 `off`（或 `enabled=false`） |
+| `POST /api/auth/login` | **Redis 不可用**（`captcha:token:*` 消费失败即 fail closed） | 检查 Redis 连通性 / `REDIS_ENABLED`；恢复前所有登录都会被拒绝（设计如此） |
+
+为什么"输完密码"才报错：用户名稳定后前端会带 `username` 重新拉策略，服务端一旦判定需要第二层
+（`mode=always`、同账号连续失败 ≥ `forceAfterFailures`、IP 多账号、IP 高风险、超管账号、UA 异常），
+就会立刻请求第二层 challenge；此时若 Tianai 未部署 → 50301，且**不会**签发 token，登录按钮保持禁用。
+
+快速确认：
+
+```bash
+# 1) 该账号当前需要哪一层？（silent = 正常；secondary = 命中策略）
+curl -s 'http://localhost:6001/api/auth/captcha/config?username=你的账号'
+# 2) 服务端日志（新增）会直接说明原因与处理建议
+#    [captcha] secondary provider unavailable, login will fail closed { hint: '设置 TIANAI_BASE_URL …' }
+# 3) 连续失败计数（TTL 900s，到期自动恢复）
+redis-cli --scan --pattern 'captcha:fail:*'
+```
+
+恢复方式（任选其一）：
+
+1. **部署 Tianai** 并设置 `TIANAI_BASE_URL`（唯一"开着验证码还能登录"的正解）；
+2. 临时把 `sys.login.captcha.mode` 改为 `off`（或 `enabled=false`）——系统参数页可改，立即生效；
+3. 清掉失败计数 `redis-cli DEL captcha:fail:account:<tenantId>:<usernameHash>`（或等 15 分钟自动过期）。
+
+> 服务器启动时会检查 `TIANAI_BASE_URL`：缺失即打印显著告警，避免"配了验证码却没人能登录"排查半天。
+
+## 3. 谁决定什么（字段归属）
+
+| 字段 | 决定方 | 说明 |
+|---|---|---|
+| `stage` | **服务端** | 第一层只能来自 HMAC 签名保护的 `challenge.parameters.data.stage`（必须为 `silent`），第二层来自被消费的本地会话 |
+| token 中的 `provider` / `secondaryType` | **服务端** | 签发时按 `primaryProvider` / `secondaryProvider` 写入 |
+| `requiredStage` | **服务端** | 由 `evaluateCaptchaPolicy()` 依据账号失败、IP 多账号、IP 风险、限流压力、超管账号、UA 异常与 `mode` 判定 |
+| challenge `nonce` / `signature` / `expiresAt` / `data` | **服务端**（ALTCHA HMAC 签名） | 客户端不可篡改 |
+| 第二层 `sessionId` / `upstreamId` / 绑定 / TTL | **服务端** | 24 字节随机 id，绑定租户 / 域名 / 账号 / IP / UA |
+| `captchaToken` 与其 TTL | **服务端** | 32 随机字节，Redis 只存 `sha256` |
+| `username` | 客户端 | 服务端做 hash，用于绑定与策略判定；不落原文 |
+| `payload`（第一层） | 客户端 | 官方 widget 产出的 base64 JSON |
+| `sessionId` + `data`（第二层） | 客户端 | `data` 是答案（坐标 / 点选位置），不含身份字段 |
+| 请求体里的 `stage` / `display` / `provider` | — | **一律忽略**：提交 `stage=visible\|secondary` 不会产生任何效果 |
+
+服务端强制的不变量：
+
+1. 第一层先完成完整校验（过期 → 签名 → PoW），之后才读取签名内的 `data`；`stage !== 'silent'`
+   → `STAGE_MISMATCH`。
+2. 签名内的 `tenantId` / `usernameHash` 必须与当前请求一致（`BINDING_MISMATCH`），
+   用户 A 解出的 challenge 不能给用户 B 用。
+3. challenge `nonce` 签发时 `SET NX EX` 登记，校验时 `GETDEL` 原子消费：一次解答只能用一次。
+4. **策略要求第二层时，第一层绝不签发 Token**，只返回 `requiredStage: "secondary"`。
+5. 第二层会话 `GETDEL` 一次性消费，并重新校验绑定与 `expiresAt`。
+6. `captchaToken` 一次性：`SET NX EX` 标记 + `GETDEL`，并发 `/login` 只有一个成功。
+
+## 4. 配置
+
+| 参数 | 类型 | 取值 / 范围 | 默认 |
 |---|---|---|---|
 | `sys.login.captcha.enabled` | bool | — | `true` |
 | `sys.login.captcha.mode` | enum | `off` / `adaptive` / `always` | `adaptive` |
-| `sys.login.captcha.provider` | enum | `altcha` / `tianai` | `altcha` |
+| `sys.login.captcha.primaryProvider` | enum | `altcha` / `tianai` | `altcha` |
+| `sys.login.captcha.secondaryProvider` | enum | `altcha` / `tianai` | `tianai` |
+| `sys.login.captcha.secondaryType` | enum | `blockPuzzle` / `clickWord` | `blockPuzzle` |
 | `sys.login.captcha.challengeTtlSeconds` | number | 30–900 | `180` |
 | `sys.login.captcha.tokenTtlSeconds` | number | 30–600 | `120` |
 | `sys.login.captcha.forceAfterFailures` | number | 1–100 | `3` |
 
-- 全部由 **Dynamic Config** 读取并缓存（`config:{tenantId}`，TTL 60s）；读取时做
-  类型 → 范围 → 枚举校验，非法值回退默认并告警。
-- 系统参数写入后 `onWrite → invalidateConfigCache(tid)` **立即清缓存**，新配置下一次请求即生效。
-- 公开接口只下发 `{enabled, mode, provider, display, challengeUrl, fieldName}`，
-  **不下发**阈值、PoW 难度与 HMAC 密钥。
+环境变量：`ALTCHA_HMAC_KEY`（生产必填、≥32 位）、`ALTCHA_COST`、`TIANAI_BASE_URL`、
+`CAPTCHA_DEV_BYPASS`（仅开发环境；生产出现即拒绝启动）。
 
-环境变量（密钥/难度类配置不落库、不下发前端）：
+- 参数通过 **Dynamic Config**（Redis 缓存 60s）读取，写入后立即失效缓存；
+- 非法值严格回退默认值并告警，不会打挂登录页；
+- 系统参数页通过 **`POST /api/system/config/batch`**（单事务、`system:config:edit`）保存，
+  保存前会合并「库中现值 + 本次变更」，若生效配置启用了 Tianai 第二层则先做健康检查，
+  不可用直接拒绝保存（避免把登录锁死）。
 
-| 变量 | 说明 |
-|---|---|
-| `ALTCHA_HMAC_KEY` | **生产必填**，≥ 32 位、非 `CHANGE_TO_*` 占位符，否则进程拒绝启动 |
-| `ALTCHA_COST` | Proof-of-Work 难度（PBKDF2 迭代次数），默认 `50000` |
-| `TIANAI_BASE_URL` | 仅 `provider=tianai` 时需要（独立验证码服务地址） |
-| `CAPTCHA_DEV_BYPASS` | 仅开发环境可开启，生产环境出现该值直接阻止启动 |
+## 5. 前端流程
 
-数据落库位置（内容一致，纯 seed、无 DDL）：`sql/Init.sql`（`000406`–`000411`）与
-`bls-server/migrations/20260922_017_login_captcha.sql`。旧版 9 参数的遗留行
-（`silentThreshold` / `secondaryTypes` / `maxAttempts`）已不再使用，可手工删除。
+状态机：`bls-admin/src/hooks/useLoginCaptcha.ts` +
+`bls-admin/src/pages/user/login/captcha-machine.ts`（纯 reducer，便于单测）：
 
-## 3. 接口
-
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| GET | `/api/auth/captcha/config` | 公开配置 + 本轮组件形态（`invisible` / `visible`） |
-| GET | `/api/auth/captcha/challenge` | **官方 ALTCHA challenge（原样返回，无 `{code,message,data}` 外层封装）** |
-| POST | `/api/auth/captcha/verify` | 服务端校验 payload → 签发一次性 `captchaToken` |
-
-`challenge` 是唯一不套封装的业务接口：官方 widget 的 `challenge` 属性直接读取该 JSON
-（字段 `parameters` / `signature`）。所有接口均 `Cache-Control: no-store`。
-
-`parameters.data` 内含 `{tenantId, usernameHash, display}`，且位于 **HMAC 签名内**，客户端无法伪造 ——
-这是租户/账号绑定与「是否必须可见交互」能够由服务端强制的基础。challenge 的 `nonce` 同时写入
-Redis（`captcha:challenge:{nonce}`，`SET NX EX`），保证**每个 challenge 只能使用一次**。
-
-`verify` 请求体：
-
-```json
-{ "payload": "<官方 widget 的 base64(JSON) payload>", "username": "admin", "stage": "invisible" }
+```
+loadingConfig → waitingUsername → solvingSilent → ready → submitting
+                      ↘ secondaryRequired → solvingSecondary ↗
+                      ↘ error（配置加载失败 → 禁止提交）
 ```
 
-校验顺序（全部服务端）：
+1. 挂载即读 `/captcha/config`；**配置未返回或加载失败时禁止提交**（不会默认「未开启」放行）。
+2. 用户名稳定 400ms 后再按用户名刷新策略，并以 `?username=` 重新挂载 ALTCHA widget。
+3. 第一层 payload 只提交一次（`verifyingRef` 防重复回调），提交后立即丢弃，不保存 payload。
+4. 返回 `requiredStage: "secondary"` → 渲染 `TianaiCaptcha`，答案错误会重新获取 challenge
+   （本地会话已被服务端消费）。
+5. `expiresAt` 到点自动失效并重新验证。
+6. **每次 `/login`（无论成败）都在 finally 清空本地 `captchaToken`**：服务端已消费，
+   重试必须重新验证；验证码被拒（40010-40013）只提示，**不自动补发登录**。
+7. 密码错误后重新拉取策略，达到阈值时下一次提交会出现第二层验证。
 
-1. payload 结构校验（base64 → JSON → `{challenge:{parameters,signature}, solution}`）；
-2. 绑定校验：`data.tenantId` 必须等于当前租户域名解析出的租户；`data.usernameHash` 非空时必须匹配；
-3. **策略复核**：策略要求可见而请求声明 `invisible` → 返回 `requireVisible: true`，
-   不签发凭证，且**不消耗 challenge**；
-4. challenge 一次性：`GETDEL captcha:challenge:{nonce}`，取不到 → `CHALLENGE_EXPIRED`；
-5. 官方 `verifySolution()`：过期 → 签名（防篡改）→ PoW 结果；
-6. 签发一次性 `captchaToken`。
+## 6. 部署第二层（Tianai CAPTCHA）
 
-返回：
+**仓库里没有第二层服务本体**：Koa 只做转发（`providers/tianai-provider.ts`），图形验证码由
+**独立部署的 Tianai CAPTCHA 服务**提供。所以"第二层不成功"绝大多数情况是：① `TIANAI_BASE_URL`
+没配；② 服务没起/端口不通；③ 上游接口契约与我们的 adapter 不一致。
 
-```json
-{ "passed": true,  "captchaToken": "…", "expiresAt": 1789000000000 }
-{ "passed": false, "reason": "SOLUTION_INVALID" }
-{ "passed": false, "reason": "VISIBLE_REQUIRED", "requireVisible": true }
+### 6.1 需要满足的接口契约（三选一，满足即可）
+
+| 方法 | 路径（可用环境变量覆盖） | 请求 | 期望响应 |
+|---|---|---|---|
+| GET | `/gen?type=blockPuzzle\|clickWord` | — | JSON，含 `id`（或 `challengeId` / `token`）+ 图片字段；允许裸对象或 `{data:{…}}` 包裹 |
+| POST | `/check` | `{ id, data }`（`data` = 前端答案，如 `{x,y}` 或 `{points:[[x,y]]}`） | 通过：`{valid:true}` / `{success:true}` / `{passed:true}` / `{data:true}` / `{code:200}`；不通过：其余 |
+| GET | `/health` | — | 任意 HTTP < 500 视为"服务可达"（保存配置时的预检用它） |
+
+路径不一致时用 `TIANAI_GEN_PATH` / `TIANAI_CHECK_PATH` / `TIANAI_HEALTH_PATH` 覆盖，
+**不要**为了适配路径去改代码。
+
+### 6.2 方式 A：部署 tianai-captcha（Java，推荐）
+
+上游项目：[`dromara/tianai-captcha`](https://gitee.com/dromara/tianai-captcha)（GitHub 同名镜像）。
+用 `tianai-captcha-springboot-starter` 起一个**最小独立服务**，把上面的三个接口暴露出来：
+
+```java
+// 仅作示意：类名/方法名随 tianai-captcha 版本略有差异，请对照你引入的版本调整
+@RestController
+public class CaptchaBridgeController {
+
+  @Autowired private ImageCaptchaApplication app;   // starter 自动装配
+
+  @GetMapping("/health")
+  public Map<String, Object> health() { return Map.of("status", "ok"); }
+
+  @GetMapping("/gen")
+  public Map<String, Object> gen(@RequestParam(defaultValue = "blockPuzzle") String type) {
+    ImageCaptchaVO vo = app.generateCaptcha(type);   // type: blockPuzzle / clickWord
+    Map<String, Object> data = new HashMap<>();
+    data.put("id", vo.getId());
+    data.put("backgroundImage", vo.getBackgroundImage());
+    data.put("sliderImage", vo.getSliderImage());
+    data.put("width", vo.getBackgroundImageWidth());
+    data.put("height", vo.getBackgroundImageHeight());
+    data.put("y", vo.getRandomY());
+    data.put("wordCount", 2);                        // clickWord 用
+    return Map.of("code", 200, "data", data);
+  }
+
+  @PostMapping("/check")
+  public Map<String, Object> check(@RequestBody Map<String, Object> body) {
+    ApiResponse<?> res = app.matching(String.valueOf(body.get("id")), body.get("data"));
+    return Map.of("code", 200, "valid", res.isSuccess());
+  }
+}
 ```
 
-登录接口新增字段：
-
-```json
-POST /api/auth/login
-{ "username": "admin", "password": "<md5>", "type": "account", "captchaToken": "<一次性凭证>" }
-```
-
-错误码：`40010 CAPTCHA_REQUIRED` / `40011 CAPTCHA_INVALID` / `40012 CAPTCHA_EXPIRED` /
-`40013 CAPTCHA_REPLAYED` / `50301 CAPTCHA_SERVICE_UNAVAILABLE`（响应同时带 `details.errorCode`）。
-
-## 4. 可见交互升级策略
-
-`evaluateCaptchaPolicy()` 命中任一条件即切换为 **visible**（不再完全静默）：
-
-| 条件 | reason |
-|---|---|
-| `mode=always` | `MODE_ALWAYS` |
-| 同账号连续登录失败达到 `forceAfterFailures`（15 分钟窗口，登录成功清零） | `ACCOUNT_FAILURES` |
-| 同一 IP 短时间内尝试 ≥ 3 个账号 | `IP_ACCOUNT_FANOUT` |
-| IP 风险 HIGH/CRITICAL 或评分 ≥ 70（Security Event Center 规则引擎） | `IP_RISK_HIGH` |
-| 登录限流压力 ≥ 10 | `RATE_LIMIT_PRESSURE` |
-| 登录平台超管账号（`sys_user.is_admin = 1`） | `PRIVILEGED_ACCOUNT` |
-| UA 明显异常（仅请求头层面，不做浏览器指纹识别） | `DEVICE_ANOMALY` |
-
-该判定在 `/verify` 内**以真实 username 再评估一次**，因此「先取一个 invisible challenge 再登录」
-无法规避升级。
-
-## 5. captchaToken
-
-- 32 字节随机数（`crypto.randomBytes`）→ `base64url`；**不做签名**，以 Redis 记录为准。
-- Redis 只保存 `sha256(token)`；记录包含 `provider / tenantId / domainHash / usernameHash /
-  ipHash / uaHash / stage / issuedAt / expiresAt`，TTL = `tokenTtlSeconds`（默认 **120 秒**）。
-- 绑定：**当前域名** + **username hash** + **IP hash** + **User-Agent hash**。
-- 一次性：`SET captcha:token-used:{hash} NX EX` 抢占 + `GETDEL` 取记录（无 `GETDEL` 时回退
-  `MULTI/EXEC GET+DEL`）。并发请求只有一个能成功。
-- 登录接口在**检查用户名 / 密码之前**消费；成功或失败都立即删除，禁止重复利用。
-- 账号不存在与存在时响应结构完全一致，避免账号枚举。
-
-## 6. 安全与可用性
-
-- **限流**（IP / 账号 / 设备三维度）：`/challenge` ip 60/60s + device 30/300s；
-  `/verify` ip 30/60s + account 20/300s + device 30/300s；`/config` ip 120/60s。
-- **生产环境 Redis 不可用时 fail closed**：Redis 未启用或任何命令异常 → `503 / 50301`，
-  登录一并被拒绝，不存在绕过分支；`provider=tianai` 但未配置 `TIANAI_BASE_URL` 同样 fail closed。
-- **密钥**：`ALTCHA_HMAC_KEY` 只在环境变量中，绝不写日志、绝不下发前端（有测试断言）。
-- **审计**：`CAPTCHA_*` 事件仅记录 `stage / provider / failureReason / tenantId / usernameHash /
-  ipHash / requestId`，**不记录** HMAC 密钥、完整 payload、`solution`、challenge 签名与完整 Token。
-- **不采集**鼠标轨迹、按键内容，不做浏览器指纹识别；仅使用请求头 UA 与 IP 聚合风险。
-- 全部数据带 TTL，无永久键；接口 `no-store`。
-- 前端依赖 **HTTPS / localhost**（官方 widget 需要 secure context）；`bls-admin-nginx.conf` 的 CSP
-  必须包含 `worker-src 'self' blob: data:`，否则官方 PoW Worker 会被拦截。
-
-## 7. 前端流程
-
-登录页（`bls-admin/src/pages/user/login/index.tsx` + `components/AltchaCaptcha`）：
-
-1. 打开页面请求 `GET /api/auth/captcha/config`。
-2. `enabled=false` → 完全保持原登录流程。
-3. `enabled=true` → 挂载官方 `<altcha-widget>`（`auto="onload"`、`language="zh-cn"`、
-   `challenge="/api/auth/captcha/challenge"`），后台完成 Proof-of-Work。
-4. widget 触发 `verified` → 页面把 payload 提交 `POST /api/auth/captcha/verify`，
-   拿到一次性 `captchaToken`（用户无感）。
-5. 若返回 `requireVisible: true` → 切换 `display="visible"`、重新挂载并提示用户完成可见验证。
-6. widget 触发 `expired` → 自动重新挂载以获取新 challenge（「过期自动重新获取」）。
-7. 点击登录 → `POST /api/auth/login` 携带 `captchaToken`。
-8. 登录返回 `40010-40013` → 清空凭证、重读配置、自动重试一次；`50301` → 提示服务暂不可用。
-9. 样式通过官方 `--altcha-*` CSS 变量对齐 Ant Design Pro（主色 `#1677ff`、圆角 8px），
-   中文文案来自官方 i18n（`altcha/i18n/zh-cn`），**未修改 ALTCHA 核心验证代码**。
-
-系统参数页（`pages/system/config/components/CaptchaSettingPanel.tsx`）提供「登录人机验证」开关与
-高级配置（模式 / 提供方 / 两个 TTL / 连续失败阈值）；密钥类配置只提示来自环境变量。
-
-## 8. 测试
-
-`bls-server/src/security/captcha/__tests__/`：
-
-| 文件 | 覆盖点 |
-|---|---|
-| `altcha-helper.ts` | 用官方库求解 challenge 并产出与 widget 完全一致的 base64 payload（测试契约的真实性） |
-| `captcha-service.test.ts` | 功能关闭兼容、invisible 静默成功、payload 无效（结构/签名/解）、challenge 过期与一次性、challenge 与账号绑定、captchaToken 过期 / 重复消费 / 账号不匹配 / 域名不匹配 / 跨 IP / 跨 UA、并发消费只有一个成功、连续失败达到阈值后要求可见验证、`mode=always`、超管账号、Redis 不可用 fail closed、provider 未配置、TTL 无永久数据、Redis 中不出现明文 Token |
-| `captcha-audit.test.ts` | 事件类型齐全；`detail` 字段白名单；不含 ALTCHA 密钥 / 完整 payload / `solution` / 签名 / 完整 Token / 明文用户名 |
-
-命令：
+启动与接线：
 
 ```bash
-cd bls-server && npm run lint && npm run test && npm run build && npm run openapi
-cd bls-admin  && npm run tsc  && npm run build
+# 1) 构建（需要能访问 Maven 仓库；离线环境用私服或预下载的 jar）
+mvn -q package
+java -jar target/tianai-captcha-bridge-*.jar --server.port=9527
+
+# 2) 自检（三条都必须符合 6.1 的期望响应）
+curl -s http://127.0.0.1:9527/health
+curl -s 'http://127.0.0.1:9527/gen?type=blockPuzzle'
+curl -s -X POST http://127.0.0.1:9527/check -H 'Content-Type: application/json' -d '{"id":"<上一步的id>","data":{"x":1,"y":1}}'
+
+# 3) 配置 Koa 后端（bls-server/.env）并重启
+TIANAI_BASE_URL=http://127.0.0.1:9527
+
+# 4) 系统参数页：mode=adaptive/always、secondaryProvider=tianai、secondaryType=blockPuzzle
+#    保存时会自动做 /health 预检，不可用直接拒绝保存
 ```
+
+> 若该服务与本项目同机部署，建议只监听 `127.0.0.1`（不要暴露到公网）；
+> Koa 是**服务端**调用它，因此不受浏览器 CORS 影响。
+
+### 6.3 方式 B：已有 Tianai（或兼容）服务
+
+只要满足 7.1 的契约：直接填 `TIANAI_BASE_URL`（必要时加三个路径覆盖），无需部署步骤 A。
+若上游需要鉴权头/自定义前缀，改 `providers/tianai-provider.ts` 的请求构造（保持三个方法契约不变）。
+
+### 6.4 常见「部署不成功」对照表
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| 启动日志 `TIANAI_BASE_URL 未配置…将 fail closed` | 没配环境变量（**你现在的情况**） | 配好 `TIANAI_BASE_URL` 后重启；暂不部署就先 `mode=off` |
+| `/secondary/challenge` 返回 50301 | 服务未启动 / 端口不通 / `/gen` 不是 2xx / 返回里没有 `id` | `curl` 7.2 的三条自检；确认路径是否需要覆盖 |
+| `/secondary/verify` 返回 50301 | `/check` 超时或 5xx | 同上；注意 5xx 视为"服务不可用"而不是"答案错误" |
+| 前端弹「验证码加载失败」但接口 200 | 图片字段名不匹配 | 对照 `TianaiCaptcha` 顶部 `BG_FIELDS` / `PIECE_FIELDS` / `WIDTH_FIELDS` / `Y_FIELDS` 增补字段名 |
+| 保存系统参数被拒：「Tianai 验证码服务当前不可用」 | `/health` 返回 5xx 或不可达 | 修好服务再保存（这是防止"保存后全员登不进去"的保护） |
+| 超管/连续失败账号登不进去且无法进后台改配置 | 第二层不可用 + 策略要求第二层 = fail closed（设计如此） | 用 SQL 临时 `mode=off` 解锁（见 2.1），或先部署第二层再启用 |
+
+### 6.5 上线顺序建议
+
+1. 先部署并自检第二层服务（6.2/6.3）；
+2. 配 `TIANAI_BASE_URL` 重启 Koa，确认启动日志不再告警；
+3. 系统参数页把 `mode` 从 `off` 调回 `adaptive`（保存时会自动预检）；
+4. 用非超管账号验证一次 `silent` 路径，再用超管账号（或连续失败触发）验证 `secondary` 路径。
+
+## 7. 测试
+
+- 后端：`bls-server/src/security/captcha/__tests__/`（服务端行为 + 审计负载）、
+  `src/api/system/config/__tests__/batch.test.ts`（保存前 Tianai 预检）；
+  覆盖**伪造 stage 无效**、跨账号 challenge、Token 一次性与并发、公开配置不泄露内部原因、
+  完整 silent → Tianai secondary → 登录 消费链路、Tianai 未配置/超时/错误全部 fail closed。
+- 前端：`bls-admin` 的 `captcha-machine.test.ts`（状态机不变式）、
+  `hooks/__tests__/useLoginCaptcha.test.tsx`（配置门槛、单飞校验、用户名变化失效、二级流程）、
+  `pages/user/login/index.test.tsx`（页面级：未加载/加载失败禁止提交、带 token 提交、失败后不自动重发）。

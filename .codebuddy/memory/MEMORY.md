@@ -15,6 +15,13 @@
   `write_to_file` can land as a **0-byte file** (this is how the login-captcha migration got
   committed empty in `753d86a`). Always generate `.sql` with a Node/shell script, then **verify**
   (`git diff sql/Init.sql` / `git status` / read the size) — never trust the tool's success message.
+- **ALTCHA (login captcha layer 1) needs a secure context** — its Proof-of-Work uses WebCrypto
+  (`crypto.subtle`), and the official code hard-throws `Secure context (HTTPS) required.` when
+  `globalThis.isSecureContext === false` (no switch to bypass). So `https://…`, `http://localhost`,
+  `http://127.0.0.1` work; `http://<LAN-IP>:3000` cannot solve layer 1 at all (login is then blocked
+  server-side because the token is required). The login flow detects this (`envBlocked` /
+  `ENV_UNSUPPORTED`) and shows an explicit message; dev options are localhost, dev-server HTTPS, or
+  `chrome://flags/#unsafely-treat-insecure-origin-as-secure` (debug only). Production must be HTTPS.
 - PowerShell caveats: `Get-Content`/`Select-String` decode as ANSI (UTF-8 Chinese → mojibake; judge by
   `git diff`); `node -e "..."` swallows quotes and treats the backtick as an escape char (a regex
   containing a SQL backtick matches nothing — use a temp `.js` file, or `[\x60]`); `findstr` piped
@@ -26,6 +33,46 @@
 
 ## II. Project conventions (follow when changing code)
 
+- **Login captcha = unified ticket model; the server alone decides everything.**
+  *(Updated 2026-09-21 — replaces the earlier `/api/auth/captcha/*` + `captchaToken` description.)*
+  Two layers: layer 1 is ALTCHA invisible Proof-of-Work, layer 2 is **Tianai** (`blockPuzzle` /
+  `clickWord`, an external Java service). ALTCHA's `display="standard"` widget is **not** a second layer.
+  - Endpoints (browser only talks to Koa; the Java service is never exposed):
+    `GET /api/captcha/config` → `{enabled, primaryProvider, fallbackProvider, tianaiEnabled,
+    generateUrl, verifyUrl, fieldName}` (uppercase `ALTCHA`/`TIANAI`; no thresholds, no policy reasons);
+    `POST /api/captcha/generate` → `{provider, challenge, sessionId?, expiresAt}`;
+    `POST /api/captcha/verify` → `{status: 'passed'|'failed'|'technical_error', provider,
+    captchaTicket?, expiresAt?, reason?, requireFallback?, nextProvider?}`.
+  - **`POST /api/auth/login` only accepts `captchaTicket`** (issued by `CaptchaTicketService`,
+    Redis key `captcha:ticket:*`, GETDEL one-shot). It never trusts a provider result directly.
+    The frontend must send `captchaTicket` — not `captchaToken` (old name, now 404/ignored).
+  - Frontend allowed to send: `scene` / `provider` (intent only) / `username` / `payload` (ALTCHA) /
+    `sessionId` + `data` (Tianai). Stage, ticket contents and the verdict are server-decided.
+  - `requireFallback: true` means "layer 1 passed but the policy demands Tianai" — the frontend then
+    renders `TianaiCaptcha` (never `altcha-widget`) and re-calls `/verify` with `provider: 'TIANAI'`.
+  - Internal policy reasons (`ACCOUNT_FAILURES` / `PRIVILEGED_ACCOUNT` / …) go to the security log
+    only, never to `/config` or to `reason`.
+  - `POST /api/system/config/batch` saves `sys.login.captcha.*` atomically and health-checks Tianai
+    **before** committing.
+  - **Gotcha that cost hours:** the ALTCHA branch of `service.ts` must read the challenge nonce from
+    the **decoded** payload — `meta.payload` is a base64 **string**, so
+    `challengeNonceOf(meta.payload.challenge)` is always empty and turns a *successful* PoW into
+    `PAYLOAD_MALFORMED` ("人机验证数据无效"). The provider now returns `challengeNonce`; never re-derive
+    it from the raw body. Likewise a provider-side exception (`VERIFY_ERROR`) must be
+    `technical_error`, not `failed`.
+  - ALTCHA widget tip: its `challenge` attribute accepts a **JSON string** (parsed when it starts
+    with `{`, no fetch), which is how the frontend feeds Koa's POST `/generate` result to it.
+  - Tianai (Java) config prefix is **`captcha`** (not `tianai.captcha`), `init-default-resource: true`
+    is required, and the built-in resources contain **templates + font only — no background image**,
+    which must be registered manually (see `CaptchaResourceInitializer`).
+- **`bls-event-service` is a separate Node service on `:7101`** (`cd bls-event-service && npm run dev`,
+  `INTERNAL_SECRET` must match `bls-server/.env`). If it is down, `publishEvent` logs
+  `event-service unreachable { error: 'fetch failed' }`, retries via the outbox and finally
+  `[outbox] dead letter` — noisy but harmless; start the service (only Rust project is `bls-rust-server`).
+- **`bls-admin` now has a working test setup**: `vitest.config.ts` + `vitest.setup.ts` (jsdom,
+  `@testing-library/jest-dom`, RTL auto-cleanup, `globals: true`). `npm run test` runs the frontend
+  flow tests that sit next to the code (`*.test.tsx`). Do **not** enable `restoreMocks` — several
+  tests set their mock implementation once inside the `vi.mock` factory (e.g. `refresh-manager`).
 - **Backend is the source of truth for permission codes**; frontend `permissions` prop and SQL seed
   must match `hasPerm('...')` exactly (common bug: `:create` vs `:add`). `ctx.state.user` exposes
   both `perms` and `permissions` (`AuthService.profile` duplicates them); `hasPerm` accepts either.

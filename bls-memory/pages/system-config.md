@@ -115,7 +115,9 @@ Managed keys (`MANAGED_CONFIG_KEYS`) and their validation:
 | `sys.app.name` | string | — | `appName` |
 | `sys.login.captcha.enabled` | bool | `1/true/0/false` | `captchaEnabled` |
 | `sys.login.captcha.mode` | **enum** | `off` \| `adaptive` \| `always` | `captchaMode` |
-| `sys.login.captcha.provider` | **enum** | `altcha` \| `tianai` | `captchaProvider` |
+| `sys.login.captcha.primaryProvider` | **enum** | `altcha` \| `tianai` | `captchaPrimaryProvider` |
+| `sys.login.captcha.secondaryProvider` | **enum** | `altcha` \| `tianai` | `captchaSecondaryProvider` |
+| `sys.login.captcha.secondaryType` | **enum** | `blockPuzzle` \| `clickWord` | `captchaSecondaryType` |
 | `sys.login.captcha.challengeTtlSeconds` | number | 30–900 | `captchaChallengeTtlSeconds` |
 | `sys.login.captcha.tokenTtlSeconds` | number | 30–600 | `captchaTokenTtlSeconds` |
 | `sys.login.captcha.forceAfterFailures` | number | 1–100 | `captchaForceAfterFailures` |
@@ -124,14 +126,21 @@ An invalid value (wrong type / out of range / unknown enum member / a CSV list t
 item) is **replaced by the declared default** and logged as
 `[dynamic-config] invalid … , using default`; it is never silently coerced. Numbers must match
 `^-?\d+(\.\d+)?$` (so `12abc` is rejected). `toPublicCaptchaConfig()` projects only
-`{enabled, mode, provider}` for the public endpoint
-(`GET /api/auth/captcha/config` additionally derives `display` from the escalation policy).
+`{enabled, mode, primaryProvider, secondaryProvider, secondaryType}` for the public endpoint
+(`GET /api/auth/captcha/config` adds the server-decided `requiredStage`; it never exposes
+thresholds or the internal risk reason).
 
-Seed rows for the 6 captcha keys (tenant `000000`): `sql/Init.sql` (`000406`–`000411`) for fresh
+Seed rows for the 8 captcha keys (tenant `000000`): `sql/Init.sql` (`000406`–`000413`) for fresh
 installs **and** `bls-server/migrations/20260922_017_login_captcha.sql` for already deployed
 databases (both generated from the same source, identical content, no DDL).
-Obsolete rows from the earlier design (`silentThreshold` / `secondaryTypes` / `maxAttempts`) are
-ignored by Dynamic Config and can be deleted.
+Obsolete rows from earlier designs (`provider` / `silentThreshold` / `secondaryTypes` /
+`maxAttempts`) are soft-deleted by that migration and ignored by Dynamic Config.
+
+> Captcha rows are written through **`POST /api/system/config/batch`** (single transaction,
+> `system:config:edit`) rather than N × `PUT /edit`: a partially applied multi-field change could
+> otherwise leave the second layer enabled without a working provider. The endpoint merges current +
+> incoming values and, when the effective config enables the Tianai layer, health-checks
+> `TIANAI_BASE_URL` **before** committing (unreachable ⇒ save rejected).
 
 ---
 

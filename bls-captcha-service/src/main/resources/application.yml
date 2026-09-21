@@ -1,0 +1,44 @@
+# TIANAI CAPTCHA 微服务（第二层人机验证）
+# 只在 Docker 内网提供，端口不对公网发布（见 docker-compose.captcha.yml）
+server:
+  port: 8083
+  # 只监听容器内网卡，避免误暴露
+  address: 0.0.0.0
+  tomcat:
+    max-threads: 50
+
+spring:
+  application:
+    name: bls-captcha-service
+  # 无状态服务，不做会话
+  mvc:
+    throw-exception-if-no-handler-found: false
+
+logging:
+  level:
+    root: INFO
+    cloud.tianai.captcha: INFO
+
+# ===== 官方 tianai-captcha 配置 =====
+#
+# ⚠ 前缀是 `captcha`（`SpringImageCaptchaProperties` 上的
+#   @ConfigurationProperties(prefix = "captcha") 决定），**不是** `tianai.captcha`。
+#   写错前缀会被静默忽略（不报错），表现只是"内置资源没加载 / 过期时间没生效"，
+#   而最终现象是生成验证码直接失败，非常难排查。
+captcha:
+  # 缓存 key 前缀
+  prefix: 'captcha:'
+  # **必须为 true**：官方内置图片资源（META-INF/cut-image/**，含背景图与滑块模板）
+  # 默认**不加载**（默认值 false），不开启则没有可用素材，generateCaptcha 必然失败。
+  init-default-resource: true
+  # 生成态有效期（单位：**毫秒**）；key 为验证码类型，`default` 为兜底。
+  # 与 Koa 侧 captcha.challengeTtlSeconds 保持接近（180s）。
+  expire:
+    default: 180000
+  # 二次验证插件：匹配成功后写入一次性记录（供业务侧消费，防同 id 重放）。
+  # 只增加一次缓存写入，不改变 matching 的判定语义。
+  secondary:
+    enabled: true
+    # 单位：**毫秒**（注意不是秒）
+    expire: 180000
+    key-prefix: 'captcha:secondary'

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TIANAI CAPTCHA 独立微服务（第二层人机验证）
+
+  职责：**只做两件事**
+    1. 验证码生成（图片 / 拼图块）
+    2. 行为轨迹匹配（校验前端提交的滑动/点选数据）
+
+  Koa 通过 Docker 内网访问它（http://tianai-captcha:8083），
+  浏览器**永远不直接访问**本服务（compose 中不发布端口）。
+
+  依赖坐标（官方）：cloud.tianai.captcha:tianai-captcha-springboot-starter
+  文档：https://doc.captcha.tianai.cloud/
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.bls.kox</groupId>
+  <artifactId>bls-captcha-service</artifactId>
+  <version>1.0.0</version>
+  <name>bls-captcha-service</name>
+  <description>TIANAI captcha microservice for BLS-KOX login verification (layer 2)</description>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>2.7.18</version>
+    <relativePath/>
+  </parent>
+
+  <properties>
+    <java.version>8</java.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- 官方 tianai-captcha 版本：https://mvnrepository.com/artifact/cloud.tianai.captcha/tianai-captcha-springboot-starter -->
+    <tianai-captcha.version>1.5.3</tianai-captcha.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <!-- 官方启动器：自动装配 ImageCaptchaApplication（生成 + 行为轨迹匹配） -->
+    <dependency>
+      <groupId>cloud.tianai.captcha</groupId>
+      <artifactId>tianai-captcha-springboot-starter</artifactId>
+      <version>${tianai-captcha.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+
+  <!-- 国内网络：Maven Central 不可达时用腾讯云镜像（也可用 -s settings.xml 覆盖） -->
+  <repositories>
+    <repository>
+      <id>tencent-public</id>
+      <url>https://mirrors.cloud.tencent.com/nexus/repository/maven-public/</url>
+      <releases><enabled>true</enabled></releases>
+      <snapshots><enabled>false</enabled></snapshots>
+    </repository>
+  </repositories>
+  <pluginRepositories>
+    <pluginRepository>
+      <id>tencent-public-plugins</id>
+      <url>https://mirrors.cloud.tencent.com/nexus/repository/maven-public/</url>
+      <releases><enabled>true</enabled></releases>
+      <snapshots><enabled>false</enabled></snapshots>
+    </pluginRepository>
+  </pluginRepositories>
+</project>

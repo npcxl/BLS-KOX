@@ -1,0 +1,15 @@
+# 本地开发用覆盖文件：当 Koa（bls-server）跑在 **宿主机**（npm run dev）时使用。
+#
+# 默认的 docker-compose.captcha.yml 刻意 **不发布任何端口**（安全默认：只有 Docker
+# 内网的服务能访问 Java 服务）。但宿主机进程访问不到未发布的端口，本覆盖文件把
+# 8083 **只绑定到回环地址 127.0.0.1**：仅本机可访问，不对局域网/公网暴露。
+#
+# 用法：
+#   docker compose -f docker-compose.captcha.yml -f docker-compose.captcha.host.yml up -d --build
+# 然后 bls-server/.env 配置：
+#   TIANAI_BASE_URL=http://127.0.0.1:8083
+
+services:
+  tianai-captcha:
+    ports:
+      - "127.0.0.1:8083:8083"

@@ -220,6 +220,16 @@ export function createApp(): Koa {
 }
 
 if (require.main === module) {
+  // ====== 人机验证第二层（Tianai）配置检查 ======
+  // 未配置 TIANAI_BASE_URL 时，一旦策略要求第二层，登录会 fail closed（50301）——
+  // 这是"配了验证码却没人能登录"最常见的来源，必须在启动时就明确告知运维。
+  if (!(process.env.TIANAI_BASE_URL ?? '').trim()) {
+    logger.warn(
+      '[captcha] TIANAI_BASE_URL 未配置：第二层（Tianai 图形验证）将 fail closed（HTTP 503 / 50301）。'
+      + ' 请部署 Tianai 并配置该变量，或在系统参数中把 sys.login.captcha.mode 设为 off（或关闭 enabled）。',
+    );
+  }
+
   // ====== 生产环境安全启动校验 ======
   if (process.env.NODE_ENV === 'production') {
     const issues: string[] = [];

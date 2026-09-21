@@ -22,6 +22,14 @@ export default {
     '/api/': {
       target: 'http://localhost:6001',
       changeOrigin: true,
+      /**
+       * 显式超时。不配的话，dev proxy 在拿不到上游响应时会把 ECONNREFUSED/超时统一
+       * 表现成 **504 Gateway Timeout**，而真正的原因往往是：
+       *   - Koa 正在 `tsx watch` 重启（改了 bls-server 下任意文件就会重启，窗口内请求必失败）；
+       *   - Koa 侧某个接口自身很慢（例如冷启动时的公网 IP 解析）。
+       * 配成 60s 后行为可预期；排障时先直连 `http://127.0.0.1:6001/...` 确认 Koa 是否正常。
+       */
+      proxyTimeout: 60000,
     },
     '/ws/': {
       target: 'ws://localhost:6001',

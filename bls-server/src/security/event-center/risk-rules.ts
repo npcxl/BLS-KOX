@@ -108,7 +108,7 @@ export const DEFAULT_RULES: RiskRule[] = [
   {
     id: 'rule_captcha_pow_failed',
     name: 'ALTCHA Proof-of-Work 连续失败',
-    eventTypes: ['CAPTCHA_POW_FAILED', 'CAPTCHA_VISIBLE_FAILED'],
+    eventTypes: ['CAPTCHA_POW_FAILED', 'CAPTCHA_SECONDARY_FAILED'],
     windowSeconds: 300,
     threshold: 20,
     riskLevel: RiskLevel.MEDIUM,

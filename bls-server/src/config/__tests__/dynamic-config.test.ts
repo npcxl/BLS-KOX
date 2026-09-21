@@ -172,12 +172,14 @@ describe('Dynamic Config', () => {
 // 登录人机验证参数（sys.login.captcha.*）
 // ============================================================
 describe('Dynamic Config — 登录人机验证参数', () => {
-  it('默认值完整（6 个参数，provider 默认 altcha）', () => {
-    expect(CAPTCHA_CONFIG_KEYS.length).toBe(6);
+  it('默认值完整（8 个参数：两级 provider 分离）', () => {
+    expect(CAPTCHA_CONFIG_KEYS.length).toBe(8);
     const c = parseConfigValue({});
     expect(c.captchaEnabled).toBe(true);
     expect(c.captchaMode).toBe('adaptive');
-    expect(c.captchaProvider).toBe('altcha');
+    expect(c.captchaPrimaryProvider).toBe('altcha');
+    expect(c.captchaSecondaryProvider).toBe('tianai');
+    expect(c.captchaSecondaryType).toBe('blockPuzzle');
     expect(c.captchaChallengeTtlSeconds).toBe(180);
     expect(c.captchaTokenTtlSeconds).toBe(120);
     expect(c.captchaForceAfterFailures).toBe(3);
@@ -205,19 +207,29 @@ describe('Dynamic Config — 登录人机验证参数', () => {
     expect(parseConfigValue({ 'sys.login.captcha.tokenTtlSeconds': '120' }).captchaTokenTtlSeconds).toBe(120);
   });
 
-  it('provider 枚举校验：altcha（默认）/ tianai 合法，其他回退 altcha', () => {
-    expect(parseConfigValue({ 'sys.login.captcha.provider': 'altcha' }).captchaProvider).toBe('altcha');
-    expect(parseConfigValue({ 'sys.login.captcha.provider': 'tianai' }).captchaProvider).toBe('tianai');
-    expect(parseConfigValue({ 'sys.login.captcha.provider': 'geetest' }).captchaProvider).toBe('altcha');
-    expect(parseConfigValue({ 'sys.login.captcha.provider': 'builtin' }).captchaProvider).toBe('altcha');
+  it('provider 枚举校验：两级各自独立，非法值回退各自默认', () => {
+    expect(parseConfigValue({ 'sys.login.captcha.primaryProvider': 'altcha' }).captchaPrimaryProvider).toBe('altcha');
+    expect(parseConfigValue({ 'sys.login.captcha.secondaryProvider': 'tianai' }).captchaSecondaryProvider).toBe('tianai');
+    // 旧版本遗留的 builtin / 非法值 → 回退默认（不会把配置打挂）
+    expect(parseConfigValue({ 'sys.login.captcha.primaryProvider': 'builtin' }).captchaPrimaryProvider).toBe('altcha');
+    expect(parseConfigValue({ 'sys.login.captcha.secondaryProvider': 'geetest' }).captchaSecondaryProvider).toBe('tianai');
   });
 
-  it('公开配置投影只含 enabled / mode / provider，不泄露阈值与内部规则', () => {
+  it('secondaryType 枚举校验：blockPuzzle / clickWord，非法回退 blockPuzzle', () => {
+    expect(parseConfigValue({ 'sys.login.captcha.secondaryType': 'clickWord' }).captchaSecondaryType).toBe('clickWord');
+    expect(parseConfigValue({ 'sys.login.captcha.secondaryType': 'blockPuzzle' }).captchaSecondaryType).toBe('blockPuzzle');
+    expect(parseConfigValue({ 'sys.login.captcha.secondaryType': 'slider' }).captchaSecondaryType).toBe('blockPuzzle');
+  });
+
+  it('公开配置投影只含 enabled / mode / 两级 provider / 二级类型，不泄露阈值与内部规则', () => {
     const pub = toPublicCaptchaConfig(parseConfigValue({}));
-    expect(Object.keys(pub).sort()).toEqual(['enabled', 'mode', 'provider']);
+    expect(Object.keys(pub).sort()).toEqual([
+      'enabled', 'mode', 'primaryProvider', 'secondaryProvider', 'secondaryType',
+    ]);
     expect(JSON.stringify(pub)).not.toContain('forceAfterFailures');
     expect(JSON.stringify(pub)).not.toContain('cost');
     expect(JSON.stringify(pub)).not.toContain('Ttl');
+    expect(JSON.stringify(pub)).not.toContain('requiredStage'); // requiredStage 由 service 计算
   });
 
   it('enabled=false 或 mode=off → 对前端而言为关闭', () => {

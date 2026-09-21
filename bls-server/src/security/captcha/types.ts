@@ -1,23 +1,25 @@
 /**
- * 登录人机验证（captcha）— 类型定义
+ * 登录人机验证 —— 类型定义（Provider 抽象 + 统一 Ticket）
  *
- * 方案：集成 ALTCHA（https://github.com/altcha-org/altcha）自托管开源库。
- * **不自研**滑块、图片裁切、轨迹识别或验证码算法；ALTCHA 只提供 Proof-of-Work。
+ * 架构（Koa 是唯一入口，浏览器永不直连 TIANAI Java 服务）：
  *
- * 两级语义（由服务端策略决定）：
- *   - invisible：ALTCHA widget `display="invisible"` + `auto="onload"`，后台完成 PoW，用户无感；
- *   - visible  ：策略要求人工交互时切换为 ALTCHA 可见组件（`display="standard"`）。
+ *   浏览器 ── POST /api/captcha/generate ──► Koa ──┬─ ALTCHA（官方 lib，本地 PoW）
+ *   浏览器 ── POST /api/captcha/verify   ──► Koa ──┴─ TIANAI（Docker 内网 http://tianai-captcha:8083）
+ *                                        └─ 校验通过 → 签发一次性 captchaTicket
+ *   浏览器 ── POST /api/auth/login + captchaTicket ──► Koa（GETDEL 原子消费）
  *
- * 两层验证成功后，服务端签发项目内部的一次性 `captchaToken`，由 `POST /api/auth/login` 消费。
+ * 关键约束：
+ *   1. 登录接口**不依赖任何 provider 的验证结果**，只认 Koa 签发的一次性 ticket；
+ *   2. 技术故障（上游不可达/超时/异常）必须与「用户验证失败」区分开 → TECHNICAL_ERROR；
+ *   3. 阶段/提供方全部由服务端决定，客户端提交的 stage/provider 只作为"请求哪个 provider"的意图。
  */
-import type { CaptchaMode, CaptchaProvider } from '../../config/dynamic-config';
+import type { CaptchaSecondaryProvider, CaptchaSecondaryType } from '../../config/dynamic-config';
+import type { CaptchaProviderName, CaptchaScene, CaptchaVerifyStatus } from './providers/types';
 
-export type { CaptchaMode, CaptchaProvider };
+export type { CaptchaSecondaryType, CaptchaSecondaryProvider };
+export type { CaptchaProviderName, CaptchaScene, CaptchaVerifyStatus };
 
-/** 前端应展示的 ALTCHA 组件形态 */
-export type CaptchaStage = 'invisible' | 'visible';
-
-/** 验证失败原因枚举（写入安全审计，绝不包含 payload / 密钥） */
+/** 验证失败原因枚举（写入安全审计，绝不包含 payload / 密钥 / 图片） */
 export type CaptchaFailureReason =
   | 'PAYLOAD_MISSING'
   | 'PAYLOAD_MALFORMED'
@@ -25,12 +27,11 @@ export type CaptchaFailureReason =
   | 'CHALLENGE_EXPIRED'
   | 'SIGNATURE_INVALID'
   | 'SOLUTION_INVALID'
-  /** challenge 中签名绑定的租户 / username 与当前请求不一致 */
   | 'BINDING_MISMATCH'
+  | 'STAGE_MISMATCH'
   | 'PROVIDER_UNAVAILABLE'
-  /** 策略要求可见交互（连续登录失败 / 高风险 / 超管账号 / mode=always） */
-  | 'VISIBLE_REQUIRED'
-  /** 强制策略命中的内部原因 */
+  | 'SECONDARY_REQUIRED'
+  /** 内部风控原因（只写审计，不下发前端） */
   | 'ACCOUNT_FAILURES'
   | 'IP_ACCOUNT_FANOUT'
   | 'IP_RISK_HIGH'
@@ -39,57 +40,80 @@ export type CaptchaFailureReason =
   | 'DEVICE_ANOMALY'
   | 'MODE_ALWAYS';
 
-/** captchaToken 在 Redis 中的记录（Redis key 里只出现 token 的 sha256） */
-export interface CaptchaTokenRecord {
-  provider: CaptchaProvider;
-  /** 绑定当前租户 */
+/** 内部风控原因（不允许出现在公开接口响应里） */
+export const INTERNAL_POLICY_REASONS: readonly CaptchaFailureReason[] = [
+  'ACCOUNT_FAILURES',
+  'IP_ACCOUNT_FANOUT',
+  'IP_RISK_HIGH',
+  'RATE_LIMIT_PRESSURE',
+  'PRIVILEGED_ACCOUNT',
+  'DEVICE_ANOMALY',
+  'MODE_ALWAYS',
+];
+
+/** TIANAI 本地会话在 Redis 中的记录（一次性消费） */
+export interface CaptchaSecondarySessionRecord {
+  sessionId: string;
+  type: CaptchaSecondaryType;
+  /** 上游（Java 服务）challenge id */
+  upstreamId: string;
+  scene: CaptchaScene;
   tenantId: string;
-  /** 绑定当前域名 hash */
-  domainHash: string;
-  /** 绑定登录 username 的 hash */
   usernameHash: string;
-  /** 绑定 IP hash */
   ipHash: string;
-  /** 绑定 User-Agent hash */
   uaHash: string;
-  /** 签发时的组件形态（审计用） */
-  stage: CaptchaStage;
   issuedAt: number;
   expiresAt: number;
 }
 
-/** `/captcha/config` 的下发结构 */
+/** `/api/captcha/config` 下发结构（只含前端渲染/调用所需信息） */
 export interface CaptchaPublicConfig {
   enabled: boolean;
-  mode: CaptchaMode;
-  provider: CaptchaProvider;
-  /** 本轮应展示的 ALTCHA 组件形态 */
-  display: CaptchaStage;
-  /** display=visible 时为命中原因（用于前端文案，不含内部阈值） */
-  reason?: CaptchaFailureReason;
-  /** widget 应使用的 challenge 地址 */
-  challengeUrl: string;
-  /** widget 隐藏域字段名 */
+  /** 第一层（默认 ALTCHA 静默） */
+  primaryProvider: CaptchaProviderName;
+  /** 第二层（默认 TIANAI） */
+  fallbackProvider: CaptchaProviderName;
+  /** 本部署是否启用 TIANAI（false 时风控命中也不会要求图形验证） */
+  tianaiEnabled: boolean;
+  /** 统一入口（浏览器只与 Koa 通信） */
+  generateUrl: string;
+  verifyUrl: string;
+  /** ALTCHA widget 的隐藏域字段名 */
   fieldName: string;
 }
 
-/** `/captcha/verify` 的返回结构 */
-export interface CaptchaVerifyResult {
-  passed: boolean;
-  /** 一次性 captchaToken（仅 passed=true 时返回） */
-  captchaToken?: string;
-  expiresAt?: number;
-  /** 策略要求可见交互：前端需切换为可见 ALTCHA 组件后重新验证 */
-  requireVisible?: boolean;
-  /** 失败原因（枚举） */
-  reason?: CaptchaFailureReason;
-  /** 剩余可见交互前需要的重试提示（前端文案） */
-  message?: string;
+/** `/api/captcha/generate` 响应 */
+export interface CaptchaGenerateResult {
+  provider: CaptchaProviderName;
+  /** ALTCHA：官方 challenge 结构；TIANAI：Java 服务原始渲染字段 */
+  challenge: Record<string, unknown>;
+  /** TIANAI：Koa 签发的一次性会话 id（浏览器只拿得到它，拿不到上游 id） */
+  sessionId?: string;
+  expiresAt: number;
+  fieldName?: string;
 }
 
-/** 强制可见交互的判定输入 */
+/** `/api/captcha/verify` 响应 */
+export interface CaptchaVerifyResult {
+  status: CaptchaVerifyStatus;
+  provider: CaptchaProviderName;
+  /** status=passed 时返回：登录接口唯一认的凭证 */
+  captchaTicket?: string;
+  expiresAt?: number;
+  /** status=failed 时的原因（通用枚举，不含内部风控细节） */
+  reason?: string;
+  /**
+   * ALTCHA 通过但风控命中 → 需要继续完成 TIANAI：
+   * 前端据此渲染二级组件并再次调用 /verify（provider=TIANAI）。
+   */
+  requireFallback?: boolean;
+  nextProvider?: CaptchaProviderName;
+}
+
+/** 强制进入第二层的判定输入 */
 export interface CaptchaPolicyInput {
-  mode: CaptchaMode;
+  /** 强制策略开关（Tianai 启用时才生效） */
+  forceSecondary: boolean;
   forceAfterFailures: number;
   accountFailures: number;
   ipAccountCount: number;
@@ -100,15 +124,17 @@ export interface CaptchaPolicyInput {
   deviceAnomalous: boolean;
 }
 
+/** 策略判定结果：决定是否需要第二层 */
 export interface CaptchaPolicyDecision {
-  display: CaptchaStage;
+  requireSecondary: boolean;
+  /** 内部驱动原因，仅写安全审计 */
   reason?: CaptchaFailureReason;
 }
 
 /** 连续失败计数窗口（秒） */
 export const FAILURE_WINDOW_SECONDS = 900;
 
-/** 同一 IP 在窗口内尝试过的不同账号数达到该值 → 要求可见交互 */
+/** 同一 IP 在窗口内尝试过的不同账号数达到该值 → 要求第二层 */
 export const IP_ACCOUNT_FANOUT_THRESHOLD = 3;
 
 /** Rate Limit 压力阈值（同一 IP 在登录限流窗口内的计数） */
@@ -117,8 +143,10 @@ export const RATE_LIMIT_PRESSURE_THRESHOLD = 10;
 /** IP 风险评分阈值（Security Event Center 规则引擎） */
 export const IP_RISK_SCORE_THRESHOLD = 70;
 
-/** config / verify 接口暴露的字段名（与 widget `name` 属性一致） */
+/** 统一入口（浏览器只访问这两个 Koa 地址） */
+export const CAPTCHA_GENERATE_URL = '/api/captcha/generate';
+export const CAPTCHA_VERIFY_URL = '/api/captcha/verify';
 export const CAPTCHA_FIELD_NAME = 'altchaPayload';
-export const CAPTCHA_CHALLENGE_URL = '/api/auth/captcha/challenge';
-export const CAPTCHA_VERIFY_URL = '/api/auth/captcha/verify';
-export const CAPTCHA_CONFIG_URL = '/api/auth/captcha/config';
+
+/** 对外的统一提示 */
+export const SECONDARY_REQUIRED_MESSAGE = '需要完成额外安全验证';

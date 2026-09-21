@@ -65,12 +65,13 @@ All keys below are logical names; the physical key has the `bls:` prefix.
 | `tenant:provision:idem:{idempotencyKey}` | 15 min (processing) / 24 h (result) | `api/system/tenant/provisioning.ts` | Tenant provisioning idempotency (`SET NX`); repeat call with the same key returns the first result, concurrent call → `40903`. |
 | `quota:idem:{tenantId}:{idempotencyKey}` | 24 h | `services/quota-service.ts` | One-shot quota consumption guard (`SET NX`); released on failure so the caller can retry. |
 | `openapi:nonce:{nonce}` | 300 s | `middleware/openapi-auth.ts` | Partner-API nonce dedup (`SET NX`). **Redis unavailable → 503, fail-closed** (never degrades to allow). |
-| `captcha:challenge:{nonce}` | `sys.login.captcha.challengeTtlSeconds` (30–900, default 180) | `security/captcha/store.ts` | `SET NX EX` marker that makes an ALTCHA challenge **single-use** (`GETDEL` on verify). Only the nonce — the challenge itself is stateless and HMAC-signed by ALTCHA. |
-| `captcha:token:{sha256(token)}` | `sys.login.captcha.tokenTtlSeconds` (30–600, default **120**) | `security/captcha/store.ts` | captchaToken **binding record** (`provider/tenantId/domainHash/usernameHash/ipHash/uaHash/stage`); the raw token is never stored. |
+| `captcha:challenge:{nonce}` | `sys.login.captcha.challengeTtlSeconds` (30–900, default 180) | `security/captcha/store.ts` | `SET NX EX` marker that makes a **layer-1 ALTCHA challenge** single-use (`GETDEL` on verify). Only the nonce — the challenge itself is stateless and HMAC-signed by ALTCHA. |
+| `captcha:secondary:{sessionId}` | `sys.login.captcha.challengeTtlSeconds` (default 180) | `security/captcha/store.ts` | **Layer-2 (Tianai) session** record: `type`, upstream `id`, `tenantId/domainHash/usernameHash/ipHash/uaHash`, `expiresAt`. `GETDEL` on verify ⇒ one session = one answer submission. |
+| `captcha:token:{sha256(token)}` | `sys.login.captcha.tokenTtlSeconds` (30–600, default **120**) | `security/captcha/store.ts` | captchaToken **binding record** (`provider`, `stage`, optional `secondaryType`, tenantId/domainHash/usernameHash/ipHash/uaHash); the raw token is never stored. |
 | `captcha:token-used:{sha256(token)}` | `tokenTtlSeconds + 300` | `security/captcha/store.ts` | One-shot consumption marker (`SET NX EX`); already present ⇒ `CAPTCHA_REPLAYED`, missing record ⇒ `CAPTCHA_EXPIRED`. |
-| `captcha:fail:account:{tenantId}:{usernameHash}` | 900 s | `security/captcha/store.ts` | Consecutive login failures per account (drives `forceAfterFailures` → visible ALTCHA); cleared on a successful login. |
+| `captcha:fail:account:{tenantId}:{usernameHash}` | 900 s | `security/captcha/store.ts` | Consecutive login failures per account (drives `forceAfterFailures` → **layer-2 required**); cleared on a successful login. |
 | `captcha:fail:ip:{ipHash}` | 900 s | `security/captcha/store.ts` | Login failures per IP hash (risk signal). |
-| `captcha:ip-accounts:{ipHash}` | 900 s | `security/captcha/store.ts` | Set of username hashes a single IP tried (≥ 3 ⇒ visible ALTCHA required). |
+| `captcha:ip-accounts:{ipHash}` | 900 s | `security/captcha/store.ts` | Set of username hashes a single IP tried (≥ 3 ⇒ layer-2 required). **Only a real `usernameHash` is ever added** — anonymous requests must not insert an empty member, otherwise the fan-out statistic is meaningless. |
 
 > The `redis.keys('security:blocked_ip:*')` call in `api/system/security/index.ts` (`/stats`)
 > counts temporarily blocked IPs. It is the only `KEYS` usage and it is on a small key space.
@@ -140,21 +141,28 @@ Any write to `sys_config` triggers `invalidateConfigCache(tenantId)`.
 `uploadLimitMB` (from `sys.upload.maxSize`, default 20, range 1–500) is the dynamic file
 upload limit — see `00-common/06-file-and-excel-security.md`.
 
-### 3.6.1 Login captcha (ALTCHA) (`security/captcha/store.ts`)
+### 3.6.1 Login captcha (two-level: ALTCHA silent → Tianai secondary) (`security/captcha/store.ts`)
 
 Login human-verification — full description in
 [`pages/login-captcha.md`](../pages/login-captcha.md).
 
-- **Challenge**: ALTCHA challenges are **stateless** (HMAC-signed by `altcha/lib`), so Redis stores
-  only a single-use marker: `captcha:challenge:{nonce}` created with `SET NX EX` and consumed with
-  `GETDEL`. Absent marker ⇒ the challenge expired, was already used, or was never issued.
+- **Layer-1 challenge**: ALTCHA challenges are **stateless** (HMAC-signed by `altcha/lib`), so Redis
+  stores only a single-use marker: `captcha:challenge:{nonce}` created with `SET NX EX` and consumed
+  with `GETDEL`. Absent marker ⇒ the challenge expired, was already used, or was never issued.
+- **Layer-2 session**: the Tianai challenge itself lives upstream; Redis keeps our own
+  `captcha:secondary:{sessionId}` record (random 24-byte id + upstream id + binding + TTL). `GETDEL`
+  makes it one-shot, and the binding is re-checked on verify (tenant / domain / username / IP / UA).
 - **One-shot token**: 32 random bytes; Redis keeps only `sha256(token)`. Consumption is
   `SET captcha:token-used:{hash} NX EX …` followed by `GETDEL captcha:token:{hash}` — atomic, no Lua
   (with a `MULTI/EXEC GET+DEL` fallback). Concurrent callers: exactly one wins.
 - **Risk counters**: `captcha:fail:account:*`, `captcha:fail:ip:*`, `captcha:ip-accounts:*` (900 s),
-  written by the login handler and challenge creation.
+  written by the login handler and challenge creation (real usernames only).
 - **Fail closed**: a missing client or any Redis error becomes HTTP 503
   `CAPTCHA_SERVICE_UNAVAILABLE`. There is no "allow on error" branch.
+
+> Both layers share one namespace. Layer 2 additionally depends on an **external** service
+> (Tianai): unset `TIANAI_BASE_URL`, a failed health check, a timeout or an upstream error all end in
+> the same `503 CAPTCHA_SERVICE_UNAVAILABLE` — never in "verification skipped".
 
 ### 3.7 Release lock & callback nonce
 

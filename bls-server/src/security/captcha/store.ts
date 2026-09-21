@@ -15,7 +15,7 @@
 import { CaptchaUnavailableError } from '../../core/errors';
 import { getRedisClient } from '../../shared/utils/redis';
 import { logger } from '../../core/logger';
-import type { CaptchaTokenRecord } from './types';
+import type { CaptchaSecondarySessionRecord } from './types';
 
 export interface CaptchaRedisLike {
   get(key: string): Promise<string | null>;
@@ -35,8 +35,8 @@ export type RedisFactory = () => CaptchaRedisLike | null;
 
 export const CAPTCHA_KEY = {
   challenge: (nonce: string) => `captcha:challenge:${nonce}`,
-  token: (hash: string) => `captcha:token:${hash}`,
-  tokenUsed: (hash: string) => `captcha:token-used:${hash}`,
+  /** 第二层（Tianai）本地一次性会话 */
+  secondarySession: (sessionId: string) => `captcha:secondary:${sessionId}`,
   failAccount: (scope: string, usernameHash: string) => `captcha:fail:account:${scope}:${usernameHash}`,
   failIp: (ipHash: string) => `captcha:fail:ip:${ipHash}`,
   ipAccounts: (ipHash: string) => `captcha:ip-accounts:${ipHash}`,
@@ -107,34 +107,34 @@ export class CaptchaStore {
     });
   }
 
-  // ==================== captchaToken ====================
+  // ==================== 第二层（Tianai）本地会话 ====================
 
-  async saveToken(tokenHash: string, record: CaptchaTokenRecord, ttlSeconds: number): Promise<void> {
-    await this.run('saveToken', (c) => c.set(CAPTCHA_KEY.token(tokenHash), JSON.stringify(record), 'EX', ttlSeconds));
+  /** 保存第二层会话（绑定租户 / 域名 / 账号 / IP / UA，TTL 与 Tianai challenge 同步） */
+  async saveSecondarySession(record: CaptchaSecondarySessionRecord, ttlSeconds: number): Promise<void> {
+    await this.run('saveSecondarySession', (c) =>
+      c.set(CAPTCHA_KEY.secondarySession(record.sessionId), JSON.stringify(record), 'EX', ttlSeconds));
   }
 
   /**
-   * 一次性消费 captchaToken。
-   *  - 原子 SET NX EX 抢占「已消费」标记 → 并发请求只有一个能成功
-   *  - 抢占成功后再 GETDEL 取出记录：取不到 = 已过期
-   *  - 抢占失败 = 已被消费（重放）
+   * 一次性消费第二层会话：原子取出并删除。
+   * 返回 null = 会话不存在 / 已过期 / 已被使用（重放）。
    */
-  async consumeToken(tokenHash: string, markerTtlSeconds: number): Promise<{ status: TokenConsumeStatus; record: CaptchaTokenRecord | null }> {
-    return this.run('consumeToken', async (c) => {
-      const claimed = await c.set(CAPTCHA_KEY.tokenUsed(tokenHash), '1', 'EX', markerTtlSeconds, 'NX');
-      const isFirst = claimed !== null && claimed !== undefined && claimed !== false;
-      if (!isFirst) return { status: 'replayed', record: null };
-
-      const raw = await this.takeAndDelete(c, CAPTCHA_KEY.token(tokenHash));
-      if (!raw) return { status: 'expired', record: null };
+  async consumeSecondarySession(sessionId: string): Promise<CaptchaSecondarySessionRecord | null> {
+    return this.run('consumeSecondarySession', async (c) => {
+      const raw = await this.takeAndDelete(c, CAPTCHA_KEY.secondarySession(sessionId));
+      if (!raw) return null;
       try {
-        return { status: 'ok', record: JSON.parse(raw) as CaptchaTokenRecord };
+        return JSON.parse(raw) as CaptchaSecondarySessionRecord;
       } catch {
-        logger.warn('[captcha] token record corrupted');
-        return { status: 'expired', record: null };
+        logger.warn('[captcha] secondary session corrupted');
+        return null;
       }
     });
   }
+
+  // ==================== 内部工具 ====================
+  // 注：captchaToken 已由 CaptchaTicketService（captcha:ticket:*）取代，
+  //     这里不再保留旧实现，避免两套一次性凭证逻辑并存。
 
   private async takeAndDelete(c: CaptchaRedisLike, key: string): Promise<string | null> {
     if (typeof c.getdel === 'function') return c.getdel(key);
@@ -174,7 +174,13 @@ export class CaptchaStore {
     await this.run('resetAccountFailures', (c) => c.del(CAPTCHA_KEY.failAccount(scope, usernameHash)));
   }
 
+  /**
+   * 记录「该 IP 近期尝试过的账号」。
+   * **必须传真实 usernameHash** —— 空字符串会把所有匿名 / 未带用户名的请求合并成同一个成员，
+   * 让 IP 多账号统计失真（既可能误判风控，也可能掩盖真实的撞库行为）。
+   */
   async recordIpAccount(ipHash: string, usernameHash: string, ttlSeconds: number): Promise<void> {
+    if (!usernameHash) return;
     await this.run('recordIpAccount', async (c) => {
       const key = CAPTCHA_KEY.ipAccounts(ipHash);
       await c.sadd(key, usernameHash);

@@ -1287,6 +1287,82 @@
         }
       }
     },
+    "/api/auth/captcha/secondary/challenge": {
+      "post": {
+        "tags": [
+          "captcha"
+        ],
+        "summary": "captcha - 获取 ALTCHA 挑战",
+        "operationId": "post_api_auth_captcha_secondary_challenge",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        }
+      }
+    },
+    "/api/auth/captcha/secondary/verify": {
+      "post": {
+        "tags": [
+          "captcha"
+        ],
+        "summary": "captcha - 校验 ALTCHA payload 并签发一次性凭证",
+        "operationId": "post_api_auth_captcha_secondary_verify",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "操作成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "响应数据"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        }
+      }
+    },
     "/api/auth/captcha/verify": {
       "post": {
         "tags": [

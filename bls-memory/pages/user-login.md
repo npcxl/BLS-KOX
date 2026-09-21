@@ -16,7 +16,7 @@
 | Backend module | `bls-server/src/api/auth/index.ts` (`AuthService`), `bls-server/src/api/auth/captcha/index.ts`, `bls-server/src/security/captcha/*` |
 | Menu permission | none (public route) |
 | Shared docs | `00-common/01-redis.md`, `02-replay-protection.md`, `03-rate-limiting.md`, `04-auth-and-permissions.md`, `05-security-log-and-event-center.md` |
-| Captcha | two-stage login captcha → dedicated page memory [pages/login-captcha.md](login-captcha.md) |
+| Captcha | two-level login captcha (ALTCHA silent → Tianai secondary) → dedicated page memory [pages/login-captcha.md](login-captcha.md) |
 
 Public routes list (`bls-admin/src/app.tsx`): `/user/login`, `/user/register`,
 `/user/register-result`. The login page loads public theme + public system config instead of the
@@ -33,29 +33,49 @@ authenticated ones.
 | Load public system config | `publicSystemConfig()` — `bls-admin/src/services/ant-design-pro/api.ts` | GET | `/api/system/config/public-system` |
 | Load current user after login | `currentUser()` | GET | `/api/auth/profile` |
 | Restore session on app start | `ensureValidSession()` — `bls-admin/src/auth/auth-manager.ts` | POST | `/api/auth/refresh` |
-| *(captcha)* read config + component shape | `getCaptchaConfig({username?})` — `bls-admin/src/services/auth/captcha.ts` | GET | `/api/auth/captcha/config` |
-| *(captcha)* the official widget fetches a challenge itself | `<altcha-widget challenge="…">` | GET | `/api/auth/captcha/challenge` |
-| *(captcha)* submit the solved ALTCHA payload | `verifyCaptcha({payload, username, stage})` | POST | `/api/auth/captcha/verify` |
+| *(captcha)* read config + `requiredStage` | `getCaptchaConfig({username?})` — `bls-admin/src/services/auth/captcha.ts` | GET | `/api/auth/captcha/config` |
+| *(captcha)* the official widget fetches a challenge itself | `<altcha-widget challenge="…?username=">` | GET | `/api/auth/captcha/challenge` |
+| *(captcha)* submit the solved ALTCHA payload (**no `stage` field**) | `verifySilentCaptcha({payload, username})` | POST | `/api/auth/captcha/verify` |
+| *(captcha)* layer-2 challenge (Tianai) | `createSecondaryChallenge({username})` | POST | `/api/auth/captcha/secondary/challenge` |
+| *(captcha)* layer-2 answer | `verifySecondaryCaptcha({sessionId, username, data})` | POST | `/api/auth/captcha/secondary/verify` |
 
-### Login flow with the ALTCHA captcha
+### Login flow with the two-level captcha
+
+State machine: `bls-admin/src/hooks/useLoginCaptcha.ts` +
+`bls-admin/src/pages/user/login/captcha-machine.ts` (pure reducer: `loadingConfig` →
+`waitingUsername` → `solvingSilent` → `secondaryRequired`/`solvingSecondary` → `ready`, with
+`submitting` / `error`).
 
 `captchaConfig.enabled === false` → the original flow (submit → `POST /api/auth/login`).
 When enabled:
 
-1. `GET /api/auth/captcha/config` on mount; when not enabled nothing else happens (back-compatible).
-2. `<AltchaCaptcha>` (`components/AltchaCaptcha/index.tsx`) mounts the **official**
-   `<altcha-widget>` with `challenge="/api/auth/captcha/challenge"`, `auto="onload"`,
-   `language="zh-cn"` and `display` taken from the config (`invisible` by default). The official
-   Web Worker solves the Proof-of-Work in the background — no custom code runs here.
-3. The widget dispatches `verified` with the payload; the page posts it to
-   `POST /api/auth/captcha/verify` and keeps the returned one-shot `captchaToken` in a ref.
-   - `requireVisible:true` → the page switches `display` to `visible`, re-mounts the widget
-     (`captchaInstance`) and shows “请完成下方安全验证”.
-   - any other `reason` → show the mapped Chinese hint and re-mount for a fresh challenge.
-4. `onExpired` (`statechange` → `expired`) re-mounts the widget so a new challenge is fetched.
-5. `POST /api/auth/login` with `captchaToken` in the body.
-6. Login errors `40010/40011/40012/40013` → clear token + payload, re-read the config, retry the
-   captcha flow **once** (`captchaRetryRef`); `50301` → show “人机验证服务暂不可用”.
+1. `GET /api/auth/captcha/config` on mount. **Submission stays blocked until it resolves**
+   (`configLoaded`), and a failed request keeps it blocked (`configError`) — the page never assumes
+   "captcha off" just because the config could not be read.
+2. The username is debounced 400 ms; a stable username triggers a re-read of the policy
+   (`?username=`) and re-mounts the ALTCHA widget so the challenge is fetched with
+   `?username=…` (the server binds tenant + username hash inside the HMAC-signed payload).
+3. `<AltchaCaptcha>` mounts the **official** `<altcha-widget>` (`display="invisible"`,
+   `auto="onload"`, `language="zh-cn"`). The official Worker solves the PoW; the page then posts the
+   payload **once** to `POST /api/auth/captcha/verify` (a `verifyingRef` guard keeps duplicate
+   `verified` events from producing a second request) and keeps the returned one-shot
+   `captchaToken`. The payload itself is never stored.
+4. If the answer is `requiredStage: "secondary"` (policy: account failures, IP fan-out, IP risk,
+   rate-limit pressure, privileged account, UA anomaly, `mode=always`), the page renders
+   `<TianaiCaptcha>` — **not** `altcha-widget`. `POST /captcha/secondary/challenge` returns a
+   `sessionId` plus the upstream image data; answering posts `sessionId` + `data` to
+   `/captcha/secondary/verify`, which returns the `captchaToken` (`stage=secondary`).
+5. A wrong layer-2 answer consumes the local session server-side, so the component fetches a fresh
+   challenge and keeps the failure hint.
+6. `expiresAt` from the server arms a timer: when the token expires the state machine drops it and
+   restarts verification automatically.
+7. `POST /api/auth/login` with `captchaToken` in the body.
+8. **Every** `/login` call clears the local token in `finally` (the server consumed it, success or
+   failure), so a retry always means "verify again". Login errors `40010/40011/40012/40013` show the
+   message and restart verification — there is **no** automatic re-submission of the login form;
+   `50301` → “人机验证服务暂不可用”.
+9. A wrong password re-reads the policy (`refreshPolicy()`), so hitting `forceAfterFailures` makes
+   the next attempt show the Tianai layer.
 
 ### Request body built by the frontend
 
@@ -94,7 +114,7 @@ A `submittingRef` guard prevents double submission.
 - Body: `{username?, password?, captchaToken?}` read inline. **No Zod schema.** Any client-supplied
   `tenantId` is ignored.
 - Behaviour (`AuthService.loginByDomain`):
-  0. **ALTCHA captcha gate (only when the feature is active)**: `captchaService.consumeLoginToken()` —
+  0. **Captcha gate (only when the feature is active)**: `captchaService.consumeLoginToken()` —
      missing token → `40010 CAPTCHA_REQUIRED`; bad signature / binding mismatch → `40011
      CAPTCHA_INVALID`; expired → `40012 CAPTCHA_EXPIRED`; already consumed → `40013
      CAPTCHA_REPLAYED`; Redis unavailable → `503 / 50301 CAPTCHA_SERVICE_UNAVAILABLE`
@@ -134,7 +154,7 @@ gender, email, phone, deptId, isAdmin, status`, plus `permissions`, `perms`,
 | IP block | global `blockedIpMiddleware` (Redis + `sys_ip_blacklist`) |
 | Session | login writes `auth:session:{jti}`, `auth:refresh:{jti}`, Session Center `acc:`/`ref:` entries |
 | Brute force | risk rule `rule_login_brute_force` (20 × `LOGIN_FAILED` / 300 s per IP → `BLOCK_IP` + `LOCK_ACCOUNT`) driven by the real `sys_login_log` rows written since the login-flow change, plus `LOGIN_BRUTE_FORCE` after 5 failures / 15 min for one account |
-| Captcha | ALTCHA Proof-of-Work (official library) with an invisible→visible escalation, one-shot `captchaToken` consumed by the login handler. Rate limits: `/challenge` ip 60/60 s + device 30/300 s, `/verify` ip 30/60 s + account 20/300 s + device 30/300 s, `/config` ip 120/60 s. Full detail: [pages/login-captcha.md](login-captcha.md) |
+| Captcha | Layer 1: ALTCHA silent Proof-of-Work (official library). Layer 2: Tianai `blockPuzzle`/`clickWord` (external service) when the policy demands it. One-shot `captchaToken` consumed by the login handler; the stage is derived server-side only. Rate limits: `/config` ip 120/60 s, `/challenge` ip 60/60 s + device 30/300 s, `/verify` ip 30/60 s + account 20/300 s, secondary endpoints ip 20/60 s + account 10/300 s (+ device 30/300 s on verify). Full detail: [pages/login-captcha.md](login-captcha.md) |
 
 The frontend always sends `X-Timestamp` + `X-Nonce` (added by the request interceptor), which is
 what satisfies the nonce rule. Because there is no token yet, the nonce key is

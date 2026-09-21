@@ -159,5 +159,18 @@ export const env = {
     cost: numberEnv('ALTCHA_COST', 50_000),
     /** provider=tianai 时使用的独立验证码服务地址 */
     tianaiUrl: process.env.TIANAI_BASE_URL?.trim() ?? '',
+    /**
+     * 第二层（Tianai）上游路径。不同部署/版本的接口路径可能不同，
+     * 允许用环境变量覆盖，避免为了换个路径改代码。
+     * 默认值与 bls-captcha-service 的桥接接口一致（见 CaptchaBridgeController）：
+     *   TIANAI_GENERATE_PATH （默认 /captcha/generate，取图形验证 challenge）
+     *   TIANAI_VERIFY_PATH   （默认 /captcha/verify，  校验答案）
+     *   TIANAI_HEALTH_PATH   （默认 /health，          可用性预检）
+     */
+    tianaiPaths: {
+      generate: process.env.TIANAI_GENERATE_PATH?.trim() || '/captcha/generate',
+      verify: process.env.TIANAI_VERIFY_PATH?.trim() || '/captcha/verify',
+      health: process.env.TIANAI_HEALTH_PATH?.trim() || '/health',
+    },
   },
 };

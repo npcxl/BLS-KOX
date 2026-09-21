@@ -312,8 +312,9 @@ export const login = async (ctx: Context) => {
   };
 
   try {
-    // 人机验证：开启时先一次性消费 captchaToken；未通过前不检查用户名 / 密码
-    await captchaService.consumeLoginToken({ ...captchaMeta, captchaToken: b.captchaToken });
+    // 人机验证：开启时先一次性消费 captchaTicket（GETDEL 原子）；未通过前不检查用户名 / 密码。
+    // 登录接口只认 Koa 签发的 ticket，不依赖任何 provider 的验证结果。
+    await captchaService.consumeLoginTicket({ ...captchaMeta, captchaTicket: b.captchaTicket });
 
     // 默认走域名解析租户，不信任前端提交的 tenantId
     const result = await S.loginByDomain(domainName, b.username ?? '', b.password ?? '',

@@ -1,13 +1,13 @@
 /**
- * 可见交互策略 + IP 风险提供者
+ * 风险策略 + IP 风险提供者
  *
- * `evaluateCaptchaPolicy()` 决定 ALTCHA 组件以 **invisible**（静默）还是 **visible**（人工交互）
- * 形态展示。判定全部在服务端完成，客户端无法通过任何参数让自己“跳过”可见交互：
- * 命中策略时 `/captcha/verify` 不会签发 captchaToken，只会返回 `requireVisible: true`。
+ * `evaluateCaptchaPolicy()` 决定本轮需要的最小阶段：
+ *   - `silent`    ：ALTCHA 静默 PoW 通过即可签发凭证；
+ *   - `secondary` ：必须额外完成 Tianai 图形验证（blockPuzzle / clickWord）。
  *
- * 注意：**安全控制始终是 ALTCHA 的服务端 PoW 校验**；可见交互是策略层面的升级
- * （要求用户完成一次真实交互），不是密码学上的第二因子。详见
- * bls-memory/pages/login-captcha.md 的「设计边界」一节。
+ * 判定全部在服务端完成，客户端无法通过任何参数让自己“跳过”第二层：
+ * 命中策略时 `/captcha/verify` 不会签发 captchaToken，只返回 `requiredStage: 'secondary'`。
+ * 返回的**内部原因**（ACCOUNT_FAILURES / PRIVILEGED_ACCOUNT …）只写安全审计，不下发前端。
  *
  * 本文件不做任何浏览器指纹识别 —— 只使用 IP 与安全事件中心的聚合风险评分。
  */
@@ -23,7 +23,6 @@ import {
   type CaptchaFailureReason,
   type CaptchaPolicyDecision,
   type CaptchaPolicyInput,
-  type CaptchaStage,
 } from './types';
 
 export interface IpRisk {
@@ -94,12 +93,12 @@ export function createDefaultRiskProvider(): RiskProvider {
 }
 
 /**
- * 评估 ALTCHA 组件形态。
- * 命中任一条件 → visible（不再完全静默），并给出原因枚举。
+ * 评估是否需要升级到第二层（TIANAI）。
+ *
+ * - `forceSecondary=false`（未部署图形验证码服务）→ 永远不升级，但**仍然计算内部原因**供审计；
+ * - 命中任一条件 → requireSecondary=true + 内部原因枚举（只许写安全审计，不下发前端）。
  */
 export function evaluateCaptchaPolicy(input: CaptchaPolicyInput): CaptchaPolicyDecision {
-  if (input.mode === 'always') return { display: 'visible', reason: 'MODE_ALWAYS' };
-
   const reasons: CaptchaFailureReason[] = [];
   if (input.accountFailures >= input.forceAfterFailures) reasons.push('ACCOUNT_FAILURES');
   if (input.ipAccountCount >= IP_ACCOUNT_FANOUT_THRESHOLD) reasons.push('IP_ACCOUNT_FANOUT');
@@ -114,8 +113,8 @@ export function evaluateCaptchaPolicy(input: CaptchaPolicyInput): CaptchaPolicyD
   if (input.privilegedAccount) reasons.push('PRIVILEGED_ACCOUNT');
   if (input.deviceAnomalous) reasons.push('DEVICE_ANOMALY');
 
-  if (reasons.length === 0) return { display: 'invisible' };
-  return { display: 'visible', reason: reasons[0] };
+  if (reasons.length === 0) return { requireSecondary: false };
+  return { requireSecondary: input.forceSecondary, reason: reasons[0] };
 }
 
 /** 判定 User-Agent 是否明显异常（请求头层面的粗粒度检查，不做浏览器指纹识别） */
@@ -131,5 +130,3 @@ export function uaLooksAutomated(userAgent?: string | null): boolean {
   if (ua.length < 10 || ua.length > 1024) return true;
   return BOT_UA_PATTERNS.some((re) => re.test(ua));
 }
-
-export type { CaptchaStage };

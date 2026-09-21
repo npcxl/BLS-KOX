@@ -41,9 +41,11 @@ Unauthenticated **business** routes (public by name or by being mounted on a cus
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/api/auth/login` / `logout` / `refresh` | public by function name |
-| GET | `/api/auth/captcha/config` | login captcha public config (`enabled`/`mode`/`provider`/`display`/`challengeUrl`/`fieldName`) |
-| GET | `/api/auth/captcha/challenge` | **official ALTCHA challenge object, returned without the `{code,message,data}` envelope** (the widget's `challenge` attribute consumes it) — `no-store` |
-| POST | `/api/auth/captcha/verify` | server-side ALTCHA payload verification; rate-limited by IP + account + device, `no-store` |
+| GET | `/api/auth/captcha/config` | login captcha public config (`enabled`/`mode`/`primaryProvider`/`secondaryProvider`/`secondaryType`/**server-decided** `requiredStage`/`challengeUrl`/`secondaryChallengeUrl`/`fieldName`); never exposes thresholds or the internal risk reason |
+| GET | `/api/auth/captcha/challenge` | **layer-1 official ALTCHA challenge object, returned without the `{code,message,data}` envelope** (the widget's `challenge` attribute consumes it) — `no-store` |
+| POST | `/api/auth/captcha/verify` | layer-1 server-side ALTCHA payload verification. The request body's `stage`/`display`/`provider` are **ignored**; the stage comes only from the HMAC-signed challenge data → one-shot `captchaToken`, or `requiredStage: "secondary"` |
+| POST | `/api/auth/captcha/secondary/challenge` | layer-2 (Tianai `blockPuzzle`/`clickWord`) challenge; Koa issues a local one-shot `sessionId` bound to tenant/domain/username/IP/UA |
+| POST | `/api/auth/captcha/secondary/verify` | layer-2 answer verification (`{sessionId, username, data}`); fails closed with `503 / 50301` when Tianai is unconfigured, unhealthy, times out or errors |
 | GET | `/api/system/config/public-system` · `/public-theme` · `/current` | public system/theme config subset |
 | GET | `/api/system/tenant/public-list` | Host-scoped tenant options |
 

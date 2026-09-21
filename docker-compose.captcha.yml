@@ -1,0 +1,46 @@
+# TIANAI CAPTCHA 第二层人机验证 —— Docker 内网部署
+#
+# 关键安全要求：
+#   1. **不发布端口**（没有 `ports:`，只有 `expose`）→ 浏览器/公网无法访问 Java 服务；
+#   2. Koa 通过 Docker 内网服务名访问：http://tianai-captcha:8083
+#      （bls-server/.env: TIANAI_BASE_URL=http://tianai-captcha:8083）
+#   3. 与本文件同网络启动 bls-server 即可解析到 bls-captcha 网络内的服务名。
+#
+# 用法：
+#   docker compose -f docker-compose.captcha.yml up -d --build
+#   docker compose -f docker-compose.captcha.yml ps
+#   # 自检（在 Docker 网络内的任意容器里执行，宿主机直接 curl 不通，这是预期行为）
+#   docker run --rm --network bls-captcha_net curlimages/curl -s http://tianai-captcha:8083/health
+
+services:
+  tianai-captcha:
+    build:
+      context: ./bls-captcha-service
+      dockerfile: Dockerfile
+    image: bls-captcha-service:1.0.0
+    container_name: tianai-captcha
+    restart: unless-stopped
+    # 只在内网暴露，不做端口映射（不要加 ports:）
+    expose:
+      - "8083"
+    environment:
+      - TZ=Asia/Shanghai
+      # 注意：ENTRYPOINT 是 exec 形式，不会展开 $JAVA_OPTS（旧写法等于没生效）；
+      # 改用 JAVA_TOOL_OPTIONS，JVM 会自动读取。
+      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx512m
+    healthcheck:
+      # Temurin JRE 基础镜像极简、不带 curl，故用 bash 内置的 /dev/tcp 探端口，
+      # 不为健康检查额外安装软件包（避免构建期依赖外部 apt 源）。
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8083"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    networks:
+      - bls-captcha
+
+networks:
+  bls-captcha:
+    name: bls-captcha_net
+    driver: bridge
+    # 内网隔离：不配置外网出口也能工作（Koa 与其在同一网络即可）

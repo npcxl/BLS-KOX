@@ -1,51 +1,35 @@
 -- ============================================================
--- 认证安全闭环：登录人机验证（ALTCHA）
+-- 登录人机验证（Provider 抽象 + 统一 captchaTicket）
 --
--- 在 sys_config 中增加 6 个默认参数（平台租户 000000）：
---   sys.login.captcha.enabled              是否开启登录人机验证        bool   默认 true
---   sys.login.captcha.mode                 off / adaptive / always     enum   默认 adaptive
---   sys.login.captcha.provider             altcha / tianai             enum   默认 altcha
---   sys.login.captcha.challengeTtlSeconds  ALTCHA challenge 有效期(秒) number 默认 180 (30-900)
---   sys.login.captcha.tokenTtlSeconds      captchaToken 有效期(秒)     number 默认 120 (30-600)
---   sys.login.captcha.forceAfterFailures   连续失败要求可见验证次数    number 默认 3   (1-100)
+-- 新架构：Koa 作为唯一业务入口，统一 /api/captcha/generate | /api/captcha/verify；
+--   * 第一层 ALTCHA（静默 Proof-of-Work，本地）
+--   * 第二层 TIANAI（独立 Java 微服务，Docker 内网 http://tianai-captcha:8083，浏览器不可直连）
+--   两层通过后均由 Koa 签发一次性 captchaTicket（Redis captcha:ticket:{ticket}，GETDEL 消费）。
 --
--- 本文件内容必须与 sql/Init.sql 中对应的 6 行保持逐字一致：
---   * sql/Init.sql                 —— 全新环境执行即完成初始化；
---   * bls-server/migrations/*.sql  —— 已部署库增量升级（npm run db:migrate up）。
+-- 本次变更：
+--   * 新增 8 个参数（替代原 sys.login.captcha.* 系列）：
+--       login_captcha_enabled / captcha_primary_provider / captcha_fallback_provider /
+--       captcha_ticket_ttl / captcha_tianai_enabled / captcha_challenge_ttl /
+--       captcha_force_after_failures / captcha_secondary_type
+--   * 软删除已被取代的旧键（sys.login.captcha.*）
 --
--- 说明：
---   * 全部语句可重复执行（INSERT IGNORE + 唯一键 uk_config_tenant_key）。
---   * 无需 DDL 变更。
---   * 旧版本曾写入的 sys.login.captcha.silentThreshold / secondaryTypes / maxAttempts
---     行已不再使用（Dynamic Config 会忽略未知键），如需清理可手工 DELETE。
---   * 未配置这些行的租户使用代码内置默认值；需要按租户调整时在系统参数页面新增对应 tenant_id 的行。
+-- 说明：全部语句可重复执行（INSERT IGNORE / 带条件 UPDATE），无需 DDL。
 -- ============================================================
 
 INSERT IGNORE INTO `sys_config`
   (`config_id`, `tenant_id`, `config_key`, `config_value`, `config_name`, `config_type`, `status`, `remark`, `deleted`, `create_time`, `update_time`)
 VALUES
-('000406','000000','sys.login.captcha.enabled','true','登录人机验证开关','sys','0','是否开启登录人机验证（ALTCHA）',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
-('000407','000000','sys.login.captcha.mode','adaptive','登录人机验证模式','sys','0','off/adaptive/always；adaptive=静默优先',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
-('000408','000000','sys.login.captcha.provider','altcha','人机验证提供方','sys','0','altcha=自托管 ALTCHA(默认)；tianai=独立验证码服务',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
-('000409','000000','sys.login.captcha.challengeTtlSeconds','180','验证挑战有效期(秒)','sys','0','ALTCHA challenge 有效期 30-900',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
-('000410','000000','sys.login.captcha.tokenTtlSeconds','120','登录验证凭证有效期(秒)','sys','0','一次性 captchaToken 有效期 30-600',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
-('000411','000000','sys.login.captcha.forceAfterFailures','3','连续失败要求可见验证次数','sys','0','同账号近期连续登录失败达到该值后不再完全静默 1-100',0,'2026-09-21 00:00:00','2026-09-21 00:00:00');
+('000406','000000','login_captcha_enabled','true','登录人机验证开关','sys','0','是否开启登录人机验证（总开关）',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
+('000407','000000','captcha_primary_provider','ALTCHA','第一层验证提供方','sys','0','第一层（静默）ALTCHA Proof-of-Work',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
+('000408','000000','captcha_fallback_provider','TIANAI','第二层验证提供方','sys','0','风控命中时的第二层：TIANAI 图形验证',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
+('000409','000000','captcha_ticket_ttl','120','验证凭证有效期(秒)','sys','0','captchaTicket 有效期 30-600，默认 120',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
+('000410','000000','captcha_tianai_enabled','true','是否启用 TIANAI','sys','0','未部署 TIANAI Java 服务时置 false（风控不再升级）',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
+('000411','000000','captcha_challenge_ttl','180','验证挑战有效期(秒)','sys','0','challenge / 二级会话有效期 30-900',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
+('000412','000000','captcha_force_after_failures','3','连续失败要求第二层次数','sys','0','同账号连续登录失败达到该值后要求第二层 1-100',0,'2026-09-21 00:00:00','2026-09-21 00:00:00'),
+('000413','000000','captcha_secondary_type','blockPuzzle','第二层验证类型','sys','0','blockPuzzle=滑块拼图；clickWord=点选文字',0,'2026-09-21 00:00:00','2026-09-21 00:00:00');
 
--- ============ 修订（ALTCHA 化后的存量数据修正，可重复执行）============
--- 1) 早期版本写入的 provider='builtin' 已不在枚举内（现为 altcha / tianai），
---    会导致每次配置解析都告警并回退默认值，这里统一纠正为 altcha。
-UPDATE `sys_config`
-   SET `config_value` = 'altcha', `update_time` = NOW()
- WHERE `config_key` = 'sys.login.captcha.provider'
-   AND `config_value` NOT IN ('altcha', 'tianai');
-
--- 2) 早期版本写入的 3 个参数已废弃（Dynamic Config 不再读取），软删除，
---    避免残留在系统参数页面造成误导；如需保留历史值请注释掉本段。
+-- 旧键软删除（不再被 Dynamic Config 读取）
 UPDATE `sys_config`
    SET `deleted` = 1, `update_time` = NOW()
  WHERE `deleted` = 0
-   AND `config_key` IN (
-     'sys.login.captcha.silentThreshold',
-     'sys.login.captcha.secondaryTypes',
-     'sys.login.captcha.maxAttempts'
-   );
+   AND `config_key` LIKE 'sys.login.captcha.%';

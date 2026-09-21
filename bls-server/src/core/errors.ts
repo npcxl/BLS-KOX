@@ -116,3 +116,17 @@ export class CaptchaUnavailableError extends AppError {
     this.name = 'CaptchaUnavailableError';
   }
 }
+
+/**
+ * 人机验证**技术故障**（HTTP 503 / code 50302 / errorCode `TECHNICAL_ERROR`）。
+ *
+ * 与 `CaptchaUnavailableError` 的区别：50301 表示"我们自己没配好/Redis 挂了"，
+ * 50302 专门表示**上游验证服务（TIANAI Java 服务）不可达、超时或返回异常**。
+ * 两者都必须 fail closed，但语义上**绝不能**被当成"用户验证失败"（那会误封正常用户）。
+ */
+export class CaptchaTechnicalError extends AppError {
+  constructor(message = '人机验证服务发生技术故障，请稍后重试') {
+    super(message, 503, 50302, { errorCode: 'TECHNICAL_ERROR' });
+    this.name = 'CaptchaTechnicalError';
+  }
+}
