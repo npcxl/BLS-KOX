@@ -68,8 +68,22 @@ export function isCaptchaActive(cfg: CaptchaRuntimeConfig): boolean {
   return cfg.enabled;
 }
 
-/** TIANAI 是否真正可用：配置开启 **且** 内网地址存在 */
-export function isTianaiUsable(cfg: CaptchaRuntimeConfig): boolean {
+/**
+ * 运维是否**要求**第二层（Tianai）：只取决于 `captcha_tianai_enabled`。
+ *
+ * ⚠ 这是风控升级的唯一依据。**不能**把「TIANAI_BASE_URL 未配置」同时算进这个判断里，
+ * 否则高风险账号会被静默降级成「只做第一层 ALTCHA」并拿到 ticket —— 那是安全漏洞。
+ * 地址缺失 / 上游不可用时由 `service.ts` fail closed（50302），而不是放过。
+ */
+export function isTianaiRequested(cfg: CaptchaRuntimeConfig): boolean {
+  return cfg.tianaiEnabled;
+}
+
+/**
+ * 第二层**当前是否真的能跑**：要求启用 **且** 配置了内网地址。
+ * false 只代表「不能跑」，调用方必须据此 fail closed（当 `isTianaiRequested` 为 true 时）。
+ */
+export function isTianaiConfigured(cfg: CaptchaRuntimeConfig): boolean {
   return cfg.tianaiEnabled && !!cfg.tianaiBaseUrl;
 }
 

@@ -31,14 +31,20 @@ const { mockLogin, mockTokenStore, mockUseModel, mockMessage, captchaApi } = vi.
     },
     captchaApi: {
       getCaptchaConfig: vi.fn(),
-      verifySilentCaptcha: vi.fn(),
-      createSecondaryChallenge: vi.fn(),
-      verifySecondaryCaptcha: vi.fn(),
-      CAPTCHA_ERROR_CODES: [40010, 40011, 40012, 40013, 50301],
+      generateCaptcha: vi.fn(),
+      verifyCaptcha: vi.fn(),
+      CAPTCHA_CONFIG_URL: '/api/captcha/config',
+      CAPTCHA_GENERATE_URL: '/api/captcha/generate',
+      CAPTCHA_VERIFY_URL: '/api/captcha/verify',
+      CAPTCHA_FIELD_NAME: 'altchaPayload',
+      CAPTCHA_ERROR_CODES: [40010, 40011, 40012, 40013, 50301, 50302],
       CAPTCHA_REASON_TEXT: {
         SECONDARY_REQUIRED: '需要完成额外安全验证',
         SOLUTION_INVALID: '人机验证未通过，请重试',
+        UPSTREAM_TIMEOUT: '人机验证服务响应超时，请稍后重试',
       },
+      secondaryTypeOf: (challenge: Record<string, unknown> | null | undefined) =>
+        String(challenge?.type ?? '').toUpperCase().includes('WORD') ? 'clickWord' : 'blockPuzzle',
     },
   }),
 );
@@ -197,13 +203,11 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 const CAPTCHA_DISABLED_CONFIG = {
   enabled: false,
-  mode: 'off',
-  primaryProvider: 'altcha',
-  secondaryProvider: 'tianai',
-  secondaryType: 'blockPuzzle',
-  requiredStage: 'silent',
-  challengeUrl: '/api/auth/captcha/challenge',
-  secondaryChallengeUrl: '/api/auth/captcha/secondary/challenge',
+  primaryProvider: 'ALTCHA',
+  fallbackProvider: 'TIANAI',
+  tianaiEnabled: false,
+  generateUrl: '/api/captcha/generate',
+  verifyUrl: '/api/captcha/verify',
   fieldName: 'altchaPayload',
 };
 
@@ -214,6 +218,21 @@ function mockCaptchaConfig(over: Record<string, unknown> = {}) {
   });
 }
 
+/** 第一层 ALTCHA challenge（官方结构，widget 只要求 parameters + signature） */
+const ALTCHA_CHALLENGE = {
+  parameters: { algorithm: 'SHA-256', nonce: 'n-1', salt: 's-1', cost: 10, keyLength: 32, keyPrefix: '' },
+  signature: 'sig-1',
+};
+
+function mockAltchaChallenge() {
+  captchaApi.generateCaptcha.mockResolvedValue({
+    code: 200,
+    data: { provider: 'ALTCHA', challenge: ALTCHA_CHALLENGE, expiresAt: Date.now() + 180_000, fieldName: 'altchaPayload' },
+  });
+}
+
+
+
 /** 功能关闭时：等待按钮可用（配置加载完成后） */
 async function waitForSubmitEnabled() {
   await waitFor(() => expect(screen.getByTestId('login-submit-btn')).not.toBeDisabled());
@@ -222,6 +241,10 @@ async function waitForSubmitEnabled() {
 describe('Login Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // captchaApi 的默认实现与 Once 队列必须每个用例重置，避免串味
+    for (const key of ['getCaptchaConfig', 'generateCaptcha', 'verifyCaptcha'] as const) {
+      captchaApi[key].mockReset();
+    }
     localStorage.clear();
 
     Object.defineProperty(window, 'location', {
@@ -257,8 +280,9 @@ describe('Login Page', () => {
       }),
     });
 
-    // 默认：人机验证关闭（保持原登录流程）
+    // 默认：人机验证关闭（保持原登录流程）；仍给出第一层 challenge 供需要的用例使用
     mockCaptchaConfig();
+    mockAltchaChallenge();
   });
 
   // ===== A1. 功能关闭：登录请求只提交 username/password/type，不含 tenantId =====
@@ -437,15 +461,15 @@ describe('Login Page', () => {
     expect(mockLogin).not.toHaveBeenCalled();
   });
 
-  // ===== B3. 第一层：拿到凭证后才允许提交，并把 captchaToken 带上 =====
-  it('[captcha] submits with the server-issued captchaToken after silent verification', async () => {
-    mockCaptchaConfig({ enabled: true, mode: 'adaptive' });
-    captchaApi.verifySilentCaptcha.mockResolvedValue({
+  // ===== B3. 第一层：拿到凭证后才允许提交，并把 captchaTicket 带上 =====
+  it('[captcha] submits with the server-issued captchaTicket after silent verification', async () => {
+    mockCaptchaConfig({ enabled: true });
+    captchaApi.verifyCaptcha.mockResolvedValue({
       code: 200,
       data: {
-        passed: true,
-        stage: 'silent',
-        captchaToken: 'server-token-1',
+        status: 'passed',
+        provider: 'ALTCHA',
+        captchaTicket: 'server-ticket-1',
         expiresAt: Date.now() + 120_000,
       },
     });
@@ -470,33 +494,54 @@ describe('Login Page', () => {
           username: 'testuser',
           password: 'testpass',
           type: 'account',
-          captchaToken: 'server-token-1',
+          captchaTicket: 'server-ticket-1',
         }),
         expect.anything(),
       );
     });
-    // 第一层校验请求不得携带 stage / display 等客户端可控阶段字段
-    expect(captchaApi.verifySilentCaptcha).toHaveBeenCalledWith(
-      expect.objectContaining({ payload: 'altcha-payload-1', username: 'testuser' }),
-    );
-    expect(Object.keys(captchaApi.verifySilentCaptcha.mock.calls[0][0])).toEqual(['payload', 'username']);
+    // 登录体里绝不能出现旧契约 captchaToken
+    expect(mockLogin.mock.calls[0][0]).not.toHaveProperty('captchaToken');
+
+    // 第一层校验请求只允许提交 payload / username（阶段、凭证由服务端决定）
+    const verifyArgs = captchaApi.verifyCaptcha.mock.calls[0][0];
+    expect(verifyArgs).toMatchObject({ payload: 'altcha-payload-1', username: 'testuser' });
+    expect(Object.keys(verifyArgs).sort()).toEqual(['payload', 'username']);
   });
 
-  // ===== B4. 服务端要求第二层：第二层通过后才能提交 =====
-  it('[captcha] requires the secondary (Tianai) step when the server asks for it', async () => {
-    mockCaptchaConfig({ enabled: true, mode: 'always' });
-    captchaApi.verifySilentCaptcha.mockResolvedValue({
-      code: 200,
-      data: { passed: false, requiredStage: 'secondary', reason: 'SECONDARY_REQUIRED' },
-    });
-    captchaApi.createSecondaryChallenge.mockResolvedValue({
-      code: 200,
-      data: { sessionId: 's-1', type: 'blockPuzzle', expiresAt: Date.now() + 60_000, payload: {} },
-    });
-    captchaApi.verifySecondaryCaptcha.mockResolvedValue({
-      code: 200,
-      data: { passed: true, stage: 'secondary', captchaToken: 'server-token-2', expiresAt: Date.now() + 120_000 },
-    });
+  // ===== B4. 服务端风控要求第二层：带 grant 取 challenge，第二层通过后才能提交 =====
+  it('[captcha] requires the secondary (Tianai) step with the server-issued escalation grant', async () => {
+    mockCaptchaConfig({ enabled: true, tianaiEnabled: true });
+    captchaApi.verifyCaptcha
+      .mockResolvedValueOnce({
+        code: 200,
+        data: {
+          status: 'failed',
+          provider: 'ALTCHA',
+          reason: 'SECONDARY_REQUIRED',
+          requireFallback: true,
+          nextProvider: 'TIANAI',
+          escalationGrant: 'grant-1',
+        },
+      })
+      .mockResolvedValueOnce({
+        code: 200,
+        data: { status: 'passed', provider: 'TIANAI', captchaTicket: 'server-ticket-2', expiresAt: Date.now() + 120_000 },
+      });
+    // 第一次生成用于第一层 ALTCHA challenge，第二次才是第二层 Tianai challenge
+    captchaApi.generateCaptcha
+      .mockResolvedValueOnce({
+        code: 200,
+        data: { provider: 'ALTCHA', challenge: ALTCHA_CHALLENGE, expiresAt: Date.now() + 180_000, fieldName: 'altchaPayload' },
+      })
+      .mockResolvedValueOnce({
+        code: 200,
+        data: {
+          provider: 'TIANAI',
+          sessionId: 's-1',
+          challenge: { type: 'SLIDER', backgroundImageWidth: 600, backgroundImageHeight: 300 },
+          expiresAt: Date.now() + 180_000,
+        },
+      });
     mockLogin.mockResolvedValue({ code: 200, data: { token: 'at', refreshToken: 'rt', user: null } });
 
     render(<Login />);
@@ -505,6 +550,10 @@ describe('Login Page', () => {
 
     await waitFor(() => expect(screen.getByTestId('tianai-submit')).toBeInTheDocument());
     expect(screen.getByTestId('login-submit-btn')).toBeDisabled();
+    // 第二层生成必须携带服务端下发的升级凭证
+    expect(captchaApi.generateCaptcha).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'TIANAI', escalationGrant: 'grant-1' }),
+    );
 
     fireEvent.click(screen.getByTestId('tianai-submit'));
     await waitForSubmitEnabled();
@@ -512,18 +561,18 @@ describe('Login Page', () => {
 
     await waitFor(() => {
       expect(mockLogin).toHaveBeenCalledWith(
-        expect.objectContaining({ captchaToken: 'server-token-2' }),
+        expect.objectContaining({ captchaTicket: 'server-ticket-2' }),
         expect.anything(),
       );
     });
   });
 
   // ===== B5. 登录被验证码拒绝（40010）→ 提示 + 清除本地凭证，不自动重发 =====
-  it('[captcha] clears the local token and does not auto-resubmit when login is rejected by captcha', async () => {
-    mockCaptchaConfig({ enabled: true, mode: 'adaptive' });
-    captchaApi.verifySilentCaptcha.mockResolvedValue({
+  it('[captcha] clears the local ticket and does not auto-resubmit when login is rejected by captcha', async () => {
+    mockCaptchaConfig({ enabled: true });
+    captchaApi.verifyCaptcha.mockResolvedValue({
       code: 200,
-      data: { passed: true, stage: 'silent', captchaToken: 'server-token-3', expiresAt: Date.now() + 120_000 },
+      data: { status: 'passed', provider: 'ALTCHA', captchaTicket: 'server-ticket-3', expiresAt: Date.now() + 120_000 },
     });
     const captchaError = new Error('captcha required');
     (captchaError as any).response = { status: 400, data: { code: 40010, message: '请先完成人机验证' } };
@@ -543,5 +592,29 @@ describe('Login Page', () => {
     expect(mockLogin).toHaveBeenCalledTimes(1);
     // 一次性凭证已被服务端消费 → 本地必须失效，需要重新验证
     await waitFor(() => expect(screen.getByTestId('login-submit-btn')).toBeDisabled());
+  });
+
+  // ===== B6. 密码错误（401）→ 绝不自动重放口令 =====
+  it('[captcha] never replays the password automatically after a 401', async () => {
+    mockCaptchaConfig({ enabled: true });
+    captchaApi.verifyCaptcha.mockResolvedValue({
+      code: 200,
+      data: { status: 'passed', provider: 'ALTCHA', captchaTicket: 'server-ticket-4', expiresAt: Date.now() + 120_000 },
+    });
+    const error401 = new Error('unauthorized');
+    (error401 as any).response = { status: 401, data: { code: 401, message: '用户名或密码错误' } };
+    mockLogin.mockRejectedValue(error401);
+
+    render(<Login />);
+    await waitFor(() => expect(screen.getByTestId('altcha-solve')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('altcha-solve'));
+    await waitForSubmitEnabled();
+
+    fireEvent.click(screen.getByTestId('login-submit-btn'));
+    await waitFor(() => expect(mockMessage.error).toHaveBeenCalledWith('用户名或密码错误'));
+
+    // 给足时间：即使触发 refreshPolicy 也绝不能自动再发一次登录
+    await new Promise((r) => setTimeout(r, 800));
+    expect(mockLogin).toHaveBeenCalledTimes(1);
   });
 });

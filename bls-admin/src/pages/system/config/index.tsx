@@ -51,7 +51,8 @@ function ConfigPageInner() {
 
   const handleSaved = useCallback(async (_mode: 'create' | 'edit', values: Partial<ConfigRecord>) => {
     const key = String(values.configKey ?? '');
-    if (key.startsWith('sys.login.captcha.')) {
+    // 人机验证统一使用扁平键（login_captcha_enabled / captcha_*）
+    if (key === 'login_captcha_enabled' || key.startsWith('captcha_')) {
       message.success('登录人机验证配置已更新，立即生效');
       return;
     }

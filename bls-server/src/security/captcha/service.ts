@@ -14,7 +14,11 @@
  *      用于表达"想请求哪个 provider"；
  *   4. 风控命中（连续失败 / IP 多账号 / IP 高风险 / 限流压力 / 超管 / UA 异常）→ 要求 TIANAI；
  *      `captcha_tianai_enabled=false` 时仍记录内部原因，但不升级（第一层 PoW 依旧强制）；
- *   5. Redis 不可用 → fail closed（TECHNICAL_ERROR）。
+ *   5. `captcha_tianai_enabled=true` 时**必须真的跑得起来**：TIANAI_BASE_URL 缺失、健康检查失败、
+ *      上游超时都 fail closed（50302），**绝不**静默降级成「只做 ALTCHA 就放行」；
+ *   6. 第二层**不能由客户端主动索要**：`/generate?provider=TIANAI` 必须先原子消费服务端在
+ *      风控升级时签发的一次性 escalation grant，避免公开接口被用来刷昂贵的图片资源；
+ *   7. Redis 不可用 → fail closed（TECHNICAL_ERROR）。
  */
 import { env } from '../../config/env';
 import { getDynamicConfig, type DynamicConfig } from '../../config/dynamic-config';
@@ -35,22 +39,26 @@ import { PLATFORM_TENANT_ID } from '../../shared/constants/tenant';
 import { CAPTCHA_KEY, CaptchaStore, captchaStore } from './store';
 import {
   isCaptchaActive,
-  isTianaiUsable,
+  isTianaiConfigured,
+  isTianaiRequested,
   loadCaptchaConfig,
   type CaptchaRuntimeConfig,
 } from './config';
-import { captchaTokenHash, safeEqual, sha256Hex } from './crypto-utils';
+import { safeEqual, sha256Hex } from './crypto-utils';
 import { createDefaultRiskProvider, evaluateCaptchaPolicy, uaLooksAutomated, type IpRisk, type RiskProvider } from './policy';
 import { AltchaProvider, challengeNonceOf } from './providers/altcha-provider';
 import { TianaiProvider, newTianaiSessionId, type TianaiTechnicalError } from './providers/tianai-provider';
 import type { CaptchaProviderAdapter, CaptchaProviderName, CaptchaScene } from './providers/types';
 import { captchaTicketService, type CaptchaTicketService } from './ticket-service';
+import { randomBytes } from 'node:crypto';
 import {
   CAPTCHA_FIELD_NAME,
   CAPTCHA_GENERATE_URL,
   CAPTCHA_VERIFY_URL,
+  ESCALATION_GRANT_MAX_TTL_SECONDS,
   FAILURE_WINDOW_SECONDS,
   SECONDARY_REQUIRED_MESSAGE,
+  type CaptchaEscalationGrantRecord,
   type CaptchaFailureReason,
   type CaptchaGenerateResult,
   type CaptchaPublicConfig,
@@ -124,7 +132,8 @@ interface CaptchaAuditInput {
 const AUDIT_TITLES: Record<string, string> = {
   CAPTCHA_POW_PASSED: '第一层（ALTCHA）验证通过',
   CAPTCHA_POW_FAILED: '第一层（ALTCHA）验证失败',
-  CAPTCHA_SECONDARY_REQUIRED: '要求第二层（TIANAI）验证',
+  CAPTCHA_SECONDARY_REQUIRED: '要求第二层（TIANAI）验证（本次未签发凭证）',
+  CAPTCHA_RISK_NOTED: '风控命中但未启用第二层（仅记录，本次结果不受影响）',
   CAPTCHA_SECONDARY_PASSED: '第二层（TIANAI）验证通过',
   CAPTCHA_SECONDARY_FAILED: '第二层（TIANAI）验证失败',
   CAPTCHA_TOKEN_INVALID: 'captchaTicket 无效',
@@ -269,8 +278,8 @@ export class CaptchaService {
       this.isPrivilegedAccount(b.tenantId, meta.username).catch(() => false),
     ]);
     return evaluateCaptchaPolicy({
-      // TIANAI 未启用（未部署）时永不升级，但内部原因照常计算并写审计
-      forceSecondary: isTianaiUsable(cfg),
+      // 只看运维是否要求第二层：地址缺失/上游不可用**不**在这里降级，而是在真正需要时 fail closed
+      forceSecondary: isTianaiRequested(cfg),
       forceAfterFailures: cfg.forceAfterFailures,
       accountFailures,
       ipAccountCount,
@@ -311,6 +320,85 @@ export class CaptchaService {
     return provider === 'ALTCHA' ? this.altcha : this.tianai;
   }
 
+  // ---------- 第二层升级凭证（escalation grant） ----------
+
+  /**
+   * 签发一次性升级凭证。
+   * **只有服务端风控判定需要第二层时才会调用**；凭证在 Redis 中只保存 sha256。
+   */
+  private async issueEscalationGrant(
+    cfg: CaptchaRuntimeConfig,
+    scene: CaptchaScene,
+    tenantId: string,
+    b: CaptchaBindings,
+  ): Promise<{ escalationGrant: string; escalationExpiresAt: number }> {
+    const grant = randomBytes(32).toString('base64url');
+    const ttlSeconds = Math.max(
+      30,
+      Math.min(cfg.challengeTtlSeconds, ESCALATION_GRANT_MAX_TTL_SECONDS),
+    );
+    const issuedAt = this.now();
+    const record: CaptchaEscalationGrantRecord = {
+      scene,
+      tenantId,
+      usernameHash: b.usernameHash,
+      ipHash: b.ipHash,
+      uaHash: b.uaHash,
+      issuedAt,
+      expiresAt: issuedAt + ttlSeconds * 1000,
+    };
+    await this.store.saveEscalationGrant(sha256Hex(grant), record, ttlSeconds);
+    return { escalationGrant: grant, escalationExpiresAt: record.expiresAt };
+  }
+
+  /**
+   * 原子消费并校验升级凭证。
+   * 返回 null 表示「不允许进入第二层」（缺失 / 已消费 / 已过期 / 绑定不一致）。
+   */
+  private async takeEscalationGrant(
+    grant: string,
+    scene: CaptchaScene,
+    tenantId: string,
+    b: CaptchaBindings,
+  ): Promise<CaptchaEscalationGrantRecord | null> {
+    const value = (grant ?? '').trim();
+    if (!value) return null;
+    const record = await this.store.consumeEscalationGrant(sha256Hex(value));
+    if (!record) return null;
+    if (record.expiresAt <= this.now()) return null;
+    if (!safeEqual(record.tenantId, tenantId)) return null;
+    if (!safeEqual(record.scene, scene)) return null;
+    if (record.usernameHash && !safeEqual(record.usernameHash, b.usernameHash)) return null;
+    if (!safeEqual(record.ipHash, b.ipHash)) return null;
+    if (!safeEqual(record.uaHash, b.uaHash)) return null;
+    return record;
+  }
+
+  /**
+   * 第二层不可用时的统一处理：写审计 + fail closed。
+   * 返回（而不是抛出）错误对象，调用方统一写成 `throw await this.secondaryUnavailable(...)`，
+   * **绝不**返回「通过」或降级放行。
+   */
+  private async secondaryUnavailable(
+    cfg: CaptchaRuntimeConfig,
+    scene: CaptchaScene,
+    meta: CaptchaRequestMeta,
+    tenantId: string,
+    b: CaptchaBindings,
+    reason: CaptchaFailureReason,
+  ): Promise<CaptchaTechnicalError> {
+    await this.safeAudit({
+      eventType: SecurityEventType.CAPTCHA_SERVICE_UNAVAILABLE,
+      riskLevel: RiskLevel.HIGH,
+      provider: cfg.fallbackProvider,
+      scene,
+      secondaryType: cfg.secondaryType,
+      reason,
+      ...this.auditBase(meta, tenantId, b),
+    });
+    return new CaptchaTechnicalError('图形验证码服务不可用，已拒绝本次登录');
+  }
+
   // ---------- 公开配置 ----------
 
   async getPublicConfig(meta: CaptchaRequestMeta): Promise<CaptchaPublicConfig> {
@@ -335,7 +423,7 @@ export class CaptchaService {
       enabled: cfg.enabled,
       primaryProvider: cfg.primaryProvider,
       fallbackProvider: cfg.fallbackProvider,
-      tianaiEnabled: isTianaiUsable(cfg),
+      tianaiEnabled: cfg.tianaiEnabled,
       generateUrl: CAPTCHA_GENERATE_URL,
       verifyUrl: CAPTCHA_VERIFY_URL,
       fieldName: CAPTCHA_FIELD_NAME,
@@ -347,10 +435,15 @@ export class CaptchaService {
   /**
    * 生成验证码。
    * - ALTCHA：本地生成官方 challenge，签名内写入 {scene, tenantId, usernameHash, provider}；
-   * - TIANAI：调用 Java 服务生成，Koa 额外签发一次性 sessionId 并绑定当前请求。
+   * - TIANAI：**必须先消费服务端签发的 escalation grant**，然后调用 Java 服务生成，
+   *   Koa 额外签发一次性 sessionId 并绑定当前请求。
    */
   async generate(
-    meta: CaptchaRequestMeta & { scene?: CaptchaScene; provider?: CaptchaProviderName },
+    meta: CaptchaRequestMeta & {
+      scene?: CaptchaScene;
+      provider?: CaptchaProviderName;
+      escalationGrant?: string;
+    },
   ): Promise<CaptchaGenerateResult> {
     const scene: CaptchaScene = meta.scene ?? 'LOGIN';
     const tenantId = await this.resolveTenantSafe(meta.domainName);
@@ -368,16 +461,29 @@ export class CaptchaService {
     } catch { /* 风险信号失败不阻断主流程 */ }
 
     if (provider === 'TIANAI') {
-      if (!isTianaiUsable(cfg)) {
+      // ① 第二层不能被客户端主动索要：先原子消费服务端签发的升级凭证
+      const grant = await this.takeEscalationGrant(
+        meta.escalationGrant ?? '',
+        scene,
+        tenantId,
+        b,
+      );
+      if (!grant) {
         await this.safeAudit({
-          eventType: SecurityEventType.CAPTCHA_SERVICE_UNAVAILABLE,
+          eventType: SecurityEventType.CAPTCHA_SECONDARY_FAILED,
+          riskLevel: RiskLevel.MEDIUM,
           provider,
           scene,
           secondaryType: cfg.secondaryType,
-          reason: 'PROVIDER_UNAVAILABLE',
+          reason: 'ESCALATION_REQUIRED',
           ...this.auditBase(meta, tenantId, b),
         });
-        throw new CaptchaTechnicalError('图形验证码服务未配置或不可用');
+        throw new CaptchaInvalidError('未获得第二层验证授权，请重新完成人机验证');
+      }
+
+      // ② 运维要求第二层但服务跑不起来 → fail closed（绝不静默降级为仅 ALTCHA）
+      if (!isTianaiConfigured(cfg)) {
+        throw await this.secondaryUnavailable(cfg, scene, meta, tenantId, b, 'PROVIDER_UNAVAILABLE');
       }
 
       const dto = await this.tianai.generate({
@@ -385,7 +491,11 @@ export class CaptchaService {
         username: meta.username,
         secondaryType: cfg.secondaryType,
         ttlSeconds: cfg.challengeTtlSeconds,
+      }).catch(async (err) => {
+        logger.error('[captcha] tianai generate failed', { error: String(err) });
+        throw await this.secondaryUnavailable(cfg, scene, meta, tenantId, b, 'PROVIDER_UNAVAILABLE');
       });
+
       const upstreamId = String((dto.challenge as any)?.id ?? (dto.challenge as any)?.challengeId ?? '');
       const sessionId = dto.sessionId ?? newTianaiSessionId();
       const record: CaptchaSecondarySessionRecord = {
@@ -481,15 +591,13 @@ export class CaptchaService {
 
     // ==================== TIANAI ====================
     if (provider === 'TIANAI') {
-      if (!isTianaiUsable(cfg)) {
-        await this.safeAudit({
-          eventType: SecurityEventType.CAPTCHA_SERVICE_UNAVAILABLE,
-          provider,
-          scene,
-          reason: 'PROVIDER_UNAVAILABLE',
-          ...this.auditBase(meta, tenantId, b),
-        });
-        throw new CaptchaTechnicalError('图形验证码服务未配置或不可用');
+      // 本部署根本没有第二层：客户端不应请求它（旧版本客户端 / 伪造请求）
+      if (!isTianaiRequested(cfg)) {
+        return { status: 'failed', provider, reason: 'PROVIDER_UNAVAILABLE' };
+      }
+      // 运维要求第二层但服务跑不起来 → fail closed（绝不降级为「只做 ALTCHA 就放行」）
+      if (!isTianaiConfigured(cfg)) {
+        throw await this.secondaryUnavailable(cfg, scene, meta, tenantId, b, 'PROVIDER_UNAVAILABLE');
       }
 
       const sessionId = String(meta.sessionId ?? '').trim();
@@ -528,13 +636,30 @@ export class CaptchaService {
       });
 
       if (outcome.status === 'technical_error') {
-        // 上游技术故障：fail closed，但**不是**用户失败
+        // 上游技术故障：fail closed，但**不是**用户失败。
+        // 会话已被抢占有两个原因：① 上游 `matching()` 用 getAndRemoveCache，请求一旦发出
+        // challenge 即作废；② 我们的会话必须保持一次性（防重放）。
+        // 因此这里直接补发一个新的升级凭证，让前端**自动**换一张 challenge，
+        // 不需要用户先失败一次再手动刷新。
         await this.safeAudit({
           eventType: SecurityEventType.CAPTCHA_SERVICE_UNAVAILABLE,
+          riskLevel: RiskLevel.MEDIUM,
           provider, scene, reason: outcome.technicalReason ?? 'INTERNAL_ERROR',
           ...this.auditBase(meta, tenantId, b),
         });
-        throw new CaptchaTechnicalError();
+        try {
+          const renewed = await this.issueEscalationGrant(cfg, scene, tenantId, b);
+          return {
+            status: 'technical_error',
+            provider: 'TIANAI',
+            reason: outcome.technicalReason ?? 'INTERNAL_ERROR',
+            requireFallback: true,
+            nextProvider: 'TIANAI',
+            ...renewed,
+          };
+        } catch {
+          throw new CaptchaTechnicalError();
+        }
       }
       if (outcome.status === 'failed') {
         await this.safeAudit({
@@ -564,18 +689,29 @@ export class CaptchaService {
     if (outcome.status === 'technical_error') {
       await this.safeAudit({
         eventType: SecurityEventType.CAPTCHA_SERVICE_UNAVAILABLE,
+        riskLevel: RiskLevel.MEDIUM,
         provider: 'ALTCHA', scene, reason: outcome.technicalReason ?? 'INTERNAL_ERROR',
         ...this.auditBase(meta, tenantId, b),
       });
-      // 规范：ALTCHA 技术故障**不判为机器人**；按配置决定是否降级到 TIANAI
-      if (isTianaiUsable(cfg)) {
-        return {
-          status: 'technical_error',
-          provider: 'ALTCHA',
-          reason: outcome.technicalReason ?? 'INTERNAL_ERROR',
-          requireFallback: true,
-          nextProvider: cfg.fallbackProvider,
-        };
+      // 规范：ALTCHA 技术故障**不判为机器人**（也不放行）。
+      // 运维启用了第二层 → 转入 TIANAI（服务跑不起来就 fail closed）。
+      if (isTianaiRequested(cfg)) {
+        if (!isTianaiConfigured(cfg)) {
+          throw await this.secondaryUnavailable(cfg, scene, meta, tenantId, b, 'PROVIDER_UNAVAILABLE');
+        }
+        try {
+          const renewed = await this.issueEscalationGrant(cfg, scene, tenantId, b);
+          return {
+            status: 'technical_error',
+            provider: 'ALTCHA',
+            reason: outcome.technicalReason ?? 'INTERNAL_ERROR',
+            requireFallback: true,
+            nextProvider: cfg.fallbackProvider,
+            ...renewed,
+          };
+        } catch {
+          throw new CaptchaTechnicalError();
+        }
       }
       throw new CaptchaTechnicalError();
     }
@@ -625,20 +761,36 @@ export class CaptchaService {
         reason: decision.reason,
         ...this.auditBase(meta, tenantId, b),
       });
+      // 风控要求第二层 → 必须真的能完成第二层，否则 fail closed（不许降级放行）
+      if (!isTianaiConfigured(cfg)) {
+        throw await this.secondaryUnavailable(cfg, scene, meta, tenantId, b, 'PROVIDER_UNAVAILABLE');
+      }
+      let renewed: { escalationGrant: string; escalationExpiresAt: number };
+      try {
+        renewed = await this.issueEscalationGrant(cfg, scene, tenantId, b);
+      } catch {
+        throw new CaptchaTechnicalError();
+      }
       return {
         status: 'failed',
         provider: 'ALTCHA',
         reason: 'SECONDARY_REQUIRED',
         requireFallback: true,
         nextProvider: cfg.fallbackProvider,
+        ...renewed,
       };
     }
     if (decision.reason) {
-      // 未启用 TIANAI 但风控命中：内部原因只写审计，不阻断登录（第一层 PoW 已通过）
+      // 未启用 TIANAI（或本次无需升级）但风控命中：内部原因只写审计，不阻断登录。
+      // ⚠ 必须用 CAPTCHA_RISK_NOTED 而不是 CAPTCHA_SECONDARY_REQUIRED：
+      //   后者意味着"真的要求第二层、本次不发票证"，两者混用会让审计日志出现
+      //   同一请求既"要求第二层"又"第一层通过"的自相矛盾记录。
       await this.safeAudit({
-        eventType: SecurityEventType.CAPTCHA_SECONDARY_REQUIRED,
+        eventType: SecurityEventType.CAPTCHA_RISK_NOTED,
+        riskLevel: RiskLevel.LOW,
         provider: cfg.fallbackProvider,
         scene,
+        secondaryType: cfg.secondaryType,
         reason: decision.reason,
         ...this.auditBase(meta, tenantId, b),
       });
@@ -749,8 +901,13 @@ export class CaptchaService {
     }
   }
 
-  /** 排障辅助：TIANAI 健康检查（供系统参数保存前预检复用） */
+  /**
+   * 排障辅助：TIANAI 健康检查（供系统参数保存前预检复用）。
+   * 未配置内网地址时直接 false —— 与 `TianaiProvider.healthCheck()` 的语义保持一致，
+   * 避免注入替身（或未来更换 adapter）时出现「未配置却报健康」的假阳性。
+   */
   async tianaiHealthy(): Promise<boolean> {
+    if (!this.tianaiBaseUrl) return false;
     if (typeof this.tianai.healthCheck === 'function') return this.tianai.healthCheck();
     return false;
   }

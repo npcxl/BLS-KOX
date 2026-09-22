@@ -13,10 +13,10 @@
  *   2. 技术故障（上游不可达/超时/异常）必须与「用户验证失败」区分开 → TECHNICAL_ERROR；
  *   3. 阶段/提供方全部由服务端决定，客户端提交的 stage/provider 只作为"请求哪个 provider"的意图。
  */
-import type { CaptchaSecondaryProvider, CaptchaSecondaryType } from '../../config/dynamic-config';
+import type { CaptchaSecondaryType } from '../../config/dynamic-config';
 import type { CaptchaProviderName, CaptchaScene, CaptchaVerifyStatus } from './providers/types';
 
-export type { CaptchaSecondaryType, CaptchaSecondaryProvider };
+export type { CaptchaSecondaryType };
 export type { CaptchaProviderName, CaptchaScene, CaptchaVerifyStatus };
 
 /** 验证失败原因枚举（写入安全审计，绝不包含 payload / 密钥 / 图片） */
@@ -31,14 +31,15 @@ export type CaptchaFailureReason =
   | 'STAGE_MISMATCH'
   | 'PROVIDER_UNAVAILABLE'
   | 'SECONDARY_REQUIRED'
+  /** 第二层升级凭证缺失 / 无效 / 已消费（客户端不得自行索要第二层） */
+  | 'ESCALATION_REQUIRED'
   /** 内部风控原因（只写审计，不下发前端） */
   | 'ACCOUNT_FAILURES'
   | 'IP_ACCOUNT_FANOUT'
   | 'IP_RISK_HIGH'
   | 'RATE_LIMIT_PRESSURE'
   | 'PRIVILEGED_ACCOUNT'
-  | 'DEVICE_ANOMALY'
-  | 'MODE_ALWAYS';
+  | 'DEVICE_ANOMALY';
 
 /** 内部风控原因（不允许出现在公开接口响应里） */
 export const INTERNAL_POLICY_REASONS: readonly CaptchaFailureReason[] = [
@@ -48,7 +49,6 @@ export const INTERNAL_POLICY_REASONS: readonly CaptchaFailureReason[] = [
   'RATE_LIMIT_PRESSURE',
   'PRIVILEGED_ACCOUNT',
   'DEVICE_ANOMALY',
-  'MODE_ALWAYS',
 ];
 
 /** TIANAI 本地会话在 Redis 中的记录（一次性消费） */
@@ -65,6 +65,26 @@ export interface CaptchaSecondarySessionRecord {
   issuedAt: number;
   expiresAt: number;
 }
+
+/**
+ * 第二层升级凭证记录（Redis，`captcha:escalation:{sha256(grant)}`，一次性消费）。
+ *
+ * 只有 `/captcha/verify` 在第一层通过、且服务端风控判定需要升级时才会签发；
+ * `/captcha/generate(provider=TIANAI)` 必须先原子消费它，否则任何人都能通过
+ * 公开接口反复索要昂贵的图形验证码资源。
+ */
+export interface CaptchaEscalationGrantRecord {
+  scene: CaptchaScene;
+  tenantId: string;
+  usernameHash: string;
+  ipHash: string;
+  uaHash: string;
+  issuedAt: number;
+  expiresAt: number;
+}
+
+/** 升级凭证 TTL 上限（秒）：比 ticket 略长，但仍然是短期凭证 */
+export const ESCALATION_GRANT_MAX_TTL_SECONDS = 180;
 
 /** `/api/captcha/config` 下发结构（只含前端渲染/调用所需信息） */
 export interface CaptchaPublicConfig {
@@ -103,11 +123,18 @@ export interface CaptchaVerifyResult {
   /** status=failed 时的原因（通用枚举，不含内部风控细节） */
   reason?: string;
   /**
-   * ALTCHA 通过但风控命中 → 需要继续完成 TIANAI：
-   * 前端据此渲染二级组件并再次调用 /verify（provider=TIANAI）。
+   * ALTCHA 通过但风控命中（或 ALTCHA 技术故障且本部署启用了 TIANAI）→ 需要继续完成 TIANAI。
+   * 前端据此渲染二级组件、带着 `escalationGrant` 调用 `/generate`（provider=TIANAI）。
    */
   requireFallback?: boolean;
   nextProvider?: CaptchaProviderName;
+  /**
+   * 第二层升级凭证（短期、一次性）。**只有服务端风控判定需要升级时才会下发**，
+   * 客户端不能凭 `provider=TIANAI` 自行索要第二层。
+   */
+  escalationGrant?: string;
+  /** escalationGrant 的有效期（毫秒时间戳），与 `expiresAt` 语义区分 */
+  escalationExpiresAt?: number;
 }
 
 /** 强制进入第二层的判定输入 */

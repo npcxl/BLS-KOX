@@ -62,9 +62,15 @@ export interface CaptchaVerifyResult {
   expiresAt?: number;
   /** status=failed 时的通用原因（不含内部风控细节） */
   reason?: string;
-  /** ALTCHA 通过但风控命中 → 需要继续完成 TIANAI 第二层 */
+  /** ALTCHA 通过但风控命中（或 ALTCHA 技术故障）→ 需要继续完成 TIANAI 第二层 */
   requireFallback?: boolean;
   nextProvider?: CaptchaProviderName;
+  /**
+   * 第二层升级凭证：**只有服务端风控判定需要升级时才会下发**，
+   * 生成 TIANAI challenge 时必须回传（缺它 `/generate` 会返回 40011）。
+   */
+  escalationGrant?: string;
+  escalationExpiresAt?: number;
 }
 
 /** 第二层（Tianai）challenge —— 由前端把 `/generate` 结果归一化后交给 TianaiCaptcha 组件 */
@@ -75,8 +81,12 @@ export interface SecondaryChallenge {
   payload: Record<string, unknown>;
 }
 
-/** captcha 业务码：40010 缺失 / 40011 无效 / 40012 过期 / 40013 重放 / 50301 服务不可用 */
-export const CAPTCHA_ERROR_CODES = [40010, 40011, 40012, 40013, 50301] as const;
+/**
+ * captcha 业务码：40010 缺失 / 40011 无效 / 40012 过期 / 40013 重放 /
+ * 50301 服务不可用（Redis 挂）/ 50302 上游技术故障（Tianai 不可达 / 超时）。
+ * 两者都必须重新走验证流程，且**绝不能**当成"密码错误"，否则不会自动重放密码。
+ */
+export const CAPTCHA_ERROR_CODES = [40010, 40011, 40012, 40013, 50301, 50302] as const;
 
 const OPTIONS = { skipErrorMessage: true } as const;
 
@@ -96,9 +106,15 @@ export async function getCaptchaConfig(
 /**
  * 统一生成入口。
  * `provider` 只是"想请求哪个 provider"的意图，服务端仍会按配置与风控决定实际行为。
+ * 请求第二层（TIANAI）时必须带上服务端在风控升级时下发的 `escalationGrant`。
  */
 export async function generateCaptcha(
-  data: { scene?: CaptchaScene; provider?: CaptchaProviderName; username?: string },
+  data: {
+    scene?: CaptchaScene;
+    provider?: CaptchaProviderName;
+    username?: string;
+    escalationGrant?: string;
+  },
   options?: Record<string, any>,
 ) {
   return request<API.ResponseResult<CaptchaGenerateResult>>(CAPTCHA_GENERATE_URL, {
@@ -111,7 +127,8 @@ export async function generateCaptcha(
 
 /**
  * 统一校验入口：通过后返回一次性 captchaTicket。
- * ALTCHA 传 `payload`；TIANAI 传 `sessionId` + `data`（**不传 stage**）。
+ * ALTCHA 传 `payload`；TIANAI 传 `sessionId` + `data`
+ * （`data` = Tianai 官方 `ImageCaptchaTrack` 轨迹 DTO，**不传 stage**）。
  */
 export async function verifyCaptcha(
   data: {
@@ -133,12 +150,14 @@ export async function verifyCaptcha(
 }
 
 /**
- * 从上游 Tianai challenge 推断二级类型。
- * 公开配置**不下发** secondaryType（属于内部策略），因此只能按上游返回的类型名映射。
+ * 从上游 Tianai challenge 推断二级类型（唯一依据是上游 `type`，不是本地配置猜测）。
+ * 官方类型分类（`SimpleImageCaptchaValidator` 构造时注册）：
+ *   SLIDER / CONCAT / ROTATE → 滑块类（本系统统一用 blockPuzzle 语义名）
+ *   WORD_IMAGE_CLICK        → 点选文字
  */
 export function secondaryTypeOf(challenge: Record<string, unknown> | null | undefined): CaptchaSecondaryType {
   const raw = String((challenge as any)?.type ?? '').toUpperCase();
-  return raw === 'WORD_IMAGE_CLICK' ? 'clickWord' : 'blockPuzzle';
+  return raw.includes('WORD') || raw.includes('CLICK') ? 'clickWord' : 'blockPuzzle';
 }
 
 /** 失败原因 → 中文提示（对外只有通用原因，不含内部风控细节） */

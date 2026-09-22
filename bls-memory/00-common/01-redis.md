@@ -65,10 +65,11 @@ All keys below are logical names; the physical key has the `bls:` prefix.
 | `tenant:provision:idem:{idempotencyKey}` | 15 min (processing) / 24 h (result) | `api/system/tenant/provisioning.ts` | Tenant provisioning idempotency (`SET NX`); repeat call with the same key returns the first result, concurrent call → `40903`. |
 | `quota:idem:{tenantId}:{idempotencyKey}` | 24 h | `services/quota-service.ts` | One-shot quota consumption guard (`SET NX`); released on failure so the caller can retry. |
 | `openapi:nonce:{nonce}` | 300 s | `middleware/openapi-auth.ts` | Partner-API nonce dedup (`SET NX`). **Redis unavailable → 503, fail-closed** (never degrades to allow). |
-| `captcha:challenge:{nonce}` | `sys.login.captcha.challengeTtlSeconds` (30–900, default 180) | `security/captcha/store.ts` | `SET NX EX` marker that makes a **layer-1 ALTCHA challenge** single-use (`GETDEL` on verify). Only the nonce — the challenge itself is stateless and HMAC-signed by ALTCHA. |
-| `captcha:secondary:{sessionId}` | `sys.login.captcha.challengeTtlSeconds` (default 180) | `security/captcha/store.ts` | **Layer-2 (Tianai) session** record: `type`, upstream `id`, `tenantId/domainHash/usernameHash/ipHash/uaHash`, `expiresAt`. `GETDEL` on verify ⇒ one session = one answer submission. |
-| `captcha:token:{sha256(token)}` | `sys.login.captcha.tokenTtlSeconds` (30–600, default **120**) | `security/captcha/store.ts` | captchaToken **binding record** (`provider`, `stage`, optional `secondaryType`, tenantId/domainHash/usernameHash/ipHash/uaHash); the raw token is never stored. |
-| `captcha:token-used:{sha256(token)}` | `tokenTtlSeconds + 300` | `security/captcha/store.ts` | One-shot consumption marker (`SET NX EX`); already present ⇒ `CAPTCHA_REPLAYED`, missing record ⇒ `CAPTCHA_EXPIRED`. |
+| `captcha:challenge:{nonce}` | `captcha_challenge_ttl` (30–900, default 180) | `security/captcha/store.ts` | `SET NX EX` marker that makes a **layer-1 ALTCHA challenge** single-use (`GETDEL` on verify). Only the nonce — the challenge itself is stateless and HMAC-signed by ALTCHA. |
+| `captcha:secondary:{sessionId}` | `captcha_challenge_ttl` (default 180) | `security/captcha/store.ts` | **Layer-2 (Tianai) session** record: `type`, upstream `id`, `tenantId/usernameHash/ipHash/uaHash`, `expiresAt`. `GETDEL` before calling upstream ⇒ one session = one answer submission. |
+| `captcha:escalation:{sha256(grant)}` | `min(captcha_challenge_ttl, 180)` | `security/captcha/store.ts` | One-shot **escalation grant**: issued only when `/captcha/verify` decides the risk policy must escalate; `/captcha/generate?provider=TIANAI` must consume it (`GETDEL`). Prevents clients from requesting the expensive layer-2 resource at will. The raw grant is never stored. |
+| `captcha:ticket:{sha256(ticket)}` | `captcha_ticket_ttl` (30–600, default **120**) | `security/captcha/ticket-service.ts` | captchaTicket **binding record** (`scene`, `provider`, `verified`, tenantId/usernameHash/ipHash/uaHash). The raw ticket **never** appears in a key, a log line or an audit row. |
+| `captcha:ticket-used:{sha256(ticket)}` | 600 (marker TTL) | `security/captcha/ticket-service.ts` | One-shot consumption marker (`SET NX EX`); already present ⇒ `CAPTCHA_REPLAYED`, missing record ⇒ `CAPTCHA_EXPIRED`. |
 | `captcha:fail:account:{tenantId}:{usernameHash}` | 900 s | `security/captcha/store.ts` | Consecutive login failures per account (drives `forceAfterFailures` → **layer-2 required**); cleared on a successful login. |
 | `captcha:fail:ip:{ipHash}` | 900 s | `security/captcha/store.ts` | Login failures per IP hash (risk signal). |
 | `captcha:ip-accounts:{ipHash}` | 900 s | `security/captcha/store.ts` | Set of username hashes a single IP tried (≥ 3 ⇒ layer-2 required). **Only a real `usernameHash` is ever added** — anonymous requests must not insert an empty member, otherwise the fan-out statistic is meaningless. |
@@ -150,11 +151,17 @@ Login human-verification — full description in
   stores only a single-use marker: `captcha:challenge:{nonce}` created with `SET NX EX` and consumed
   with `GETDEL`. Absent marker ⇒ the challenge expired, was already used, or was never issued.
 - **Layer-2 session**: the Tianai challenge itself lives upstream; Redis keeps our own
-  `captcha:secondary:{sessionId}` record (random 24-byte id + upstream id + binding + TTL). `GETDEL`
-  makes it one-shot, and the binding is re-checked on verify (tenant / domain / username / IP / UA).
-- **One-shot token**: 32 random bytes; Redis keeps only `sha256(token)`. Consumption is
-  `SET captcha:token-used:{hash} NX EX …` followed by `GETDEL captcha:token:{hash}` — atomic, no Lua
-  (with a `MULTI/EXEC GET+DEL` fallback). Concurrent callers: exactly one wins.
+  `captcha:secondary:{sessionId}` record (random 24-byte id + upstream id + binding + TTL). The
+  session is consumed (`GETDEL`) **right before** the upstream call: the upstream
+  `ImageCaptchaApplication.matching()` uses `getAndRemoveCache`, so once the request leaves Koa the
+  upstream id is unusable whatever the outcome. On a transport timeout the client gets a **fresh
+  escalation grant** in the `technical_error` response and re-fetches a challenge automatically.
+- **Escalation grant**: `captcha:escalation:{sha256(grant)}`, one-shot, bound to
+  tenant / scene / username / IP / UA. Consumed by `/captcha/generate` for `provider=TIANAI`.
+- **One-shot ticket**: 32 random bytes; Redis keeps only `sha256(ticket)` — in the key **and** in the
+  used-marker. Consumption is `SET captcha:ticket-used:{hash} NX EX …` followed by
+  `GETDEL captcha:ticket:{hash}` — atomic, no Lua (with a `MULTI/EXEC GET+DEL` fallback).
+  Concurrent callers: exactly one wins.
 - **Risk counters**: `captcha:fail:account:*`, `captcha:fail:ip:*`, `captcha:ip-accounts:*` (900 s),
   written by the login handler and challenge creation (real usernames only).
 - **Fail closed**: a missing client or any Redis error becomes HTTP 503

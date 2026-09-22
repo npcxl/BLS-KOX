@@ -58,7 +58,12 @@ export class TianaiProvider implements CaptchaProviderAdapter {
     return `${this.baseUrl}${path}`;
   }
 
-  /** 健康检查：任何 < 500 的响应都视为"服务可达" */
+  /**
+   * 健康检查：**只接受 2xx**，且响应体必须是可解析的 JSON 对象。
+   *
+   * 旧实现把「任何 < 500 的响应」都当成可达 —— 那会让 401/403/404（例如路径写错、
+   * 被网关拦截）也算健康，运维在系统参数页保存后才发现第二层根本跑不起来。
+   */
   async healthCheck(): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
@@ -66,7 +71,16 @@ export class TianaiProvider implements CaptchaProviderAdapter {
         method: 'GET',
         headers: { accept: 'application/json' },
       });
-      return res.status < 500;
+      if (res.status < 200 || res.status >= 300) {
+        logger.warn('[captcha] tianai health check non-2xx', { status: res.status });
+        return false;
+      }
+      const body = await res.json() as unknown;
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        logger.warn('[captcha] tianai health check invalid body');
+        return false;
+      }
+      return true;
     } catch (err) {
       logger.warn('[captcha] tianai health check failed', { error: String(err) });
       return false;

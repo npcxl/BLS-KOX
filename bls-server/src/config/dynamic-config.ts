@@ -26,12 +26,6 @@ export const CAPTCHA_PROVIDER_NAMES: readonly CaptchaProviderName[] = ['ALTCHA',
 export type CaptchaSecondaryType = 'blockPuzzle' | 'clickWord';
 export const CAPTCHA_SECONDARY_TYPES: readonly CaptchaSecondaryType[] = ['blockPuzzle', 'clickWord'];
 
-/**
- * 第二层兼容类型：`none` 等价于「本部署没有图形验证码服务」，
- * 新配置用 `captcha_tianai_enabled=false` 表达同一件事（保留类型以兼容旧引用）。
- */
-export type CaptchaSecondaryProvider = CaptchaProviderName | 'none';
-
 export interface DynamicConfig {
   multiLogin: boolean;
   uploadLimitMB: number;
@@ -79,8 +73,9 @@ const SCHEMA: Record<string, ConfigSchemaEntry> = {
   'captcha_primary_provider': { type: 'enum', default: 'ALTCHA', values: CAPTCHA_PROVIDER_NAMES },
   'captcha_fallback_provider': { type: 'enum', default: 'TIANAI', values: CAPTCHA_PROVIDER_NAMES },
   'captcha_ticket_ttl': { type: 'number', default: 120, min: 30, max: 600 },
-  // 未部署 Tianai Java 服务时置 false：风控命中也不再要求图形验证（第一层仍强制）
-  'captcha_tianai_enabled': { type: 'bool', default: true },
+  // 默认 false：只有真正部署了 Tianai Java 服务并配置 TIANAI_BASE_URL 后才显式开启。
+  // 开启后一旦被风控要求第二层，就必须成功完成 Tianai —— 服务不可用时 fail closed。
+  'captcha_tianai_enabled': { type: 'bool', default: false },
   'captcha_challenge_ttl': { type: 'number', default: 180, min: 30, max: 900 },
   'captcha_force_after_failures': { type: 'number', default: 3, min: 1, max: 100 },
   'captcha_secondary_type': { type: 'enum', default: 'blockPuzzle', values: CAPTCHA_SECONDARY_TYPES },
@@ -120,7 +115,7 @@ const DEFAULT_CONFIG: DynamicConfig = {
   captchaPrimaryProvider: 'ALTCHA',
   captchaFallbackProvider: 'TIANAI',
   captchaTicketTtl: 120,
-  captchaTianaiEnabled: true,
+  captchaTianaiEnabled: false,
   captchaChallengeTtlSeconds: 180,
   captchaForceAfterFailures: 3,
   captchaSecondaryType: 'blockPuzzle',
@@ -199,7 +194,7 @@ export function parseConfigValue(raw: Record<string, any>): DynamicConfig {
 
 /**
  * 从 DynamicConfig 中提取公共（可下发前端）的人机验证配置。
- * 只包含前端驱动组件所必需的信息：开关、模式、两级 provider、二级类型。
+ * 只包含前端驱动组件所必需的信息：开关、两级 provider、是否启用 Tianai。
  * **不下发**阈值、失败次数、风险原因等内部规则（这些只写安全审计）。
  */
 export function toPublicCaptchaConfig(cfg: DynamicConfig): {

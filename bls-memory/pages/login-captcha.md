@@ -1,25 +1,30 @@
 # Page — Login captcha (two-level: ALTCHA silent → Tianai secondary, public, part of `/user/login`)
 
-> **Document version:** 3.0.0 · **Code version:** 1.0.0 · **Verified commit:** 753d86a · **Last verified:** 2026-09-21
+> **Document version:** 4.0.0 · **Code version:** 1.0.0 · **Verified commit:** 5773b0f · **Last verified:** 2026-09-22
 >
-> *Uncommitted note:* the two-level design below (separate primary/secondary providers, server-derived
-> stage, Tianai secondary) replaces v2.0.0 (single provider, ALTCHA `visible` used as "second layer")
-> and is verified against the working tree on top of `753d86a`.
+> *Uncommitted note:* v4.0.0 records the contract repair done on top of `5773b0f`:
+> ① the Tianai payload is now the **official `ImageCaptchaTrack` DTO** (no more custom `{x,y}` /
+> `{points}`); ② the configuration keys are **only** the 8 flat keys (`login_captcha_enabled` /
+> `captcha_*`), `mode` is gone; ③ `captcha_tianai_enabled=true` now **fail-closes** when the service
+> is unusable instead of silently downgrading to layer 1; ④ the layer-2 challenge can only be
+> requested with a one-shot **escalation grant**; ⑤ `captchaTicket` is hashed with `sha256` in Redis
+> keys; ⑥ the audit event `CAPTCHA_RISK_NOTED` was split from `CAPTCHA_SECONDARY_REQUIRED`.
 
 ## 1. Summary
 
 | Item | Value |
 |---|---|
-| Trigger | `POST /api/auth/login` when `sys.login.captcha.enabled=true` and `mode !== 'off'` |
+| Trigger | `POST /api/auth/login` when `login_captcha_enabled=true` |
 | First layer (silent) | **ALTCHA** — self-hosted, <https://github.com/altcha-org/altcha> (npm `altcha`, v3), invisible Proof-of-Work |
-| Second layer (secondary) | **Tianai CAPTCHA** — separate service (`blockPuzzle` / `clickWord`), Koa only proxies |
-| Backend routes | `bls-server/src/api/auth/captcha/index.ts` (public, no `jwtAuth`) |
-| Backend logic | `bls-server/src/security/captcha/*` (`service.ts`, `policy.ts`, `store.ts`, `config.ts`, `crypto-utils.ts`, `types.ts`, `providers/altcha-provider.ts`, `providers/tianai-provider.ts`, `altcha.ts`) |
+| Second layer (secondary) | **Tianai CAPTCHA** — separate Java service (`SLIDER` / `WORD_IMAGE_CLICK`), Koa only proxies |
+| Backend routes | `bls-server/src/api/captcha/index.ts` (public, no `jwtAuth`) |
+| Backend logic | `bls-server/src/security/captcha/*` (`service.ts`, `policy.ts`, `store.ts`, `ticket-service.ts`, `config.ts`, `crypto-utils.ts`, `types.ts`, `providers/altcha-provider.ts`, `providers/tianai-provider.ts`, `altcha.ts`) |
 | Frontend | `bls-admin/src/hooks/useLoginCaptcha.ts`, `bls-admin/src/pages/user/login/captcha-machine.ts`, `bls-admin/src/components/AltchaCaptcha/`, `bls-admin/src/components/TianaiCaptcha/`, `bls-admin/src/services/auth/captcha.ts` |
-| Config | 8 × `sys.login.captcha.*` in `sys_config` → Dynamic Config |
+| Config | **8 flat keys**: `login_captcha_enabled`, `captcha_primary_provider`, `captcha_fallback_provider`, `captcha_ticket_ttl`, `captcha_tianai_enabled`, `captcha_challenge_ttl`, `captcha_force_after_failures`, `captcha_secondary_type` |
 | Env | `ALTCHA_HMAC_KEY` (required in production), `ALTCHA_COST`, `TIANAI_BASE_URL`, `CAPTCHA_DEV_BYPASS` |
+| Bridge service | `bls-captcha-service` (`CaptchaBridgeController`), Docker-internal `:8083`, **never exposed to browsers** |
 | Menu permission | none — public endpoints, no privileged data |
-| Shared docs | `00-common/01-redis.md`, `03-rate-limiting.md`, `04-auth-and-permissions.md`, `05-security-log-and-event-center.md`, `08-external-api-and-service-auth.md` |
+| Shared docs | `00-common/01-redis.md`, `03-rate-limiting.md`, `04-auth-and-permissions.md`, `05-security-log-and-event-center.md`, `07-database.md`, `08-external-api-and-service-auth.md` |
 
 ### Design rule (read this first)
 
@@ -32,108 +37,103 @@ scoring, no browser fingerprinting.
 | First-layer Proof-of-Work solving (browser) | official `<altcha-widget>` (Web Worker) |
 | First-layer payload verification (server) | `altcha/lib` → `verifySolution()` |
 | Second-layer image generation + answer checking | **Tianai CAPTCHA service** (separate deployment) |
-| `captchaToken`, Redis state, binding, stage decision | **this project** (not a captcha algorithm) |
+| `captchaTicket`, Redis state, binding, escalation decision | **this project** (not a captcha algorithm) |
 
-### Two layers, and why ALTCHA `standard` is *not* the second layer
+### Two layers
 
 ```
-layer 1  silent     : ALTCHA display="invisible" + auto="onload" → PoW solved in background, user sees nothing
-layer 2  secondary  : policy hit → Tianai CAPTCHA widget (blockPuzzle / clickWord) in the login form
+layer 1  ALTCHA   : display="invisible" + auto="onload" → PoW solved in background, user sees nothing
+layer 2  TIANAI   : risk policy hit → Tianai widget (SLIDER / WORD_IMAGE_CLICK) in the login form
 ```
 
 - The **ALTCHA visible component (`display="standard"`) is not a second layer.** It is still a
-  checkbox-style PoW that a script can pass; it exists only as a fallback UX when a widget must be
-  shown. This project therefore uses `display="invisible"` for the first layer and never maps a
-  business `stage` onto it (`ALTCHA display` value is always `invisible`; the type only allows
-  `invisible | standard`, and `"visible"` is not a valid ALTCHA value).
-- The real second layer is **Tianai** (`blockPuzzle` = 滑块拼图, `clickWord` = 点选文字), rendered by a
-  dedicated component that **does not reuse `altcha-widget`**.
+  checkbox-style PoW that a script can pass. Layer 1 always uses `display="invisible"`.
+- The real second layer is **Tianai**, rendered by a dedicated component that does **not** reuse
+  `altcha-widget`.
+- Escalation is **server-decided and gated**: when `/captcha/verify` decides the risk policy must
+  escalate it returns `requireFallback: true` **plus a one-shot `escalationGrant`**.
+  `/captcha/generate` with `provider=TIANAI` consumes that grant; without it the request is rejected
+  (`40011`). A client can never request the (expensive) layer-2 resource at will.
 
 ### Known limitation (state it, do not hide it)
 
-- Self-hosted ALTCHA cannot generate image/audio code challenges (`altcha/lib` has no code-challenge
-  generator). All picture puzzles come from the Tianai second layer.
-- Tianai is an **external dependency**: if it is not configured, is down, times out or returns a bad
-  response, the second layer **fails closed** (HTTP 503 / code `50301`) — the user cannot log in, but
-  nobody bypasses the check either. Because of that, the system-parameter page validates
-  `TIANAI_BASE_URL` reachability *before* saving (see §6).
+- Self-hosted ALTCHA cannot generate image/audio code challenges. All picture puzzles come from Tianai.
+- Tianai is an **external dependency**. With `captcha_tianai_enabled=false` the deployment has no layer
+  2 at all and risk hits are only *noted* (`CAPTCHA_RISK_NOTED`). With `captcha_tianai_enabled=true` a
+  risk hit **must** complete Tianai; if the service is unusable (missing `TIANAI_BASE_URL`, failed
+  health check, timeout) the request **fails closed** (HTTP 503 / `50302`) — nobody bypasses the check,
+  and nobody is silently downgraded either.
 
 ### ⚠ Secure context (HTTPS) is mandatory
 
-ALTCHA v3 computes its Proof-of-Work with **WebCrypto (`crypto.subtle`)**, which browsers only expose
-in a **secure context**; the official code throws `Error: Secure context (HTTPS) required.` otherwise.
-`isSecureContext` is true for `https://…`, `http://localhost` and `http://127.0.0.1` — **not** for
-`http://<LAN-IP>:3000`. In that case layer 1 can never be solved (there is no library switch), so the
-page must not silently wait forever.
+ALTCHA v3 computes its Proof-of-Work with **WebCrypto (`crypto.subtle`)**, which browsers only expose in
+a **secure context**; the official code throws `Error: Secure context (HTTPS) required.` otherwise.
+`isSecureContext` is true for `https://…`, `http://localhost`, `http://127.0.0.1` — **not** for
+`http://<LAN-IP>`. Handling: `useLoginCaptcha.ts` dispatches `ENV_UNSUPPORTED` (`envBlocked = true`) and
+`canSubmit()` stays `false`; with the feature disabled nothing is blocked.
 
-Handling: `hooks/useLoginCaptcha.ts` checks `window.isSecureContext === false` once the config is
-loaded and the feature is enabled, dispatches `ENV_UNSUPPORTED` (state `envBlocked = true`) and shows
-「当前为非安全上下文（HTTP）…请改用 HTTPS 或 localhost 访问」; `canSubmit()` stays `false`. With the
-feature disabled nothing is blocked. `AltchaCaptcha` additionally reports the widget's `state === 'error'`
-through `onError`, so the same message appears even if the widget fails for another reason.
-Dev workarounds: use `localhost`, configure HTTPS for the dev server, or temporarily mark the origin
-secure via `chrome://flags/#unsafely-treat-insecure-origin-as-secure` (debug only).
+### 503 troubleshooting
 
-### 50301 troubleshooting (`CAPTCHA_SERVICE_UNAVAILABLE`)
+Only three sources:
 
-Only two sources — check **which request** returned it in the browser Network panel:
-
-| Request | Cause |
+| Code | Meaning |
 |---|---|
-| `POST /captcha/secondary/challenge` / `/secondary/verify` | The policy requires layer 2 but **Tianai is unusable** (empty `TIANAI_BASE_URL`, unreachable, timeout, upstream error, or `secondaryProvider` not `tianai`). This is why the error appears "after typing the password": the username is debounced, the policy is re-evaluated with it, and the layer-2 challenge is requested immediately. |
-| `POST /api/auth/login` | **Redis unavailable** — `captcha:token:*` consumption fails closed. |
+| `50301` `CAPTCHA_SERVICE_UNAVAILABLE` | **Redis** unavailable — challenge / session / ticket storage fails closed. |
+| `50302` `TECHNICAL_ERROR` | **Upstream Tianai** unreachable / timeout / bad response, or `captcha_tianai_enabled=true` while the service cannot run. |
+| `40010`–`40013` | `captchaTicket` missing / invalid / expired / replayed. |
 
-`service.ts` logs `[captcha] secondary provider unavailable, login will fail closed` with a `hint`
-(`TIANAI_BASE_URL` unset / provider not tianai), and `app.ts` prints a startup warning when
-`TIANAI_BASE_URL` is empty. Recovery: deploy Tianai, or set `sys.login.captcha.mode=off`
-(`enabled=false`), or clear `captcha:fail:*` counters (900 s TTL).
+`app.ts` prints a startup warning when `TIANAI_BASE_URL` is empty; the system-parameter page performs a
+health check (2xx + JSON body) **before** saving.
 
 ---
 
 ## 2. Endpoints
 
-All are public (no `jwtAuth`) and answered with `Cache-Control: no-store`, except `/challenge`
-which returns the raw official ALTCHA structure (the widget reads it directly).
+All are public (no `jwtAuth`) and answered with `Cache-Control: no-store`.
 
 | Method | Path | Purpose | Frontend payload |
 |---|---|---|---|
-| GET | `/api/auth/captcha/config` | public config + **server-decided** `requiredStage` | `?username=` |
-| GET | `/api/auth/captcha/challenge` | first-layer ALTCHA challenge (**raw official JSON, no `{code,...}` wrapper**) | `?username=` |
-| POST | `/api/auth/captcha/verify` | first-layer verification → one-shot `captchaToken` | `{ payload, username }` |
-| POST | `/api/auth/captcha/secondary/challenge` | second-layer (Tianai) challenge + local one-shot `sessionId` | `{ username }` |
-| POST | `/api/auth/captcha/secondary/verify` | second-layer verification → one-shot `captchaToken` | `{ sessionId, username, data }` |
+| GET | `/api/captcha/config` | public config: `enabled`, `primaryProvider`, `fallbackProvider`, `tianaiEnabled`, `generateUrl`, `verifyUrl`, `fieldName` | `?username=` |
+| POST | `/api/captcha/generate` | layer-1 ALTCHA challenge **or** layer-2 Tianai challenge (needs `escalationGrant`) | `{ scene?, provider?, username?, escalationGrant? }` |
+| POST | `/api/captcha/verify` | verify → Koa issues a one-shot `captchaTicket` | `{ scene?, provider?, username?, payload? (ALTCHA), sessionId? + data? (Tianai) }` |
+
+`POST /api/auth/login` accepts **only** `captchaTicket` and consumes it atomically **before** looking up
+the user or checking the password.
 
 ### 2.1 `GET /config` response
 
 ```json
 {
   "enabled": true,
-  "mode": "adaptive",
-  "primaryProvider": "altcha",
-  "secondaryProvider": "tianai",
-  "secondaryType": "blockPuzzle",
-  "requiredStage": "silent",
-  "challengeUrl": "/api/auth/captcha/challenge",
-  "secondaryChallengeUrl": "/api/auth/captcha/secondary/challenge",
+  "primaryProvider": "ALTCHA",
+  "fallbackProvider": "TIANAI",
+  "tianaiEnabled": false,
+  "generateUrl": "/api/captcha/generate",
+  "verifyUrl": "/api/captcha/verify",
   "fieldName": "altchaPayload"
 }
 ```
 
-**Not included on purpose:** thresholds (`forceAfterFailures`, `cost`), failure counters, and the
-internal policy reason (`ACCOUNT_FAILURES` / `IP_ACCOUNT_FANOUT` / `IP_RISK_HIGH` /
-`RATE_LIMIT_PRESSURE` / `PRIVILEGED_ACCOUNT` / `DEVICE_ANOMALY` / `MODE_ALWAYS`).
-The public surface only says *which stage is required*; the **reason** is written to the security log
-only (`CAPTCHA_SECONDARY_REQUIRED` + `failureReason`).
+**Not included on purpose:** thresholds (`captcha_force_after_failures`, `ALTCHA_COST`), failure
+counters, and the internal policy reason (`ACCOUNT_FAILURES` / `IP_ACCOUNT_FANOUT` / `IP_RISK_HIGH` /
+`RATE_LIMIT_PRESSURE` / `PRIVILEGED_ACCOUNT` / `DEVICE_ANOMALY`). There is **no** `requiredStage` and
+**no** `mode`: the server only tells the client how to render and where to call.
 
 ### 2.2 Verification response
 
 ```json
-{ "passed": true,  "stage": "silent", "captchaToken": "<one-shot>", "expiresAt": 1700000000000 }
-{ "passed": false, "reason": "SECONDARY_REQUIRED", "requiredStage": "secondary", "message": "需要完成额外安全验证" }
-{ "passed": false, "reason": "SOLUTION_INVALID" }
+{ "status": "passed", "provider": "ALTCHA", "captchaTicket": "<one-shot>", "expiresAt": 1700000000000 }
+{ "status": "failed", "provider": "ALTCHA", "reason": "SECONDARY_REQUIRED",
+  "requireFallback": true, "nextProvider": "TIANAI", "escalationGrant": "<one-shot>",
+  "escalationExpiresAt": 1700000180000 }
+{ "status": "failed", "provider": "TIANAI", "reason": "SOLUTION_INVALID" }
+{ "status": "technical_error", "provider": "TIANAI", "reason": "UPSTREAM_TIMEOUT",
+  "requireFallback": true, "nextProvider": "TIANAI", "escalationGrant": "<renewed>" }
 ```
 
-`stage` is **always** the server's own conclusion; the request body can never set it.
+- `status` ∈ `passed` / `failed` / `technical_error`. `technical_error` is **never** the user's fault.
+- On a layer-2 technical failure the response carries a **fresh** `escalationGrant`, so the browser
+  re-fetches a challenge automatically — the user does not have to submit once first.
 
 ---
 
@@ -141,31 +141,30 @@ only (`CAPTCHA_SECONDARY_REQUIRED` + `failureReason`).
 
 | Field | Decided by | Notes |
 |---|---|---|
-| `stage` (`silent` / `secondary`) | **server** | taken only from the HMAC-signed `challenge.parameters.data.stage` for layer 1, and from the consumed secondary session for layer 2 |
-| `provider` / `secondaryType` in `captchaToken` | **server** | written from `primaryProvider` / `secondaryProvider` at issue time |
-| `requiredStage` | **server** | `evaluateCaptchaPolicy()` over account failures, IP fan-out, IP risk, rate-limit pressure, privileged account, UA anomaly, `mode` |
-| challenge `nonce`, `signature`, `expiresAt`, `data` | **server** (signed by ALTCHA HMAC) | client cannot tamper; `data = { tenantId, usernameHash, stage: 'silent', display: 'invisible' }` |
-| secondary `sessionId`, `upstreamId`, binding, TTL | **server** | random 24-byte id; bound to tenant / domain / username / IP / UA |
-| `captchaToken` value and TTL | **server** | 32 random bytes, Redis stores only `sha256` |
+| `provider` in the response | **server** | `ALTCHA` / `TIANAI` (uppercase) |
+| `escalationGrant`, `captchaTicket`, `sessionId`, `upstreamId`, TTLs | **server** | random 32 / 24-byte; Redis stores only `sha256` |
+| challenge `nonce`, `signature`, `expiresAt`, `data` | **server** (ALTCHA HMAC) | `data = { scene, tenantId, usernameHash, provider }` — client cannot tamper |
 | `username` | **client** | hashed server-side; used for binding + policy evaluation |
 | `payload` (layer 1) | **client** | base64 JSON produced by the official widget |
-| `sessionId` + `data` (layer 2) | **client** | `data` = answer coordinates/points; no identity fields |
-| `stage` / `display` / `provider` in the request body | — | **ignored**; sending `stage=visible\|secondary` changes nothing |
+| `sessionId` + `data` (layer 2) | **client** | `data` = official `ImageCaptchaTrack` DTO; no identity fields |
+| `stage` / `display` / `captchaMode` in the request body | — | **ignored** (those concepts no longer exist) |
 
 ### Anti-forgery rules enforced in code
 
-1. Layer-1 payload is verified **first** (expiry → signature → PoW); only then is
-   `parameters.data` read. `stage` inside that data must be `silent`, otherwise `STAGE_MISMATCH`.
-2. `tenantId` and `usernameHash` inside the signed data must match the current request
-   (`BINDING_MISMATCH` otherwise) — a challenge solved for user A cannot be used for user B.
-3. Challenge `nonce` is registered at issue time (`SET NX EX`) and **consumed atomically**
-   (`GETDEL`) on verification: one PoW solution = one verification.
-4. If the policy requires `secondary`, layer 1 **never issues a token** — it answers
-   `requiredStage: "secondary"` (`SECONDARY_REQUIRED`); the reason goes to the audit log.
-5. Secondary sessions live in Redis with `GETDEL`, so one session = one answer submission; binding is
-   re-checked (tenant / domain / username / IP / UA) and `expiresAt` is enforced.
-6. `captchaToken` is one-shot: `SET NX EX` marker + `GETDEL`; concurrent `/login` calls → exactly
-   one wins (`CAPTCHA_REPLAYED` for the rest).
+1. Layer-1 payload is verified **first** (expiry → signature → PoW); only then is `parameters.data`
+   read. `scene` / `tenantId` / `usernameHash` inside it must match the request (`STAGE_MISMATCH` /
+   `BINDING_MISMATCH`).
+2. Challenge `nonce` is registered at issue time (`SET NX EX`) and consumed atomically (`GETDEL`):
+   one PoW solution = one verification.
+3. If the risk policy requires layer 2, layer 1 **never issues a ticket**; it returns
+   `SECONDARY_REQUIRED` + a one-shot `escalationGrant`.
+4. `/captcha/generate?provider=TIANAI` requires the grant (`GETDEL`); forged / missing / reused grants
+   → `40011` and the upstream is never called.
+5. Secondary sessions use `GETDEL` **before** the upstream call (upstream `matching()` itself uses
+   `getAndRemoveCache`), so one session = one answer submission.
+6. `captchaTicket` is one-shot: `SET NX EX` marker + `GETDEL`; concurrent `/login` calls → exactly one
+   wins (`CAPTCHA_REPLAYED` for the rest). Every login attempt invalidates the ticket whether the
+   password was right or wrong.
 
 ---
 
@@ -173,34 +172,34 @@ only (`CAPTCHA_SECONDARY_REQUIRED` + `failureReason`).
 
 | Key | Type | Written by | TTL |
 |---|---|---|---|
-| `captcha:challenge:{nonce}` | marker | issue of a layer-1 challenge | `challengeTtlSeconds` (180) |
-| `captcha:secondary:{sessionId}` | JSON | issue of a layer-2 challenge | `challengeTtlSeconds` (180) |
-| `captcha:token:{sha256(token)}` | JSON | successful layer 1 **or** layer 2 | `tokenTtlSeconds` (120) |
-| `captcha:token-used:{sha256(token)}` | marker | `/login` consumption attempt | `tokenTtlSeconds + 300` |
+| `captcha:challenge:{nonce}` | marker | issue of a layer-1 challenge | `captcha_challenge_ttl` (180) |
+| `captcha:secondary:{sessionId}` | JSON | issue of a layer-2 challenge | `captcha_challenge_ttl` (180) |
+| `captcha:escalation:{sha256(grant)}` | JSON | risk-policy escalation | `min(challenge_ttl, 180)` |
+| `captcha:ticket:{sha256(ticket)}` | JSON | successful layer 1 **or** layer 2 | `captcha_ticket_ttl` (120) |
+| `captcha:ticket-used:{sha256(ticket)}` | marker | `/login` consumption attempt | 600 |
 | `captcha:fail:account:{tenantId}:{usernameHash}` | counter | failed `/login` | 900 s |
 | `captcha:fail:ip:{ipHash}` | counter | failed `/login` | 900 s |
-| `captcha:ip-accounts:{ipHash}` | set | layer-1 challenge with a **real** username | 900 s |
+| `captcha:ip-accounts:{ipHash}` | set | challenge request with a **real** username | 900 s |
 
-Nothing is stored permanently. Redis unavailable ⇒ `CaptchaUnavailableError` (fail closed).
-
-> Note: **`captcha:ip-accounts:*` only ever receives a real `usernameHash`.** Anonymous requests must
-> not insert an empty member, otherwise per-IP account fan-out statistics become meaningless (and a
-> single empty member can mask real credential-stuffing).
+Nothing is stored permanently; no plaintext ticket/grant ever appears in a key. Redis unavailable ⇒
+`CaptchaUnavailableError` (fail closed).
 
 ---
 
 ## 5. Security audit events
 
-`CAPTCHA_POW_PASSED` / `CAPTCHA_POW_FAILED` (layer 1 PoW), `CAPTCHA_SECONDARY_REQUIRED` /
-`CAPTCHA_SECONDARY_PASSED` / `CAPTCHA_SECONDARY_FAILED` (layer 2), `CAPTCHA_TOKEN_INVALID` /
+`CAPTCHA_POW_PASSED` / `CAPTCHA_POW_FAILED`, `CAPTCHA_SECONDARY_REQUIRED` / `CAPTCHA_RISK_NOTED` /
+`CAPTCHA_SECONDARY_PASSED` / `CAPTCHA_SECONDARY_FAILED`, `CAPTCHA_TOKEN_INVALID` /
 `CAPTCHA_TOKEN_REPLAYED`, `CAPTCHA_SERVICE_UNAVAILABLE`.
 
-Each record contains only: `stage`, `provider`, `secondaryType`, `failureReason`, `tenantId`,
-`usernameHash`, `ipHash`, `requestId`. **Never** answers, images, payloads, passwords or full tokens.
+- `CAPTCHA_SECONDARY_REQUIRED` = really escalated, **no ticket issued**. Mutually exclusive with
+  `CAPTCHA_POW_PASSED` inside one `/verify` call.
+- `CAPTCHA_RISK_NOTED` = a risk signal fired but the deployment has `captcha_tianai_enabled=false`, so
+  there is nothing to escalate to; the reason is recorded only (LOW risk, request still passes).
 
-Failure reasons include the internal policy reasons (audit-only) and the verification failures
-(`PAYLOAD_MISSING`, `PAYLOAD_MALFORMED`, `ALGORITHM_UNSUPPORTED`, `CHALLENGE_EXPIRED`,
-`SIGNATURE_INVALID`, `SOLUTION_INVALID`, `BINDING_MISMATCH`, `STAGE_MISMATCH`, `PROVIDER_UNAVAILABLE`).
+Each record contains only: `provider`, `scene`, `secondaryType`, `failureReason`, `tenantId`,
+`usernameHash`, `ipHash`, `requestId`. **Never** answers, images, payloads, passwords, full tickets or
+grants.
 
 ---
 
@@ -208,85 +207,134 @@ Failure reasons include the internal policy reasons (audit-only) and the verific
 
 | Key | Type | Range / values | Default |
 |---|---|---|---|
-| `sys.login.captcha.enabled` | bool | — | `true` |
-| `sys.login.captcha.mode` | enum | `off` / `adaptive` / `always` | `adaptive` |
-| `sys.login.captcha.primaryProvider` | enum | `altcha` / `tianai` | `altcha` |
-| `sys.login.captcha.secondaryProvider` | enum | `altcha` / `tianai` | `tianai` |
-| `sys.login.captcha.secondaryType` | enum | `blockPuzzle` / `clickWord` | `blockPuzzle` |
-| `sys.login.captcha.challengeTtlSeconds` | number | 30–900 | `180` |
-| `sys.login.captcha.tokenTtlSeconds` | number | 30–600 | `120` |
-| `sys.login.captcha.forceAfterFailures` | number | 1–100 | `3` |
+| `login_captcha_enabled` | bool | — | `true` |
+| `captcha_primary_provider` | enum | `ALTCHA` / `TIANAI` | `ALTCHA` |
+| `captcha_fallback_provider` | enum | `ALTCHA` / `TIANAI` | `TIANAI` |
+| `captcha_ticket_ttl` | number | 30–600 | `120` |
+| `captcha_tianai_enabled` | bool | — | **`false`** (enable after deploying Tianai) |
+| `captcha_challenge_ttl` | number | 30–900 | `180` |
+| `captcha_force_after_failures` | number | 1–100 | `3` |
+| `captcha_secondary_type` | enum | `blockPuzzle` / `clickWord` | `blockPuzzle` |
 
-- Read through **Dynamic Config** (Redis cache 60 s); `onWrite` invalidates the cache so changes apply
-  immediately.
+- Read through **Dynamic Config** (Redis cache 60 s); `onWrite` invalidates the cache immediately.
 - Invalid values never crash the login page: strict parsing falls back to the default and logs a warning.
-- The system-parameter page writes these rows through
-  **`POST /api/system/config/batch`** (single transaction, `system:config:edit` required) so a partially
-  applied change can never lock login. Before committing, the backend merges current + incoming values;
-  if the effective config enables the Tianai second layer it performs a **health check** and rejects the
-  save when the service is unreachable (or `TIANAI_BASE_URL` is empty).
-- `TIANAI_BASE_URL` unset + `secondaryProvider=tianai` ⇒ second layer fails closed (503). Users whose
-  policy only requires `silent` can still log in. **Deploying the second layer** (contract to satisfy:
-  `GET /gen`, `POST /check`, `GET /health`; paths overridable with `TIANAI_GEN_PATH` /
-  `TIANAI_CHECK_PATH` / `TIANAI_HEALTH_PATH`) is described in `docs/login-captcha.md` §6, with a
-  "why it fails" table in §6.4.
-
-### 6.1 Not covered by this feature
-
-The Java (`bls-java-server`) and Rust (`bls-rust-server`) backends do not expose captcha endpoints.
-The admin frontend degrades gracefully: a failed `/config` request blocks submission (fail closed) with
-a clear message instead of silently skipping verification.
+- Old keys `sys.login.captcha.*` are **not read at runtime** (migration `20260922_018` soft-deletes
+  them); there is deliberately only one key set.
+- The system-parameter page writes through **`POST /api/system/config/batch`** (whitelist + single
+  transaction, `system:config:edit`). Before committing, the backend merges current + incoming values;
+  if the effective config has `captcha_tianai_enabled=true` it performs a **health check (2xx + JSON)**
+  and rejects the save when unreachable or when `TIANAI_BASE_URL` is empty. Any write failure rolls the
+  whole batch back.
+- Frontend panel: `bls-admin/src/pages/system/config/components/CaptchaSettingPanel.tsx`
+  (its row lookup **pages through** `sys_config`, because the table can exceed the 100-row page limit).
 
 ---
 
-## 7. Test coverage
+## 7. Tianai contract (the layer-2 payload)
 
-Backend (`bls-server/src/security/captcha/__tests__/`):
-`captcha-service.test.ts` (30) — silent pass, **forged `stage` cannot pass**, `STAGE_MISMATCH`, A's
-challenge rejected for B, old token invalid after username change, one-shot consumption + concurrency,
-public config leaks nothing, **full silent → Tianai secondary → `/login` consumption**, secondary
-session one-shot / binding / expiry, Tianai not configured / generation failure / check timeout →
-fail closed, Tianai answering "wrong" → `SOLUTION_INVALID`, Redis unavailable, IP fan-out counting only
-real usernames.
-`captcha-audit.test.ts` (4) — event set, restricted `detail` keys, no secrets/tokens/usernames in logs,
-internal reasons audit-only.
-`src/api/system/config/__tests__/batch.test.ts` (7) — managed-key whitelist, Tianai health pre-check on
-save (healthy / unhealthy / missing URL / captcha off / provider not tianai).
+**The only request contract is the official DTO**
+`cloud.tianai.captcha.validator.common.model.dto.ImageCaptchaTrack`:
 
-Frontend (`bls-admin`): `src/pages/user/login/__tests__/captcha-machine.test.ts` (15) — the state
-machine invariants; `src/hooks/__tests__/useLoginCaptcha.test.tsx` (9) — config gate, single-flight
-verify, token cleared after submit, username change invalidation, secondary flow, secondary failure;
-`src/pages/user/login/index.test.tsx` (20) — page-level flows incl. captcha-enabled submit with
-`captchaToken` and no auto-resubmit after `40010`.
+```json
+{
+  "bgImageWidth": 600,
+  "bgImageHeight": 300,
+  "templateImageWidth": 120,
+  "templateImageHeight": 300,
+  "startTime": 1700000000000,
+  "stopTime": 1700000000800,
+  "trackList": [
+    { "x": 0,   "y": 5, "t": 0,   "type": "DOWN" },
+    { "x": 227, "y": 9, "t": 800, "type": "UP"   }
+  ]
+}
+```
+
+- `type` ∈ `DOWN` / `MOVE` / `UP` / `CLICK` (official `TrackTypeConstant`).
+- **Slider**: the official check is `(last.x - first.x) / bgImageWidth ≈ randomX / bgImageWidth`.
+  Coordinates are **pixels**; y varies naturally with the pointer.
+- **Word click**: every click is a `type: "CLICK"` entry in **pixel** coordinates; the number of entries
+  must equal the count the bridge returns (`data.clickCount`). Custom `{points}` payloads are rejected.
+- Sizes come **only** from the upstream response (`backgroundImageWidth/Height`,
+  `templateImageWidth/Height`). There is no `randomY` and no 320×160 / 50×50 fallback: if the render
+  fields are missing the component shows "验证码加载失败 + 刷新".
+- Pointer / touch / keyboard produce the same structure (keyboard: arrow keys → `MOVE`, `Enter` → `UP`
+  or `CLICK`).
+
+Koa forwards the DTO verbatim to the bridge as `{ id, data }`; the bridge returns
+`{ code: 200, valid: bool }`, and returns **5xx** when the track structure is incomplete (so a frontend
+bug is never recorded as "the user failed").
 
 ---
 
-## 8. Frontend state machine
+## 8. Test coverage
+
+Backend (`bls-server`):
+`src/security/captcha/__tests__/captcha-service.test.ts` (~39) — feature off/on; ALTCHA pass / failed /
+expired / replayed / binding mismatch; **ticket only in `sha256` form in Redis keys**; escalation →
+grant → Tianai → ticket; grant is one-shot, bound and hash-only; client cannot request layer 2 without
+a grant; Tianai user failure / technical failure (renewed grant) / generate failure; `tianaiEnabled=true`
++ missing URL ⇒ **fail closed, no ticket**; Redis unavailable ⇒ fail closed; audit semantics are
+mutually exclusive.
+`captcha-audit.test.ts` (4) — event set, restricted `detail` keys, no secrets/tickets/grants/usernames.
+`src/api/system/config/__tests__/batch.test.ts` (10) — managed-key whitelist (old keys rejected), Tianai
+health pre-check, **transaction rollback on write failure**.
+`src/config/__tests__/dynamic-config.test.ts` — the 8 flat keys, defaults (`tianai_enabled=false`),
+old keys ignored.
+`src/__tests__/openapi-captcha-contract.test.ts` (4) — login schema is `captchaTicket`, no old concepts.
+
+Frontend (`bls-admin`):
+`src/pages/user/login/__tests__/captcha-machine.test.ts` — state-machine invariants incl. grant handling;
+`src/hooks/__tests__/useLoginCaptcha.test.tsx` — config gate, single-flight verify, ticket cleared after
+submit, stale responses dropped on username change, escalation flow, **technical failure auto-refreshes
+the challenge**, user failure returns to layer 1, no TIANAI request without a grant;
+`src/pages/user/login/index.test.tsx` — page flows incl. submit with `captchaTicket` and **no password
+replay after 401/40010**;
+`src/components/TianaiCaptcha/__tests__/tianai-track.test.tsx` — official DTO contract for slider
+(pointer / keyboard / touch), word-click, and "no guessed sizes".
+`src/pages/system/config/components/__tests__/CaptchaSettingPanel.test.ts` — official keys, whitelisted
+batch items, paged row lookup.
+
+Java (`bls-captcha-service`): `CaptchaBridgeContractTest` — type mapping, official DTO deserialization
+(slider + click), structure rejection, render-field pass-through incl. `clickCount`.
+
+---
+
+## 9. Frontend state machine
 
 `bls-admin/src/pages/user/login/captcha-machine.ts` is a pure reducer (unit-tested without React):
 
 ```
 loadingConfig → waitingUsername → solvingSilent → ready → submitting
                       ↘ secondaryRequired → solvingSecondary ↗
-                      ↘ error (config failed → submission blocked)
+                      ↘ error (config failed / env unsupported → submission blocked)
 ```
 
 Invariants: no submit while `config === null` or `configError`; a username change bumps `cycleId` and
-drops payload/token/expiry/secondary state; a stale response never overwrites a newer cycle; after
-**any** `/login` request (success or failure) the local token is cleared because the server consumed it.
+drops ticket/expiry/grant/secondary state; a stale response never overwrites a newer cycle; after
+**any** `/login` request (success or failure) the local ticket is cleared because the server consumed it.
+`ESCALATION_RENEWED` replaces the grant and drops the old challenge so the hook re-fetches immediately.
 
 ---
 
-## 9. How to extend
+## 10. How to extend
 
-- **Change the policy** (thresholds, TTLs, mode, layer-2 type): edit the `sys.login.captcha.*` rows in
-  the System parameters page — no code change.
-- **Add a first-layer algorithm**: extend `deriveKeyFor()` in
-  `bls-server/src/security/captcha/altcha.ts` (Argon2/Scrypt additionally need the extra ALTCHA
-  workers on the widget). Never write a captcha algorithm yourself.
+- **Change the policy / TTLs / layer-2 type**: edit the 8 flat keys in the System parameters page — no
+  code change.
+- **Add a first-layer algorithm**: extend `deriveKeyFor()` in `bls-server/src/security/captcha/altcha.ts`
+  (Argon2/Scrypt additionally need the extra ALTCHA workers on the widget). Never write a captcha
+  algorithm yourself.
 - **Add a second-layer type**: extend `CAPTCHA_SECONDARY_TYPES` in
   `bls-server/src/config/dynamic-config.ts`, add the rendering branch in
-  `bls-admin/src/components/TianaiCaptcha/index.tsx`, and keep the answer payload opaque to Koa
-  (it is forwarded to Tianai as `{ id, data }`).
-- **Swap the second-layer provider**: `TianaiSecondaryProvider` is the only adapter; keep the
-  `createChallenge` / `verify` / `healthCheck` contract and the `sessionId` binding in `service.ts`.
+  `bls-admin/src/components/TianaiCaptcha/index.tsx`, and keep the answer payload opaque to Koa.
+- **Swap the second-layer provider**: `TianaiProvider` is the only adapter; keep the
+  `generate` / `verify` / `healthCheck` contract and the `sessionId` binding in `service.ts`.
+- **Rust backend**: `bls-rust-server` currently has **no** captcha implementation (see §6.1). Porting is
+  tracked as a follow-up: `GET /captcha/config`, `POST /captcha/generate`, `POST /captcha/verify`, plus
+  `POST /auth/login` accepting `captchaTicket`, must mirror §2–§5 byte for byte.
+
+### 6.1 (kept) — Other backends
+
+The Java (`bls-java-server`) and Rust (`bls-rust-server`) backends do not expose captcha endpoints yet.
+The admin frontend degrades gracefully: a failed `/config` request blocks submission (fail closed) with
+a clear message instead of silently skipping verification.

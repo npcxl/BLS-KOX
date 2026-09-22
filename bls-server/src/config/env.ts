@@ -54,7 +54,7 @@ if (isProduction && replayEnabled && apiSignSecret.toUpperCase().startsWith(PLAC
  * - 生产环境：ALTCHA_HMAC_KEY 缺失 / 过短 / CHANGE_TO_* 占位符 → 启动失败（fail closed）。
  * - CAPTCHA_DEV_BYPASS 只允许在非生产环境使用，生产环境出现该值直接阻止启动。
  * - ALTCHA_COST 为 Proof-of-Work 难度（PBKDF2 迭代次数），仅服务端使用，不下发前端。
- * - TIANAI_BASE_URL 仅在 sys.login.captcha.provider=tianai 时需要（独立验证码服务）。
+ * - TIANAI_BASE_URL 仅在 `captcha_tianai_enabled=true`（部署了独立验证码服务）时需要。
  */
 const altchaHmacKey = process.env.ALTCHA_HMAC_KEY?.trim() ?? '';
 const captchaDevBypass = (process.env.CAPTCHA_DEV_BYPASS ?? 'false') === 'true';

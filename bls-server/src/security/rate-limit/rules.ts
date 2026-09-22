@@ -5,20 +5,18 @@ export const defaultRateLimitRules: RateLimitRule[] = [
   { path: '/api/auth/login', methods: ['POST'], dimensions: ['ip'], limit: 20, windowSeconds: 60 },
   { path: '/api/auth/login', methods: ['POST'], dimensions: ['account'], limit: 5, windowSeconds: 300 },
 
-  // 登录人机验证（两级）：IP / account / device 三维度，
-  // 防止无限创建 challenge（ALTCHA 与二级会话）消耗 Redis 与上游 CPU
-  { path: '/api/auth/captcha/config', methods: ['GET'], dimensions: ['ip'], limit: 120, windowSeconds: 60 },
-  // 第一层：ALTCHA 静默 PoW
-  { path: '/api/auth/captcha/challenge', methods: ['GET'], dimensions: ['ip'], limit: 60, windowSeconds: 60 },
-  { path: '/api/auth/captcha/challenge', methods: ['GET'], dimensions: ['device'], limit: 30, windowSeconds: 300 },
-  { path: '/api/auth/captcha/verify', methods: ['POST'], dimensions: ['ip'], limit: 30, windowSeconds: 60 },
-  { path: '/api/auth/captcha/verify', methods: ['POST'], dimensions: ['account'], limit: 20, windowSeconds: 300 },
-  // 第二层：Tianai 图形验证（会消耗上游资源，限流更严）
-  { path: '/api/auth/captcha/secondary/challenge', methods: ['POST'], dimensions: ['ip'], limit: 20, windowSeconds: 60 },
-  { path: '/api/auth/captcha/secondary/challenge', methods: ['POST'], dimensions: ['account'], limit: 10, windowSeconds: 300 },
-  { path: '/api/auth/captcha/secondary/verify', methods: ['POST'], dimensions: ['ip'], limit: 20, windowSeconds: 60 },
-  { path: '/api/auth/captcha/secondary/verify', methods: ['POST'], dimensions: ['account'], limit: 10, windowSeconds: 300 },
-  { path: '/api/auth/captcha/secondary/verify', methods: ['POST'], dimensions: ['device'], limit: 30, windowSeconds: 300 },
+  // 登录人机验证（两级统一入口）：IP / account / device 多维度，
+  // 防止无限创建 challenge（ALTCHA 与第二层会话）消耗 Redis 与上游 CPU。
+  // 统一入口后只有 /api/captcha/{config,generate,verify}。
+  { path: '/api/captcha/config', methods: ['GET'], dimensions: ['ip'], limit: 120, windowSeconds: 60 },
+  // 生成：第一层（ALTCHA 本地）+ 第二层（Tianai 上游，需先消费 escalation grant）
+  { path: '/api/captcha/generate', methods: ['POST'], dimensions: ['ip'], limit: 60, windowSeconds: 60 },
+  { path: '/api/captcha/generate', methods: ['POST'], dimensions: ['account'], limit: 30, windowSeconds: 300 },
+  { path: '/api/captcha/generate', methods: ['POST'], dimensions: ['device'], limit: 30, windowSeconds: 300 },
+  // 校验：第一层 PoW / 第二层轨迹
+  { path: '/api/captcha/verify', methods: ['POST'], dimensions: ['ip'], limit: 30, windowSeconds: 60 },
+  { path: '/api/captcha/verify', methods: ['POST'], dimensions: ['account'], limit: 20, windowSeconds: 300 },
+  { path: '/api/captcha/verify', methods: ['POST'], dimensions: ['device'], limit: 30, windowSeconds: 300 },
 
   // 导出：user + tenant
   { path: '/api/common/excel/export', methods: ['POST'], dimensions: ['user'], limit: 5, windowSeconds: 60 },

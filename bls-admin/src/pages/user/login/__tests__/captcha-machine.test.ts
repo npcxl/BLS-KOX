@@ -5,17 +5,18 @@
  *
  * 重点验证安全相关不变式：
  *   - config 未加载完成 / 加载失败 → 永远不能提交；
- *   - 用户名变化立即清空 payload / token / expiresAt / 二级状态；
- *   - /login 发出后（无论成败）本地 token 必须清空；
+ *   - 用户名变化立即清空 ticket / expiresAt / escalationGrant / 二级状态；
+ *   - /login 发出后（无论成败）本地 captchaTicket 必须清空；
  *   - 第二层未被满足时不能提交；
- *   - token 过期自动回到重新验证。
+ *   - ticket 过期自动回到重新验证；
+ *   - 服务端补发升级凭证（技术故障）时能靠 ESCALATION_RENEWED 自动换 challenge。
  */
 import { describe, it, expect } from 'vitest';
 import {
   canSubmit,
   captchaReducer,
   createInitialState,
-  isTokenExpired,
+  isTicketExpired,
   needsSecondary,
   type CaptchaMachineState,
 } from '../captcha-machine';
@@ -24,24 +25,22 @@ import type { CaptchaConfig, SecondaryChallenge } from '@/services/auth/captcha'
 function cfg(over: Partial<CaptchaConfig> = {}): CaptchaConfig {
   return {
     enabled: true,
-    mode: 'adaptive',
-    primaryProvider: 'altcha',
-    secondaryProvider: 'tianai',
-    secondaryType: 'blockPuzzle',
-    requiredStage: 'silent',
-    challengeUrl: '/api/auth/captcha/challenge',
-    secondaryChallengeUrl: '/api/auth/captcha/secondary/challenge',
+    primaryProvider: 'ALTCHA',
+    fallbackProvider: 'TIANAI',
+    tianaiEnabled: true,
+    generateUrl: '/api/captcha/generate',
+    verifyUrl: '/api/captcha/verify',
     fieldName: 'altchaPayload',
     ...over,
   };
 }
 
-/** 一路推进到"第一层已完成、凭证就绪" */
+/** 一路推进到"第一层已完成、ticket 就绪" */
 function readyState(over: Partial<CaptchaConfig> = {}, username = 'alice'): CaptchaMachineState {
   let s = captchaReducer(createInitialState(), { type: 'CONFIG_LOADED', config: cfg(over) });
   s = captchaReducer(s, { type: 'USERNAME_CHANGED', username });
   s = captchaReducer(s, { type: 'SILENT_REQUESTED' });
-  s = captchaReducer(s, { type: 'SILENT_TOKEN', token: 'T1', expiresAt: 2_000, stage: 'silent' });
+  s = captchaReducer(s, { type: 'SILENT_TICKET', ticket: 'T1', expiresAt: 2_000, provider: 'ALTCHA' });
   return s;
 }
 
@@ -49,7 +48,15 @@ const challenge: SecondaryChallenge = {
   sessionId: 'S1',
   type: 'blockPuzzle',
   expiresAt: 9_999,
-  payload: { backgroundImage: 'data:image/png;base64,AAAA', width: 320, height: 160 },
+  payload: {
+    type: 'SLIDER',
+    backgroundImage: 'data:image/jpeg;base64,AAAA',
+    templateImage: 'data:image/png;base64,BBBB',
+    backgroundImageWidth: 600,
+    backgroundImageHeight: 300,
+    templateImageWidth: 120,
+    templateImageHeight: 300,
+  },
 };
 
 describe('captcha-machine — 阶段流转', () => {
@@ -83,34 +90,38 @@ describe('captcha-machine — 阶段流转', () => {
     expect(canSubmit(s)).toBe(false);
   });
 
-  it('第一层拿到 Token → ready 且可提交；阶段仍由服务端给出（silent）', () => {
+  it('第一层拿到 ticket → ready 且可提交；provider 由服务端给出', () => {
     const s = readyState();
     expect(s.phase).toBe('ready');
-    expect(s.token).toBe('T1');
-    expect(s.tokenStage).toBe('silent');
+    expect(s.ticket).toBe('T1');
+    expect(s.ticketProvider).toBe('ALTCHA');
     expect(canSubmit(s)).toBe(true);
   });
 });
 
 describe('captcha-machine — 安全不变式', () => {
-  it('用户名变化：立即清空 token / expiresAt / 二级状态并自增 cycleId', () => {
-    const before = readyState();
+  it('用户名变化：立即清空 ticket / expiresAt / grant / 二级状态并自增 cycleId', () => {
+    let before = readyState();
+    before = captchaReducer(before, { type: 'SECONDARY_REQUIRED', escalationGrant: 'G-1' });
+    expect(before.escalationGrant).toBe('G-1');
+
     const after = captchaReducer(before, { type: 'USERNAME_CHANGED', username: 'bob' });
     expect(after.username).toBe('bob');
-    expect(after.token).toBeNull();
-    expect(after.tokenExpiresAt).toBeNull();
-    expect(after.tokenStage).toBeNull();
+    expect(after.ticket).toBeNull();
+    expect(after.ticketExpiresAt).toBeNull();
+    expect(after.ticketProvider).toBeNull();
+    expect(after.escalationGrant).toBeNull();
     expect(after.silentSolved).toBe(false);
     expect(after.secondary).toBeNull();
     expect(after.cycleId).toBe(before.cycleId + 1);
     expect(canSubmit(after)).toBe(false);
   });
 
-  it('LOGIN_SENT：无论登录成功或失败都必须清空本地 token', () => {
+  it('LOGIN_SENT：无论登录成功或失败都必须清空本地 captchaTicket', () => {
     const s = readyState();
     const after = captchaReducer(s, { type: 'LOGIN_SENT' });
-    expect(after.token).toBeNull();
-    expect(after.tokenExpiresAt).toBeNull();
+    expect(after.ticket).toBeNull();
+    expect(after.ticketExpiresAt).toBeNull();
     expect(canSubmit(after)).toBe(false);
   });
 
@@ -122,35 +133,43 @@ describe('captcha-machine — 安全不变式', () => {
     expect(s.phase).toBe('ready');
   });
 
-  it('token 过期 → 清空凭证并回到重新验证', () => {
-    const s = captchaReducer(readyState(), { type: 'TOKEN_EXPIRED' });
-    expect(s.token).toBeNull();
+  it('ticket 过期 → 清空凭证并回到重新验证', () => {
+    const s = captchaReducer(readyState(), { type: 'TICKET_EXPIRED' });
+    expect(s.ticket).toBeNull();
     expect(s.phase).toBe('solvingSilent');
     expect(canSubmit(s)).toBe(false);
   });
 
-  it('isTokenExpired 依据服务端 expiresAt 判定', () => {
+  it('isTicketExpired 依据服务端 expiresAt 判定', () => {
     const s = readyState();
-    expect(isTokenExpired(s, 1_000)).toBe(false);
-    expect(isTokenExpired(s, 2_001)).toBe(true);
+    expect(isTicketExpired(s, 1_000)).toBe(false);
+    expect(isTicketExpired(s, 2_001)).toBe(true);
   });
 
-  it('服务端要求第二层：第一层不算完成，不能提交', () => {
+  it('服务端要求第二层：第一层不算完成，不能提交，且必须拿到 escalationGrant', () => {
     let s = captchaReducer(createInitialState(), { type: 'CONFIG_LOADED', config: cfg() });
     s = captchaReducer(s, { type: 'USERNAME_CHANGED', username: 'alice' });
-    s = captchaReducer(s, { type: 'SECONDARY_REQUIRED' });
+    s = captchaReducer(s, { type: 'SECONDARY_REQUIRED', escalationGrant: 'G-9' });
     expect(s.phase).toBe('secondaryRequired');
-    expect(s.token).toBeNull();
+    expect(s.ticket).toBeNull();
+    expect(s.escalationGrant).toBe('G-9');
     expect(canSubmit(s)).toBe(false);
     expect(needsSecondary(s)).toBe(true);
+  });
+
+  it('服务端未下发 grant 时 escalationGrant 保持 null（后续 /generate 会被服务端拒绝）', () => {
+    let s = captchaReducer(createInitialState(), { type: 'CONFIG_LOADED', config: cfg() });
+    s = captchaReducer(s, { type: 'SECONDARY_REQUIRED' });
+    expect(s.escalationGrant).toBeNull();
+    expect(canSubmit(s)).toBe(false);
   });
 });
 
 describe('captcha-machine — 第二层', () => {
-  it('第二层通过后 tokenStage=secondary，可提交', () => {
-    let s = captchaReducer(createInitialState(), { type: 'CONFIG_LOADED', config: cfg({ mode: 'always' }) });
+  it('第二层通过后 ticketProvider=TIANAI，可提交，且 grant 被清空', () => {
+    let s = captchaReducer(createInitialState(), { type: 'CONFIG_LOADED', config: cfg() });
     s = captchaReducer(s, { type: 'USERNAME_CHANGED', username: 'alice' });
-    s = captchaReducer(s, { type: 'SECONDARY_REQUIRED' });
+    s = captchaReducer(s, { type: 'SECONDARY_REQUIRED', escalationGrant: 'G-1' });
     s = captchaReducer(s, { type: 'SECONDARY_LOADING', secondaryType: 'blockPuzzle' });
     expect(s.phase).toBe('solvingSecondary');
 
@@ -158,15 +177,16 @@ describe('captcha-machine — 第二层', () => {
     expect(s.secondary?.sessionId).toBe('S1');
     expect(needsSecondary(s)).toBe(true);
 
-    s = captchaReducer(s, { type: 'SECONDARY_TOKEN', token: 'S-TOKEN', expiresAt: 5_000 });
-    expect(s.tokenStage).toBe('secondary');
+    s = captchaReducer(s, { type: 'SECONDARY_TICKET', ticket: 'S-TICKET', expiresAt: 5_000 });
+    expect(s.ticketProvider).toBe('TIANAI');
     expect(s.secondarySolved).toBe(true);
+    expect(s.escalationGrant).toBeNull();
     expect(canSubmit(s)).toBe(true);
     expect(needsSecondary(s)).toBe(false);
   });
 
   it('第二层失败 → 回到 secondaryRequired 且不能提交', () => {
-    let s = captchaReducer(createInitialState(), { type: 'CONFIG_LOADED', config: cfg({ mode: 'always' }) });
+    let s = captchaReducer(createInitialState(), { type: 'CONFIG_LOADED', config: cfg() });
     s = captchaReducer(s, { type: 'SECONDARY_CHALLENGE', challenge });
     s = captchaReducer(s, { type: 'SECONDARY_FAILED', hint: '答案错误' });
     expect(s.phase).toBe('secondaryRequired');
@@ -174,12 +194,19 @@ describe('captcha-machine — 第二层', () => {
     expect(canSubmit(s)).toBe(false);
   });
 
-  it('配置要求第二层但尚未完成时 needsSecondary=true', () => {
-    let s = captchaReducer(createInitialState(), { type: 'CONFIG_LOADED', config: cfg({ requiredStage: 'secondary' }) });
+  it('ESCALATION_RENEWED（上游技术故障补发凭证）→ 清空旧 challenge，立即准备重取', () => {
+    let s = captchaReducer(createInitialState(), { type: 'CONFIG_LOADED', config: cfg() });
     s = captchaReducer(s, { type: 'USERNAME_CHANGED', username: 'alice' });
+    s = captchaReducer(s, { type: 'SECONDARY_REQUIRED', escalationGrant: 'G-old' });
+    s = captchaReducer(s, { type: 'SECONDARY_CHALLENGE', challenge });
+    expect(s.secondary).not.toBeNull();
+
+    s = captchaReducer(s, { type: 'ESCALATION_RENEWED', escalationGrant: 'G-new', hint: '已刷新' });
+    expect(s.escalationGrant).toBe('G-new');
+    expect(s.secondary).toBeNull();
+    expect(s.phase).toBe('secondaryRequired');
     expect(needsSecondary(s)).toBe(true);
-    s = captchaReducer(s, { type: 'SECONDARY_TOKEN', token: 'S-TOKEN', expiresAt: 5_000 });
-    expect(needsSecondary(s)).toBe(false);
+    expect(canSubmit(s)).toBe(false);
   });
 
   it('功能关闭时不渲染第二层', () => {
@@ -196,7 +223,7 @@ describe('captcha-machine — 环境不支持（非安全上下文）', () => {
     s = captchaReducer(s, { type: 'ENV_UNSUPPORTED', hint: '当前为非安全上下文（HTTP）' });
     expect(s.envBlocked).toBe(true);
     expect(s.phase).toBe('error');
-    expect(s.token).toBeNull();
+    expect(s.ticket).toBeNull();
     expect(s.hint).toContain('非安全上下文');
     expect(canSubmit(s)).toBe(false);
   });

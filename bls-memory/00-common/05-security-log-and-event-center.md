@@ -36,11 +36,24 @@ BATCH_EXPORT            ROLE_CHANGE             PERM_CHANGE
 REFRESH_TOKEN_REUSE     API_KEY_CREATED         API_KEY_REVOKED
 SENSITIVE_DATA_ACCESS   SECURITY_VALIDATION_FAILED
 CAPTCHA_POW_PASSED      CAPTCHA_POW_FAILED      CAPTCHA_SECONDARY_REQUIRED
-CAPTCHA_SECONDARY_PASSED CAPTCHA_SECONDARY_FAILED CAPTCHA_TOKEN_INVALID
-CAPTCHA_TOKEN_REPLAYED  CAPTCHA_SERVICE_UNAVAILABLE
+CAPTCHA_RISK_NOTED      CAPTCHA_SECONDARY_PASSED CAPTCHA_SECONDARY_FAILED
+CAPTCHA_TOKEN_INVALID   CAPTCHA_TOKEN_REPLAYED  CAPTCHA_SERVICE_UNAVAILABLE
 ```
 
 Meanings: `POW_*` = the layer-1 **silent** ALTCHA Proof-of-Work; `SECONDARY_*` = the layer-2
+
+**`CAPTCHA_SECONDARY_REQUIRED` vs `CAPTCHA_RISK_NOTED` (do not conflate):**
+
+- `CAPTCHA_SECONDARY_REQUIRED` — the server **actually escalated**: no `captchaTicket` is
+  issued for this request and the browser must complete Tianai. Mutually exclusive with
+  `CAPTCHA_POW_PASSED` within one `/api/captcha/verify` call.
+- `CAPTCHA_RISK_NOTED` — a risk signal fired (login failures / IP fan-out / high IP risk /
+  privileged account / automated UA) but the deployment has `captcha_tianai_enabled=false`,
+  so there is nothing to escalate to. The internal reason is recorded **only** for auditing;
+  the request still passes layer 1 and receives a ticket.
+
+Before this split, both cases wrote `CAPTCHA_SECONDARY_REQUIRED`, producing rows that looked
+like "required layer 2" and "layer 1 passed" for the very same request.
 (Tianai `blockPuzzle` / `clickWord`) stage that the policy escalated to. The internal policy reason
 (`ACCOUNT_FAILURES`, `PRIVILEGED_ACCOUNT`, …) is written here as `failureReason` and is **never**
 returned by the public endpoints.
@@ -74,7 +87,7 @@ the full `captchaToken`, a plaintext username, or any behaviour trace. See
 | `PERM_CHANGE` | HIGH |
 | `SENSITIVE_DATA_ACCESS` | CRITICAL |
 | `SECURITY_VALIDATION_FAILED` | MEDIUM |
-| `CAPTCHA_POW_PASSED` / `CAPTCHA_SECONDARY_PASSED` | LOW |
+| `CAPTCHA_POW_PASSED` / `CAPTCHA_SECONDARY_PASSED` / `CAPTCHA_RISK_NOTED` | LOW |
 | `CAPTCHA_POW_FAILED` / `CAPTCHA_SECONDARY_REQUIRED` / `CAPTCHA_SECONDARY_FAILED` / `CAPTCHA_TOKEN_INVALID` | MEDIUM |
 | `CAPTCHA_TOKEN_REPLAYED` / `CAPTCHA_SERVICE_UNAVAILABLE` | HIGH |
 
@@ -177,8 +190,10 @@ been fixed in the working tree).
   error to 2 000 chars.
 - Login activity is published as `LOGIN_SUCCESS` / `LOGIN_FAILED` events to
   `bls-server/src/services/event-client` (external event service) **and** written to
-  `sys_login_log` by the auth module. Captcha failures (`40010`–`40013`, `50301`) deliberately do
-  neither — they are not password attempts; they emit `CAPTCHA_*` security rows instead.
+  `sys_login_log` by the auth module. Captcha failures (`40010`–`40013`, `50301`, `50302`)
+  deliberately do neither — they are not password attempts; they emit `CAPTCHA_*` security rows
+  instead. (`50301` = our own store/Redis unavailable, `50302` = upstream Tianai
+  unreachable/timed out/bad response.)
 
 ---
 

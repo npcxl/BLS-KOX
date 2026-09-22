@@ -5,23 +5,26 @@
  * 无论第一层 ALTCHA 还是第二层 TIANAI 通过，都由 Koa 统一签发一次性 ticket：
  *
  *   ticket  = crypto.randomBytes(32).toString('base64url')
- *   redis   = captcha:ticket:{ticket}
+ *   hash    = sha256(ticket)
+ *   redis   = captcha:ticket:{hash}            ← 明文 ticket **永不**出现在 Redis key / 日志 / 审计
  *   内容     = { scene, provider, verified, createdAt }   ← 规范要求的最小集
  *              + 绑定字段（tenantId / usernameHash / ipHash / uaHash，存在则校验）
  *   TTL     = sys_config captcha_ticket_ttl（默认 120 秒）
  *
  * 一次性消费：`GETDEL` 原子取出并删除 → 天然防重放；并发登录只有一个能拿到内容。
- * Redis 不可用 → fail closed（TECHNICAL_ERROR），绝不放行。
+ * Redis 不可用 → fail closed（50301 CAPTCHA_SERVICE_UNAVAILABLE），绝不放行。
+ * （与 `CaptchaStore` 使用同一个错误码，前端只需要处理一套验证码错误码。）
  */
 import { randomBytes } from 'node:crypto';
-import { CaptchaTechnicalError } from '../../core/errors';
+import { CaptchaUnavailableError } from '../../core/errors';
 import { logger } from '../../core/logger';
 import { getRedisClient } from '../../shared/utils/redis';
+import { captchaTicketHash } from './crypto-utils';
 import type { CaptchaProviderName, CaptchaScene } from './providers/types';
 
-/** Redis key 前缀（规范：captcha:ticket:{ticket}） */
+/** Redis key 前缀（规范：captcha:ticket:{sha256(ticket)}） */
 export const TICKET_KEY_PREFIX = 'captcha:ticket:';
-/** 「已消费」标记（仅用于区分重放与过期，不保存任何业务数据） */
+/** 「已消费」标记（key = sha256(ticket)，仅用于区分重放与过期，不保存任何业务数据） */
 export const USED_KEY_PREFIX = 'captcha:ticket-used:';
 
 /** ticket 内容：规范要求的四个字段 + 可选绑定字段 */
@@ -85,9 +88,9 @@ export class CaptchaTicketService {
       client = this.redisFn();
     } catch (err) {
       logger.error('[captcha] ticket redis factory failed', { error: String(err) });
-      throw new CaptchaTechnicalError();
+      throw new CaptchaUnavailableError();
     }
-    if (!client) throw new CaptchaTechnicalError();
+    if (!client) throw new CaptchaUnavailableError();
     return client;
   }
 
@@ -108,15 +111,15 @@ export class CaptchaTicketService {
 
     try {
       await this.client().set(
-        `${TICKET_KEY_PREFIX}${ticket}`,
+        `${TICKET_KEY_PREFIX}${captchaTicketHash(ticket)}`,
         JSON.stringify(payload),
         'EX',
         input.ttlSeconds,
       );
     } catch (err) {
-      if (err instanceof CaptchaTechnicalError) throw err;
+      if (err instanceof CaptchaUnavailableError) throw err;
       logger.error('[captcha] ticket write failed', { error: String(err) });
-      throw new CaptchaTechnicalError();
+      throw new CaptchaUnavailableError();
     }
 
     return { captchaTicket: ticket, expiresAt: createdAt + input.ttlSeconds * 1000 };
@@ -130,25 +133,28 @@ export class CaptchaTicketService {
     const ticket = (input.ticket ?? '').trim();
     if (!ticket) return { ok: false, reason: 'MISSING' };
 
+    // 明文 ticket 只在这里被哈希一次，后续 Redis 操作 / 日志 / 审计全部只用 hash
+    const ticketHash = captchaTicketHash(ticket);
+
     // 先抢占「已消费」标记（SET NX EX）：并发登录只有一个能继续，其余判定为重放
     const markerTtl = input.markerTtlSeconds ?? 600;
     try {
-      const claimed = await this.client().set(`${USED_KEY_PREFIX}${ticket}`, '1', 'EX', markerTtl, 'NX');
+      const claimed = await this.client().set(`${USED_KEY_PREFIX}${ticketHash}`, '1', 'EX', markerTtl, 'NX');
       const isFirst = claimed !== null && claimed !== undefined && claimed !== false;
       if (!isFirst) return { ok: false, reason: 'REPLAYED' };
     } catch (err) {
-      if (err instanceof CaptchaTechnicalError) throw err;
+      if (err instanceof CaptchaUnavailableError) throw err;
       logger.error('[captcha] ticket claim failed', { error: String(err) });
-      throw new CaptchaTechnicalError();
+      throw new CaptchaUnavailableError();
     }
 
     let raw: string | null;
     try {
-      raw = await this.takeAndDelete(`${TICKET_KEY_PREFIX}${ticket}`);
+      raw = await this.takeAndDelete(`${TICKET_KEY_PREFIX}${ticketHash}`);
     } catch (err) {
-      if (err instanceof CaptchaTechnicalError) throw err;
+      if (err instanceof CaptchaUnavailableError) throw err;
       logger.error('[captcha] ticket read failed', { error: String(err) });
-      throw new CaptchaTechnicalError();
+      throw new CaptchaUnavailableError();
     }
     if (!raw) return { ok: false, reason: 'NOT_FOUND' };
 

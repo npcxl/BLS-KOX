@@ -11,6 +11,7 @@ type SecurityLogRecord = {
 };
 
 export default function SecurityLogPage() {
+  
   const { proColumns: baseColumns } = usePageConfig("system_log_security");
 
   const columns = useMemo(() => baseColumns.map((col: any) => {
@@ -34,4 +35,5 @@ export default function SecurityLogPage() {
       showRemoveAction={false}
     />
   );
+
 }

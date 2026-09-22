@@ -52,6 +52,11 @@ export interface CaptchaMachineState {
   /** 第二层 challenge（Tianai） */
   secondary: SecondaryChallenge | null;
   secondarySolved: boolean;
+  /**
+   * 第二层升级凭证（服务端风控判定需要升级时下发）。
+   * 生成 TIANAI challenge 必须回传；服务端过期/技术故障后会补发新的。
+   */
+  escalationGrant: string | null;
   /** 第二层进行中的提示（例如"正在加载验证码…"） */
   secondaryType: CaptchaSecondaryType | null;
   /** 面向用户的提示文案 */
@@ -72,7 +77,9 @@ export type CaptchaEvent =
   | { type: 'SILENT_REQUESTED' }
   | { type: 'SILENT_FAILED'; hint?: string }
   | { type: 'SILENT_TICKET'; ticket: string; expiresAt: number; provider: CaptchaProviderName }
-  | { type: 'SECONDARY_REQUIRED'; hint?: string }
+  | { type: 'SECONDARY_REQUIRED'; hint?: string; escalationGrant?: string }
+  /** 上游技术故障 / 会话失效：服务端补发了新凭证 → 直接换一张 challenge（无需用户重试） */
+  | { type: 'ESCALATION_RENEWED'; escalationGrant: string; hint?: string }
   | { type: 'SECONDARY_LOADING'; secondaryType: CaptchaSecondaryType | null }
   | { type: 'SECONDARY_CHALLENGE'; challenge: SecondaryChallenge }
   | { type: 'SECONDARY_FAILED'; hint?: string }
@@ -101,6 +108,7 @@ export function createInitialState(): CaptchaMachineState {
     secondary: null,
     secondarySolved: false,
     secondaryType: null,
+    escalationGrant: null,
     hint: null,
     envBlocked: false,
     cycleId: 0,
@@ -118,6 +126,7 @@ function clearCredentials(state: CaptchaMachineState): CaptchaMachineState {
     secondary: null,
     secondarySolved: false,
     secondaryType: null,
+    escalationGrant: null,
   };
 }
 
@@ -199,6 +208,20 @@ export function captchaReducer(state: CaptchaMachineState, event: CaptchaEvent):
         silentSolved: true,
         secondary: null,
         secondarySolved: false,
+        // 升级凭证由服务端下发；缺失时后续 /generate 会被拒绝（服务端 fail closed）
+        escalationGrant: event.escalationGrant ?? null,
+        phase: 'secondaryRequired',
+        hint: event.hint ?? null,
+      };
+
+    case 'ESCALATION_RENEWED':
+      // 上游技术故障 / 会话失效：服务端补发了新凭证 → 清空旧 challenge，
+      // 由 hook 的 effect 立即重新拉取，用户不需要"先失败一次再手动刷新"。
+      return {
+        ...state,
+        escalationGrant: event.escalationGrant,
+        secondary: null,
+        secondaryType: null,
         phase: 'secondaryRequired',
         hint: event.hint ?? null,
       };
@@ -225,6 +248,7 @@ export function captchaReducer(state: CaptchaMachineState, event: CaptchaEvent):
         ticketExpiresAt: event.expiresAt,
         ticketProvider: 'TIANAI',
         secondarySolved: true,
+        escalationGrant: null,
         phase: 'ready',
         hint: null,
       };

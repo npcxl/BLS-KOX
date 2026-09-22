@@ -3,7 +3,7 @@
  *
  * 方案切换到 ALTCHA 后，challenge 生成 / PoW 校验 / challenge 签名全部由官方 `altcha/lib`
  * 负责（见 `altcha.ts`），本文件只保留项目自身需要的少量工具：
- *   - captchaToken 的 sha256（Redis 只保存 hash）
+ *   - sha256（Redis 中的一次性凭证一律只保存 hash，明文永不落库 / 永不写日志）
  *   - 定长比较（timingSafeEqual）
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -24,7 +24,10 @@ export function safeEqual(a: string, b: string): boolean {
   try { return timingSafeEqual(ab, bb); } catch { return false; }
 }
 
-/** captchaToken hash —— Redis 中唯一保存的形态（明文 Token 永不落库、永不写日志） */
-export function captchaTokenHash(token: string): string {
-  return sha256Hex(token);
+/**
+ * captchaTicket hash —— Redis key / used-marker / 审计记录中唯一出现的形态。
+ * 明文 captchaTicket 只存在于「签发响应」与「登录请求体」中，绝不写入 Redis key 或日志。
+ */
+export function captchaTicketHash(ticket: string): string {
+  return sha256Hex(ticket);
 }

@@ -169,73 +169,107 @@ describe('Dynamic Config', () => {
 });
 
 // ============================================================
-// 登录人机验证参数（sys.login.captcha.*）
+// 登录人机验证参数 —— **唯一正式配置键**（扁平 captcha_* / login_captcha_enabled）
+// 历史 `sys.login.captcha.*` 已在迁移 20260922_018 中改写，运行时不再兼容两套键。
 // ============================================================
-describe('Dynamic Config — 登录人机验证参数', () => {
-  it('默认值完整（8 个参数：两级 provider 分离）', () => {
-    expect(CAPTCHA_CONFIG_KEYS.length).toBe(8);
+describe('Dynamic Config — 登录人机验证参数（统一扁平键）', () => {
+  it('恰好 8 个正式配置键，且都是扁平命名', () => {
+    expect([...CAPTCHA_CONFIG_KEYS].sort()).toEqual([
+      'captcha_challenge_ttl',
+      'captcha_fallback_provider',
+      'captcha_force_after_failures',
+      'captcha_primary_provider',
+      'captcha_secondary_type',
+      'captcha_tianai_enabled',
+      'captcha_ticket_ttl',
+      'login_captcha_enabled',
+    ]);
+  });
+
+  it('默认值完整（两级 provider 分离；第二层默认关闭）', () => {
     const c = parseConfigValue({});
-    expect(c.captchaEnabled).toBe(true);
-    expect(c.captchaMode).toBe('adaptive');
-    expect(c.captchaPrimaryProvider).toBe('altcha');
-    expect(c.captchaSecondaryProvider).toBe('tianai');
+    expect(c.loginCaptchaEnabled).toBe(true);
+    expect(c.captchaPrimaryProvider).toBe('ALTCHA');
+    expect(c.captchaFallbackProvider).toBe('TIANAI');
     expect(c.captchaSecondaryType).toBe('blockPuzzle');
     expect(c.captchaChallengeTtlSeconds).toBe(180);
-    expect(c.captchaTokenTtlSeconds).toBe(120);
+    expect(c.captchaTicketTtl).toBe(120);
     expect(c.captchaForceAfterFailures).toBe(3);
+    // 默认 false：只有真正部署 Tianai 后才显式开启（开启即 fail closed 语义）
+    expect(c.captchaTianaiEnabled).toBe(false);
   });
 
-  it('bool 严格解析（"1"/"true"/"0"/"false"，其他回退默认）', () => {
-    expect(parseConfigValue({ 'sys.login.captcha.enabled': '0' }).captchaEnabled).toBe(false);
-    expect(parseConfigValue({ 'sys.login.captcha.enabled': 'false' }).captchaEnabled).toBe(false);
-    expect(parseConfigValue({ 'sys.login.captcha.enabled': '1' }).captchaEnabled).toBe(true);
-    expect(parseConfigValue({ 'sys.login.captcha.enabled': 'yes' }).captchaEnabled).toBe(true);
+  it('总开关 bool 严格解析（"1"/"true"/"0"/"false"，其他回退默认）', () => {
+    expect(parseConfigValue({ login_captcha_enabled: '0' }).loginCaptchaEnabled).toBe(false);
+    expect(parseConfigValue({ login_captcha_enabled: 'false' }).loginCaptchaEnabled).toBe(false);
+    expect(parseConfigValue({ login_captcha_enabled: '1' }).loginCaptchaEnabled).toBe(true);
+    expect(parseConfigValue({ login_captcha_enabled: 'yes' }).loginCaptchaEnabled).toBe(true);
   });
 
-  it('mode 枚举校验：off/adaptive/always 合法，其他回退 adaptive', () => {
-    expect(parseConfigValue({ 'sys.login.captcha.mode': 'off' }).captchaMode).toBe('off');
-    expect(parseConfigValue({ 'sys.login.captcha.mode': 'always' }).captchaMode).toBe('always');
-    expect(parseConfigValue({ 'sys.login.captcha.mode': 'sometimes' }).captchaMode).toBe('adaptive');
+  it('captcha_tianai_enabled 严格解析（第二层开关）', () => {
+    expect(parseConfigValue({ captcha_tianai_enabled: 'true' }).captchaTianaiEnabled).toBe(true);
+    expect(parseConfigValue({ captcha_tianai_enabled: '1' }).captchaTianaiEnabled).toBe(true);
+    expect(parseConfigValue({ captcha_tianai_enabled: 'false' }).captchaTianaiEnabled).toBe(false);
+    expect(parseConfigValue({ captcha_tianai_enabled: 'nope' }).captchaTianaiEnabled).toBe(false);
   });
 
   it('数值范围校验：越界 / 非数字回退默认', () => {
-    expect(parseConfigValue({ 'sys.login.captcha.forceAfterFailures': '0' }).captchaForceAfterFailures).toBe(3);
-    expect(parseConfigValue({ 'sys.login.captcha.forceAfterFailures': '10' }).captchaForceAfterFailures).toBe(10);
-    expect(parseConfigValue({ 'sys.login.captcha.challengeTtlSeconds': '10' }).captchaChallengeTtlSeconds).toBe(180);
-    expect(parseConfigValue({ 'sys.login.captcha.challengeTtlSeconds': '900' }).captchaChallengeTtlSeconds).toBe(900);
-    expect(parseConfigValue({ 'sys.login.captcha.tokenTtlSeconds': '9999' }).captchaTokenTtlSeconds).toBe(120);
-    expect(parseConfigValue({ 'sys.login.captcha.tokenTtlSeconds': '120' }).captchaTokenTtlSeconds).toBe(120);
+    expect(parseConfigValue({ captcha_force_after_failures: '0' }).captchaForceAfterFailures).toBe(3);
+    expect(parseConfigValue({ captcha_force_after_failures: '10' }).captchaForceAfterFailures).toBe(10);
+    expect(parseConfigValue({ captcha_challenge_ttl: '10' }).captchaChallengeTtlSeconds).toBe(180);
+    expect(parseConfigValue({ captcha_challenge_ttl: '900' }).captchaChallengeTtlSeconds).toBe(900);
+    expect(parseConfigValue({ captcha_ticket_ttl: '9999' }).captchaTicketTtl).toBe(120);
+    expect(parseConfigValue({ captcha_ticket_ttl: '120' }).captchaTicketTtl).toBe(120);
   });
 
   it('provider 枚举校验：两级各自独立，非法值回退各自默认', () => {
-    expect(parseConfigValue({ 'sys.login.captcha.primaryProvider': 'altcha' }).captchaPrimaryProvider).toBe('altcha');
-    expect(parseConfigValue({ 'sys.login.captcha.secondaryProvider': 'tianai' }).captchaSecondaryProvider).toBe('tianai');
-    // 旧版本遗留的 builtin / 非法值 → 回退默认（不会把配置打挂）
-    expect(parseConfigValue({ 'sys.login.captcha.primaryProvider': 'builtin' }).captchaPrimaryProvider).toBe('altcha');
-    expect(parseConfigValue({ 'sys.login.captcha.secondaryProvider': 'geetest' }).captchaSecondaryProvider).toBe('tianai');
+    expect(parseConfigValue({ captcha_primary_provider: 'ALTCHA' }).captchaPrimaryProvider).toBe('ALTCHA');
+    expect(parseConfigValue({ captcha_fallback_provider: 'TIANAI' }).captchaFallbackProvider).toBe('TIANAI');
+    // 非法 / 旧的小写 provider 契约 → 回退默认（不会把配置打挂）
+    expect(parseConfigValue({ captcha_primary_provider: 'altcha' }).captchaPrimaryProvider).toBe('ALTCHA');
+    expect(parseConfigValue({ captcha_fallback_provider: 'geetest' }).captchaFallbackProvider).toBe('TIANAI');
   });
 
-  it('secondaryType 枚举校验：blockPuzzle / clickWord，非法回退 blockPuzzle', () => {
-    expect(parseConfigValue({ 'sys.login.captcha.secondaryType': 'clickWord' }).captchaSecondaryType).toBe('clickWord');
-    expect(parseConfigValue({ 'sys.login.captcha.secondaryType': 'blockPuzzle' }).captchaSecondaryType).toBe('blockPuzzle');
-    expect(parseConfigValue({ 'sys.login.captcha.secondaryType': 'slider' }).captchaSecondaryType).toBe('blockPuzzle');
+  it('captcha_secondary_type 枚举校验：blockPuzzle / clickWord，非法回退 blockPuzzle', () => {
+    expect(parseConfigValue({ captcha_secondary_type: 'clickWord' }).captchaSecondaryType).toBe('clickWord');
+    expect(parseConfigValue({ captcha_secondary_type: 'blockPuzzle' }).captchaSecondaryType).toBe('blockPuzzle');
+    expect(parseConfigValue({ captcha_secondary_type: 'slider' }).captchaSecondaryType).toBe('blockPuzzle');
   });
 
-  it('公开配置投影只含 enabled / mode / 两级 provider / 二级类型，不泄露阈值与内部规则', () => {
+  it('旧键 sys.login.captcha.* 不再被读取（不存在运行时双套键）', () => {
+    const c = parseConfigValue({
+      'sys.login.captcha.enabled': 'false',
+      'sys.login.captcha.mode': 'off',
+      'sys.login.captcha.primaryProvider': 'altcha',
+      'sys.login.captcha.secondaryProvider': 'altcha',
+      'sys.login.captcha.secondaryType': 'clickWord',
+      'sys.login.captcha.ticketTtlSeconds': '30',
+    } as any);
+    // 全部保持新键默认值：旧行落在库里也不会影响行为
+    expect(c.loginCaptchaEnabled).toBe(true);
+    expect(c.captchaPrimaryProvider).toBe('ALTCHA');
+    expect(c.captchaFallbackProvider).toBe('TIANAI');
+    expect(c.captchaSecondaryType).toBe('blockPuzzle');
+    expect(c.captchaTicketTtl).toBe(120);
+  });
+
+  it('公开配置投影只含 enabled / 两级 provider / tianaiEnabled，不泄露阈值与内部规则', () => {
     const pub = toPublicCaptchaConfig(parseConfigValue({}));
     expect(Object.keys(pub).sort()).toEqual([
-      'enabled', 'mode', 'primaryProvider', 'secondaryProvider', 'secondaryType',
+      'enabled', 'fallbackProvider', 'primaryProvider', 'tianaiEnabled',
     ]);
     expect(JSON.stringify(pub)).not.toContain('forceAfterFailures');
     expect(JSON.stringify(pub)).not.toContain('cost');
-    expect(JSON.stringify(pub)).not.toContain('Ttl');
-    expect(JSON.stringify(pub)).not.toContain('requiredStage'); // requiredStage 由 service 计算
+    expect(JSON.stringify(pub)).not.toContain('tianaiEnabled_ttl');
+    expect(JSON.stringify(pub)).not.toContain('cTicket');
+    // 没有 mode / requiredStage 这类已废弃的字段
+    expect(pub).not.toHaveProperty('mode');
+    expect(pub).not.toHaveProperty('requiredStage');
   });
 
-  it('enabled=false 或 mode=off → 对前端而言为关闭', () => {
-    expect(toPublicCaptchaConfig(parseConfigValue({ 'sys.login.captcha.enabled': 'false' })).enabled).toBe(false);
-    expect(toPublicCaptchaConfig(parseConfigValue({ 'sys.login.captcha.mode': 'off' })).enabled).toBe(false);
-    expect(toPublicCaptchaConfig(parseConfigValue({ 'sys.login.captcha.mode': 'always' })).enabled).toBe(true);
+  it('总开关关闭 → 对前端而言为关闭；开启则如实下发', () => {
+    expect(toPublicCaptchaConfig(parseConfigValue({ login_captcha_enabled: 'false' })).enabled).toBe(false);
+    expect(toPublicCaptchaConfig(parseConfigValue({ login_captcha_enabled: 'true' })).enabled).toBe(true);
   });
 
   it('配置写入后缓存失效（系统参数 onWrite → invalidateConfigCache）', async () => {

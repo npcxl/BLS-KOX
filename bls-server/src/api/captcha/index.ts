@@ -9,7 +9,8 @@
  *
  * 浏览器**永不直连** TIANAI Java 服务（`http://tianai-captcha:8083` 只在内网可达）。
  *
- * 前端允许提交的字段：`scene` / `provider` / `username` / `payload`（ALTCHA）/ `sessionId` + `data`（TIANAI）。
+ * 前端允许提交的字段：`scene` / `provider`（意图）/ `username` / `payload`（ALTCHA）/
+ * `sessionId` + `data`（TIANAI 官方 ImageCaptchaTrack 轨迹 DTO）/ `escalationGrant`（第二层升级凭证）。
  * 服务端决定、客户端提交无效的字段：阶段、ticket 内容、上游 challenge id、验证结论。
  */
 import Router from 'koa-router';
@@ -103,6 +104,8 @@ router.post('/generate', async (ctx: Context) => {
     ...meta,
     scene: sceneOf(b),
     provider: providerOf(b),
+    // 第二层生成必须携带服务端在风控升级时签发的一次性凭证
+    escalationGrant: str(b.escalationGrant, 256),
   });
   ctx.body = { code: 200, data: result, message: '操作成功' };
 });

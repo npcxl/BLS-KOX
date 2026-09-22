@@ -1211,51 +1211,13 @@
         }
       }
     },
-    "/api/auth/captcha/challenge": {
-      "get": {
-        "tags": [
-          "captcha"
-        ],
-        "summary": "captcha - 获取 ALTCHA 挑战",
-        "operationId": "get_api_auth_captcha_challenge",
-        "responses": {
-          "200": {
-            "description": "成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "integer",
-                      "example": 200
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "操作成功"
-                    },
-                    "data": {
-                      "type": "object",
-                      "description": "响应数据"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "参数错误"
-          }
-        }
-      }
-    },
-    "/api/auth/captcha/config": {
+    "/api/captcha/config": {
       "get": {
         "tags": [
           "captcha"
         ],
         "summary": "captcha - 公开配置（登录人机验证）",
-        "operationId": "get_api_auth_captcha_config",
+        "operationId": "get_api_captcha_config",
         "responses": {
           "200": {
             "description": "成功",
@@ -1284,16 +1246,27 @@
           "400": {
             "description": "参数错误"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "username",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "username"
+          }
+        ]
       }
     },
-    "/api/auth/captcha/secondary/challenge": {
+    "/api/captcha/generate": {
       "post": {
         "tags": [
           "captcha"
         ],
-        "summary": "captcha - 获取 ALTCHA 挑战",
-        "operationId": "post_api_auth_captcha_secondary_challenge",
+        "summary": "captcha - 提交 generate",
+        "operationId": "post_api_captcha_generate",
         "responses": {
           "200": {
             "description": "成功",
@@ -1325,51 +1298,13 @@
         }
       }
     },
-    "/api/auth/captcha/secondary/verify": {
-      "post": {
-        "tags": [
-          "captcha"
-        ],
-        "summary": "captcha - 校验 ALTCHA payload 并签发一次性凭证",
-        "operationId": "post_api_auth_captcha_secondary_verify",
-        "responses": {
-          "200": {
-            "description": "成功",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "integer",
-                      "example": 200
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "操作成功"
-                    },
-                    "data": {
-                      "type": "object",
-                      "description": "响应数据"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "参数错误"
-          }
-        }
-      }
-    },
-    "/api/auth/captcha/verify": {
+    "/api/captcha/verify": {
       "post": {
         "tags": [
           "captcha"
         ],
         "summary": "captcha - 校验 ALTCHA payload 并签发一次性凭证",
-        "operationId": "post_api_auth_captcha_verify",
+        "operationId": "post_api_captcha_verify",
         "responses": {
           "200": {
             "description": "成功",
@@ -10236,9 +10171,9 @@
             "type": "string",
             "description": "username"
           },
-          "captchaToken": {
+          "captchaTicket": {
             "type": "string",
-            "description": "captchaToken"
+            "description": "captchaTicket"
           },
           "password": {
             "type": "string",

@@ -11,7 +11,9 @@
  *   - 拉取公开配置（未完成前禁止提交登录）；
  *   - 用户名稳定（debounce 400ms）后按用户名生成 ALTCHA challenge（签名内绑定 tenant/username）；
  *   - 第一层 payload 交换**一次**即丢弃（服务端已一次性消费，绝不重复提交）；
- *   - 服务端返回 `requireFallback` 时加载 TIANAI challenge（Koa 签发的一次性 sessionId）并等待交互；
+ *   - 服务端返回 `requireFallback` 时，**带着服务端下发的一次性 escalationGrant** 请求 TIANAI
+ *     challenge（升级凭证由服务端风控签发，客户端无法自行索要）；
+ *   - TIANAI 技术故障时服务端会补发新凭证 → **自动换一张 challenge**，用户不需要先失败一次；
  *   - 用 cycleId 丢弃用户名变化 / 组件重挂载造成的过期响应，保证并发安全；
  *   - 用 expiresAt 定时让本地 ticket 失效并自动重新验证。
  */
@@ -233,11 +235,22 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
             });
             return;
           }
-          // 第一层通过但风控命中 → 必须继续完成第二层
+          // 需要第二层：包含两种情况
+          //   ① 第一层通过但风控命中（status=failed, reason=SECONDARY_REQUIRED）
+          //   ② 第一层技术故障且本部署启用了第二层（status=technical_error）
+          // 两者都会带上服务端签发的一次性 escalationGrant。
           if (data.requireFallback || data.reason === 'SECONDARY_REQUIRED') {
             dispatch({
               type: 'SECONDARY_REQUIRED',
               hint: CAPTCHA_REASON_TEXT.SECONDARY_REQUIRED,
+              escalationGrant: data.escalationGrant ? String(data.escalationGrant) : undefined,
+            });
+            return;
+          }
+          if (data.status === 'technical_error') {
+            dispatch({
+              type: 'SILENT_FAILED',
+              hint: CAPTCHA_REASON_TEXT[String(data.reason ?? '')] ?? '人机验证服务暂不可用，请稍后重试',
             });
             return;
           }
@@ -286,16 +299,42 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
 
   const requireSecondary = needsSecondary(state);
 
-  /** 取第二层（TIANAI）challenge：Koa 会把上游 challenge 归一化并签发一次性 sessionId */
+  /**
+   * 重启第一层：用于「升级凭证已用/失效」或「第二层用户答案错误」。
+   *
+   * 为什么必须回到第一层：escalation grant 是**一次性**的（服务端 GETDEL 消费），
+   * 一次授权只对应一张 Tianai challenge。用户答错后需要一份新的授权，而授权只能由
+   * `/captcha/verify`（第一层 + 风控）签发 —— 重新走一遍无声 PoW，用户无感。
+   */
+  const restartSilent = useCallback(async () => {
+    verifyingRef.current = false;
+    secondaryLoadingRef.current = false;
+    challengeRetryRef.current = 0;
+    dispatch({ type: 'RESET' });
+    setAltchaKey();
+    await fetchSilentChallenge(stateRef.current.username, configRef.current);
+  }, [fetchSilentChallenge]);
+
+  /** 取第二层（TIANAI）challenge：必须携带服务端签发的 escalationGrant */
   const fetchSecondaryChallenge = useCallback(async (): Promise<SecondaryChallenge | null> => {
     const cycle = stateRef.current.cycleId;
     const name = stateRef.current.username;
-    const cfg = configRef.current;
+    const grant = stateRef.current.escalationGrant;
+
+    if (!grant) {
+      // 没有授权（例如页面刷新后状态丢失）→ 回到第一层重新申请
+      void restartSilent();
+      return null;
+    }
 
     secondaryLoadingRef.current = true;
     dispatch({ type: 'SECONDARY_LOADING', secondaryType: null });
     try {
-      const res = await generateCaptcha({ provider: 'TIANAI', username: name || undefined });
+      const res = await generateCaptcha({
+        provider: 'TIANAI',
+        username: name || undefined,
+        escalationGrant: grant,
+      });
       if (stateRef.current.cycleId !== cycle) return null;
       const data = ((res as any)?.data ?? null) as
         | { challenge?: Record<string, unknown>; sessionId?: string; expiresAt?: number }
@@ -304,14 +343,20 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
       const challenge: SecondaryChallenge = {
         sessionId: String(data.sessionId),
         type: secondaryTypeOf(data.challenge),
-        expiresAt: Number(data.expiresAt ?? Date.now() + (cfg?.fieldName ? 180_000 : 180_000)),
+        expiresAt: Number(data.expiresAt ?? Date.now() + 180_000),
         payload: data.challenge,
       };
       dispatch({ type: 'SECONDARY_CHALLENGE', challenge });
       return challenge;
     } catch (err: any) {
       if (stateRef.current.cycleId !== cycle) return null;
-      // 优先透出服务端文案：例如 50301「人机验证服务暂不可用」（第二层未部署/不可达）
+      const code = Number(err?.response?.data?.code);
+      // 40011 = 升级凭证无效/已消费 → 回到第一层重新申请（不是密码错误，不重放登录）
+      if (code === 40011 || code === 40012 || code === 40013) {
+        void restartSilent();
+        return null;
+      }
+      // 优先透出服务端文案：例如 50301/50302「人机验证服务暂不可用」（第二层未部署/不可达）
       dispatch({
         type: 'SECONDARY_FAILED',
         hint: err?.response?.data?.message ?? '验证码加载失败，请稍后重试',
@@ -320,7 +365,7 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
     } finally {
       secondaryLoadingRef.current = false;
     }
-  }, []);
+  }, [restartSilent]);
 
   useEffect(() => {
     if (!requireSecondary) return;
@@ -354,12 +399,22 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
             });
             return;
           }
+          // 技术故障（上游超时/不可达）+ 服务端补发新凭证 → 自动换一张 challenge，
+          // **不要求用户先重复提交一次**，也不重放登录口令。
+          if (payload.requireFallback && payload.escalationGrant) {
+            dispatch({
+              type: 'ESCALATION_RENEWED',
+              escalationGrant: String(payload.escalationGrant),
+              hint: CAPTCHA_REASON_TEXT[String(payload.reason ?? '')] ?? '人机验证服务繁忙，已为您刷新验证码',
+            });
+            return;
+          }
+          // 用户答错：会话与授权都已被消费 → 回到第一层重新申请授权
           dispatch({
             type: 'SECONDARY_FAILED',
             hint: CAPTCHA_REASON_TEXT[String(payload.reason ?? '')] ?? '验证未通过，请重试',
           });
-          // 服务端已消费本地会话 → 重新取一个 challenge（保留失败提示，不清空）
-          void fetchSecondaryChallenge();
+          void restartSilent();
         } catch (err: any) {
           if (stateRef.current.cycleId !== cycle) return;
           dispatch({
@@ -369,7 +424,7 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
         }
       })();
     },
-    [fetchSecondaryChallenge],
+    [restartSilent],
   );
 
   // ---------- ticket 有效期 ----------

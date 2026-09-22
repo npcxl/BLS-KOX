@@ -2,20 +2,23 @@
  * 人机验证存储层（Redis）
  *
  * 全部数据都带 TTL，不创建永久数据；Redis 不可用时 fail closed（抛 CaptchaUnavailableError），
- * 绝不放行。captchaToken 只以 sha256 形式落库，一次性消费使用原子 `SET NX EX` + `GETDEL`。
+ * 绝不放行。所有一次性凭证（captchaTicket / 第二层升级凭证）在 Redis 中**只保存 sha256**，
+ * 一次性消费使用原子 `SET NX EX`（抢占标记）+ `GETDEL`。
  *
  * Key 命名空间（详见 bls-memory/00-common/01-redis.md）：
- *   captcha:challenge:{nonce}         标记    ALTCHA challenge 一次性标记（官方要求 challenge 单次使用）
- *   captcha:token:{sha256(token)}     JSON    captchaToken 绑定记录（只存 hash）
- *   captcha:token-used:{sha256(token)}标记    已消费标记（区分 REPLAYED / EXPIRED）
- *   captcha:fail:account:{scope}:{u}  计数器  账号维度登录失败次数
- *   captcha:fail:ip:{ipHash}          计数器  IP 维度登录失败次数
- *   captcha:ip-accounts:{ipHash}      集合    IP 近期尝试过的账号
+ *   captcha:challenge:{nonce}              标记    ALTCHA challenge 一次性标记
+ *   captcha:secondary:{sessionId}          JSON    第二层本地会话（绑定租户/账号/IP/UA）
+ *   captcha:escalation:{sha256(grant)}     JSON    第二层升级凭证（一次性）
+ *   captcha:ticket:{sha256(ticket)}        JSON    captchaTicket 绑定记录（见 ticket-service.ts）
+ *   captcha:ticket-used:{sha256(ticket)}   标记    已消费标记（区分 REPLAYED / EXPIRED）
+ *   captcha:fail:account:{scope}:{u}       计数器  账号维度登录失败次数
+ *   captcha:fail:ip:{ipHash}               计数器  IP 维度登录失败次数
+ *   captcha:ip-accounts:{ipHash}           集合    IP 近期尝试过的账号
  */
 import { CaptchaUnavailableError } from '../../core/errors';
 import { getRedisClient } from '../../shared/utils/redis';
 import { logger } from '../../core/logger';
-import type { CaptchaSecondarySessionRecord } from './types';
+import type { CaptchaEscalationGrantRecord, CaptchaSecondarySessionRecord } from './types';
 
 export interface CaptchaRedisLike {
   get(key: string): Promise<string | null>;
@@ -37,6 +40,8 @@ export const CAPTCHA_KEY = {
   challenge: (nonce: string) => `captcha:challenge:${nonce}`,
   /** 第二层（Tianai）本地一次性会话 */
   secondarySession: (sessionId: string) => `captcha:secondary:${sessionId}`,
+  /** 第二层升级凭证：key 只保存 sha256(grant)，明文 grant 永不落库 */
+  escalation: (grantHash: string) => `captcha:escalation:${grantHash}`,
   failAccount: (scope: string, usernameHash: string) => `captcha:fail:account:${scope}:${usernameHash}`,
   failIp: (ipHash: string) => `captcha:fail:ip:${ipHash}`,
   ipAccounts: (ipHash: string) => `captcha:ip-accounts:${ipHash}`,
@@ -118,6 +123,14 @@ export class CaptchaStore {
   /**
    * 一次性消费第二层会话：原子取出并删除。
    * 返回 null = 会话不存在 / 已过期 / 已被使用（重放）。
+   *
+   * 消费时机（重要）：在**发起上游校验之前**抢占。
+   * 上游 `ImageCaptchaApplication.matching()` 内部用 `getAndRemoveCache` 取答案，
+   * 也就是说请求一旦离开 Koa，上游 challenge 就已经不可复用 —— 无论成功、被判定失败还是超时。
+   * 因此 Koa 本地会话也必须在同一个时点作废，否则「上游超时后用户重试」会拿着一个
+   * 已被上游消费的 id 再打一次，只会得到误导性的「验证失败」。
+   * 上游技术故障时的可用性由「立即签发新的升级凭证 → 前端自动拉取新 challenge」来保证，
+   * 不需要用户先重复提交一次。
    */
   async consumeSecondarySession(sessionId: string): Promise<CaptchaSecondarySessionRecord | null> {
     return this.run('consumeSecondarySession', async (c) => {
@@ -132,9 +145,32 @@ export class CaptchaStore {
     });
   }
 
+  // ==================== 第二层升级凭证（escalation grant） ====================
+
+  /** 签发升级凭证（key 只存 sha256(grant)） */
+  async saveEscalationGrant(grantHash: string, record: CaptchaEscalationGrantRecord, ttlSeconds: number): Promise<void> {
+    await this.run('saveEscalationGrant', (c) =>
+      c.set(CAPTCHA_KEY.escalation(grantHash), JSON.stringify(record), 'EX', ttlSeconds));
+  }
+
+  /**
+   * 一次性消费升级凭证（GETDEL）。
+   * 返回 null = 凭证不存在 / 已过期 / 已被使用。
+   */
+  async consumeEscalationGrant(grantHash: string): Promise<CaptchaEscalationGrantRecord | null> {
+    return this.run('consumeEscalationGrant', async (c) => {
+      const raw = await this.takeAndDelete(c, CAPTCHA_KEY.escalation(grantHash));
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw) as CaptchaEscalationGrantRecord;
+      } catch {
+        logger.warn('[captcha] escalation grant corrupted');
+        return null;
+      }
+    });
+  }
+
   // ==================== 内部工具 ====================
-  // 注：captchaToken 已由 CaptchaTicketService（captcha:ticket:*）取代，
-  //     这里不再保留旧实现，避免两套一次性凭证逻辑并存。
 
   private async takeAndDelete(c: CaptchaRedisLike, key: string): Promise<string | null> {
     if (typeof c.getdel === 'function') return c.getdel(key);

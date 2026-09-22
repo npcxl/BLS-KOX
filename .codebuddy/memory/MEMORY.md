@@ -31,7 +31,7 @@
   `git show d6785e0:<file>`), plus 10 pagination `count` queries that swallowed DB errors
   (`unwrap_or(0)` → `.map_err(AppError::from)?`).
 
-## II. Login captcha — unified ticket model (consolidated 2026-09-21)
+## II. Login captcha — unified ticket model (consolidated 2026-09-22)
 
 The server alone decides everything; the browser only talks to Koa (the Java Tianai service is never
 exposed). Two layers: layer 1 = ALTCHA invisible Proof-of-Work, layer 2 = **Tianai**

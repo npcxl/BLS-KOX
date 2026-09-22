@@ -74,7 +74,7 @@ export class QuotaExceededError extends AppError {
 // ==================== 登录人机验证（captcha）====================
 // 业务码段 40010-40019 / 50301，前端据此区分错误并驱动验证码流程。
 
-/** 已开启人机验证但请求未携带 captchaToken，HTTP 400 / code 40010 */
+/** 已开启人机验证但请求未携带 captchaTicket，HTTP 400 / code 40010 */
 export class CaptchaRequiredError extends AppError {
   constructor(message = '请先完成人机验证') {
     super(message, 400, 40010, { errorCode: 'CAPTCHA_REQUIRED' });
@@ -82,7 +82,7 @@ export class CaptchaRequiredError extends AppError {
   }
 }
 
-/** captchaToken 无效（签名错误 / 绑定信息不匹配 / challenge 不匹配），HTTP 400 / code 40011 */
+/** captchaTicket 无效（绑定信息不匹配 / 场景不匹配 / 未经服务端签发），HTTP 400 / code 40011 */
 export class CaptchaInvalidError extends AppError {
   constructor(message = '人机验证凭证无效，请重新验证') {
     super(message, 400, 40011, { errorCode: 'CAPTCHA_INVALID' });
@@ -90,7 +90,7 @@ export class CaptchaInvalidError extends AppError {
   }
 }
 
-/** captchaToken / challenge 已过期，HTTP 400 / code 40012 */
+/** captchaTicket / challenge 已过期或不复存在，HTTP 400 / code 40012 */
 export class CaptchaExpiredError extends AppError {
   constructor(message = '人机验证已过期，请重新验证') {
     super(message, 400, 40012, { errorCode: 'CAPTCHA_EXPIRED' });
@@ -98,7 +98,7 @@ export class CaptchaExpiredError extends AppError {
   }
 }
 
-/** captchaToken 已被消费（重放），HTTP 400 / code 40013 */
+/** captchaTicket 已被消费（重放），HTTP 400 / code 40013 */
 export class CaptchaReplayedError extends AppError {
   constructor(message = '人机验证凭证已被使用，请重新验证') {
     super(message, 400, 40013, { errorCode: 'CAPTCHA_REPLAYED' });

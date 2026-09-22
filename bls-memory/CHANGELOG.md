@@ -23,6 +23,33 @@ Rules: see the "Version metadata & maintenance" section of [`README.md`](README.
 
 ---
 
+## [1.9.0] — 2026-09-22
+
+**Login captcha contract repair (verified against the working tree on top of `5773b0f`).** Six real
+contract fixes, not just test updates:
+
+1. Tianai layer 2 now uses the **official `ImageCaptchaTrack` DTO**; custom `{x,y}` / `{points}`
+   payloads are gone, sizes come only from the upstream response.
+2. Configuration keys are **only** the 8 flat keys; `mode` (and `off/adaptive/always`) is deleted.
+3. `captcha_tianai_enabled=true` now **fail-closes** when the service is unusable instead of silently
+   downgrading a high-risk account to "ALTCHA only".
+4. The layer-2 challenge can only be requested with a one-shot **escalation grant**.
+5. `captchaTicket` (and the grant) appear in Redis only as `sha256`.
+6. The audit event `CAPTCHA_RISK_NOTED` was split from `CAPTCHA_SECONDARY_REQUIRED` so one request can
+   no longer produce both "required layer 2" and "layer 1 passed".
+
+### Changed
+
+- `pages/login-captcha.md` — rewritten to v4.0.0 (endpoints, ownership, Redis keys, audit events,
+  configuration table, and a new **Tianai contract** section).
+- `00-common/01-redis.md` — `captcha:ticket:{sha256(ticket)}` + `captcha:ticket-used:{sha256(ticket)}`,
+  new `captcha:escalation:{sha256(grant)}`, corrected TTL sources (flat keys).
+- `00-common/05-security-log-and-event-center.md` — added `CAPTCHA_RISK_NOTED` (LOW) and documented why
+  it must not be conflated with `CAPTCHA_SECONDARY_REQUIRED` (MEDIUM); error-code set now
+  `40010`–`40013`, `50301`, `50302`.
+
+---
+
 ## [1.8.1] — 2026-09-21
 
 **Read-only log pages no longer render an empty 操作 column.** Verified against the **working tree on

@@ -4,12 +4,12 @@
  *   POST /api/system/config/batch   { items: [{ configKey, configValue, ... }] }
  *
  * 为什么需要它：系统参数页的高级配置是多字段一起改（例如人机验证的
- * primaryProvider / secondaryProvider / secondaryType）。逐条 `PUT /edit` + `Promise.all`
- * 会出现「部分成功」——比如 provider 改成了 tianai 但 secondaryType 没落库，直接把登录锁死。
- * 这里在**单个事务**内完成全部变更，任一失败整体回滚。
+ * `captcha_tianai_enabled` / `captcha_secondary_type` / `captcha_challenge_ttl`）。
+ * 逐条 `PUT /edit` + `Promise.all` 会出现「部分成功」——比如打开了第二层开关但
+ * 类型/有效期没落库，直接把登录锁死。这里在**单个事务**内完成全部变更，任一失败整体回滚。
  *
- * 保存前校验：变更后的有效配置若启用第二层 Tianai，会先做一次健康检查；
- * 不可用则拒绝保存（返回明确错误），避免保存后无人能登录。
+ * 保存前校验：变更后的有效配置若 `captcha_tianai_enabled=true`，会先做一次健康检查
+ * （只接受 2xx + 合法 JSON）；不可用则拒绝保存（返回明确错误），避免保存后无人能登录。
  */
 import Router from 'koa-router';
 import type { Context } from 'koa';
@@ -74,31 +74,30 @@ export async function assertEffectiveCaptchaUsable(
   }
 }
 
-const router = new Router();
-
-router.post('/batch', jwtAuth(), hasPerm('system:config:edit'), async (ctx: Context) => {
-  const tid = getCurrentTenantId();
-  if (!tid) throw new ValidationError('缺少租户上下文');
-
-  const parsed = batchSchema.safeParse(ctx.request.body ?? {});
-  if (!parsed.success) throw new ValidationError('参数格式不正确');
-  const items = parsed.data.items;
-  assertManagedKeys(items);
-
-  const db = (await getDb()) as any;
-
-  // 现有生效值（用于合并校验）
+/**
+ * 读取租户现有生效配置（用于「库中值 + 本次变更」的合并校验）。
+ * 导出以便单测注入。
+ */
+export async function loadExistingConfig(
+  db: any,
+  tenantId: string,
+): Promise<Record<string, string>> {
   const rows = await db.selectFrom('sys_config')
     .select(['config_key', 'config_value'])
-    .where('tenant_id', '=', tid)
+    .where('tenant_id', '=', tenantId)
     .where('deleted', '=', 0)
     .execute();
   const existing: Record<string, string> = {};
   for (const r of rows as any[]) existing[String(r.config_key ?? '')] = String(r.config_value ?? '');
+  return existing;
+}
 
-  await assertEffectiveCaptchaUsable(existing, items);
-
-  // 单事务内全部更新；缺失行则插入（新租户首次配置）
+/**
+ * 单事务内写入全部变更；缺失行则插入（新租户首次配置）。
+ * 任一写入失败 → 整体回滚（由 Kysely 事务保证），并抛出「已回滚」错误。
+ * 导出以便单测注入可见性更强的 trx 替身（断言回滚语义）。
+ */
+export async function saveConfigBatch(db: any, tenantId: string, items: BatchItem[]): Promise<void> {
   try {
     await db.transaction().execute(async (trx: any) => {
       for (const item of items) {
@@ -110,7 +109,7 @@ router.post('/batch', jwtAuth(), hasPerm('system:config:edit'), async (ctx: Cont
             ...(item.remark !== undefined ? { remark: item.remark } : {}),
             update_time: new Date(),
           })
-          .where('tenant_id', '=', tid)
+          .where('tenant_id', '=', tenantId)
           .where('config_key', '=', item.configKey)
           .where('deleted', '=', 0)
           .executeTakeFirst();
@@ -120,7 +119,7 @@ router.post('/batch', jwtAuth(), hasPerm('system:config:edit'), async (ctx: Cont
 
         await trx.insertInto('sys_config').values({
           config_id: generateSnowflakeId(),
-          tenant_id: tid,
+          tenant_id: tenantId,
           config_key: item.configKey,
           config_value: item.configValue,
           config_name: item.configName ?? item.configKey,
@@ -137,6 +136,28 @@ router.post('/batch', jwtAuth(), hasPerm('system:config:edit'), async (ctx: Cont
     logger.error('[config] batch update failed', { error: String(err) });
     throw new ValidationError('配置保存失败，已回滚，请重试');
   }
+}
+
+const router = new Router();
+
+router.post('/batch', jwtAuth(), hasPerm('system:config:edit'), async (ctx: Context) => {
+  const tid = getCurrentTenantId();
+  if (!tid) throw new ValidationError('缺少租户上下文');
+
+  const parsed = batchSchema.safeParse(ctx.request.body ?? {});
+  if (!parsed.success) throw new ValidationError('参数格式不正确');
+  const items = parsed.data.items;
+  assertManagedKeys(items);
+
+  const db = (await getDb()) as any;
+
+  // 现有生效值（用于合并校验）
+  const existing = await loadExistingConfig(db, tid);
+
+  // 保存前预检：把「生效配置」算出来，若启用第二层 Tianai 则先探活；不可用则整体拒绝
+  await assertEffectiveCaptchaUsable(existing, items);
+
+  await saveConfigBatch(db, tid, items);
 
   // 立即生效
   await invalidateConfigCache(tid);

@@ -45,7 +45,14 @@ export const SecurityEventType = {
   // ===== 登录人机验证（ALTCHA）=====
   CAPTCHA_POW_PASSED:         'CAPTCHA_POW_PASSED',
   CAPTCHA_POW_FAILED:         'CAPTCHA_POW_FAILED',
+  /** 真的要求第二层：本次**不**签发票证，前端必须继续完成 Tianai */
   CAPTCHA_SECONDARY_REQUIRED: 'CAPTCHA_SECONDARY_REQUIRED',
+  /**
+   * 风控命中但**没有要求第二层**（本部署 `captcha_tianai_enabled=false`，或无需升级）：
+   * 只把内部原因记进审计，本次结果不受影响。
+   * ⚠ 与 CAPTCHA_SECONDARY_REQUIRED 必须区分：后者会拦截签发票证。
+   */
+  CAPTCHA_RISK_NOTED:         'CAPTCHA_RISK_NOTED',
   CAPTCHA_SECONDARY_PASSED:   'CAPTCHA_SECONDARY_PASSED',
   CAPTCHA_SECONDARY_FAILED:   'CAPTCHA_SECONDARY_FAILED',
   CAPTCHA_TOKEN_INVALID:      'CAPTCHA_TOKEN_INVALID',
@@ -96,6 +103,8 @@ const EVENT_RISK: Record<string, RiskLevel> = {
   CAPTCHA_POW_PASSED:         RiskLevel.LOW,
   CAPTCHA_POW_FAILED:         RiskLevel.MEDIUM,
   CAPTCHA_SECONDARY_REQUIRED: RiskLevel.MEDIUM,
+  // 只是"注意一下"：本次没有改变结果，避免与真正要求第二层的 MEDIUM 混淆
+  CAPTCHA_RISK_NOTED:         RiskLevel.LOW,
   CAPTCHA_SECONDARY_PASSED:   RiskLevel.LOW,
   CAPTCHA_SECONDARY_FAILED:   RiskLevel.MEDIUM,
   CAPTCHA_TOKEN_INVALID:      RiskLevel.MEDIUM,
