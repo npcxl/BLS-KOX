@@ -23,6 +23,20 @@ Rules: see the "Version metadata & maintenance" section of [`README.md`](README.
 
 ---
 
+## [1.8.1] — 2026-09-21
+
+**Read-only log pages no longer render an empty 操作 column.** Verified against the **working tree on
+top of `3c26a02`** (uncommitted frontend change).
+
+### Changed
+
+- `pages/system-log-login.md` — `CrudTablePage` config now lists `showActions={false}` (the column
+  would have been an empty `<Space>`) and the previously undocumented `scroll={{x:'max-content'}}`.
+- `pages/system-log-security.md` — same, plus an explicit explanation that `showActions={false}`
+  removes the whole column rather than hiding individual cells.
+
+---
+
 ## [1.8.0] — 2026-09-21
 
 **Login captcha split into two layers, with the stage decided by the server only.** The single-provider

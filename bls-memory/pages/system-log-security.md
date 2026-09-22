@@ -1,6 +1,6 @@
 # Page — Log Center: Security Log (`/system/log/security`)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 3c26a02 (+ uncommitted frontend change) · **Last verified:** 2026-09-21
 
 ## 1. Summary
 
@@ -24,7 +24,12 @@
 
 `CrudTablePage` configuration: `title="安全日志"`, `rowKey="logId"`,
 `formColumns={[]}`, `showCreateButton={false}`, `showEditAction={false}`,
-`showRemoveAction={false}`. No detail drawer, no export, no batch delete.
+`showRemoveAction={false}`, `showActions={false}`, `scroll={{x:'max-content'}}`.
+No detail drawer, no export, no batch delete.
+
+`showActions={false}` omits the 操作 column entirely (the default render would be an empty
+`<Space>`: no edit, no status toggle, no `extraActions`, no delete). It is a `CrudTablePage`
+prop — `false` removes the column, it is not a per-cell hiding mechanism.
 
 Record shape used by the component:
 

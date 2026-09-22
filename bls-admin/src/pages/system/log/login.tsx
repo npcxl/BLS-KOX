@@ -47,10 +47,13 @@ export default function LoginLogPage() {
       showRemoveAction={false}
       showCreateButton={false}
       showEditAction={false}
+      showActions={false}
+      scroll={{ x: 'max-content' }}
       permissions={{
         import: "system:log:import",
         export: "system:log:export",
       }}
+      
     />
   );
 }

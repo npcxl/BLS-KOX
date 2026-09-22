@@ -1,6 +1,6 @@
 # Page — Log Center: Login Log (`/system/log/login`)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.0.1 · **Code version:** 1.0.0 · **Verified commit:** 3c26a02 (+ uncommitted frontend change) · **Last verified:** 2026-09-21
 
 ## 1. Summary
 
@@ -26,6 +26,8 @@
 `CrudTablePage` configuration: `title="登录日志"`, `rowKey="logId"`,
 `resource.list=''`, `status:false`, `remove:false`, `formColumns={[]}`, `modalWidth={760}`,
 `showCreateButton={false}`, `showEditAction={false}`, `showRemoveAction={false}`,
+`showActions={false}` (the 操作 column would render an empty `<Space>` — nothing to show on a
+read-only page, so the whole column is omitted), `scroll={{x:'max-content'}}`,
 `permissions={{import:'system:log:import', export:'system:log:export'}}`.
 
 Columns (page config): `username` (search), `tenantId`, `loginType` (search),

@@ -29,6 +29,8 @@ export default function SecurityLogPage() {
       formColumns={[]}
       showCreateButton={false}
       showEditAction={false}
+      showActions={false}
+      scroll={{ x: 'max-content' }}
       showRemoveAction={false}
     />
   );
