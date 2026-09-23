@@ -115,8 +115,10 @@ docker compose logs -f bls-server
 
 ### 健康检查
 
-- [ ] `GET /api/health` 返回 200
-- [ ] `GET /api/ready` 返回 200（MySQL + Redis 均正常）
+- [ ] `GET /api/health` 返回 200（仅存活，不检查依赖）
+- [ ] `GET /api/ready` 返回 200，且 `services` 中 `mysql` / `redis` 均为 `up`（核心依赖任一不可用 → 503）
+- [ ] `npm run services:check` 退出码为 0（非核心依赖：事件服务 / AI 服务 / 图形验证码服务按实际部署判读，未部署时应为 `[SKIP]`）
+- [ ] 启动日志中的依赖自检报告没有意外的 `[FAIL]`（`SERVICE_CHECK_STRICT=true` 时核心依赖不可用会直接拒绝启动）
 - [ ] `GET /api/metrics` 返回 Prometheus 指标
 - [ ] 前端页面可正常访问
 

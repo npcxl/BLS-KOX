@@ -22,6 +22,7 @@
     "db:init": "tsx src/scripts/init-db.ts",
     "db:migrate": "tsx src/scripts/migrate.ts",
     "db:backup": "tsx src/scripts/backup.ts",
+    "services:check": "tsx src/scripts/check-services.ts",
     "db:restore": "tsx src/scripts/restore.ts",
     "openapi": "tsx src/scripts/generate-openapi.ts",
     "openapi:check": "tsx src/scripts/check-openapi-drift.ts",

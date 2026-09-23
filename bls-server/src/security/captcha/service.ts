@@ -730,13 +730,37 @@ export class CaptchaService {
     const boundTenant = String(signed.tenantId ?? '');
     const boundUsernameHash = String(signed.usernameHash ?? '');
     const boundScene = String(signed.scene ?? '');
+
+    // 签名数据**为空**说明 payload 在传输/序列化过程中丢了 parameters.data
+    // （例如前端喂给 widget 的 challenge 被重建过）——这是**我们自己的**问题，
+    // 不能报成 BINDING_MISMATCH 让用户以为"环境变了"而反复重试。
+    if (!boundTenant && !boundScene && !boundUsernameHash) {
+      logger.warn('[captcha] altcha signed data missing in payload', {
+        requestId: meta.requestId ?? null,
+        provider: 'ALTCHA',
+      });
+      return { status: 'failed', provider: 'ALTCHA', reason: 'PAYLOAD_MALFORMED' };
+    }
+
     if (!safeEqual(boundTenant, tenantId)) {
+      logger.warn('[captcha] altcha tenant binding mismatch', {
+        // 只记录 hash 前缀，绝不记录明文用户名 / 域名
+        bound: boundTenant.slice(0, 8),
+        current: tenantId.slice(0, 8),
+        requestId: meta.requestId ?? null,
+      });
       return { status: 'failed', provider: 'ALTCHA', reason: 'BINDING_MISMATCH' };
     }
     if (boundScene && !safeEqual(boundScene, scene)) {
       return { status: 'failed', provider: 'ALTCHA', reason: 'STAGE_MISMATCH' };
     }
     if (boundUsernameHash && !safeEqual(boundUsernameHash, b.usernameHash)) {
+      logger.warn('[captcha] altcha username binding mismatch', {
+        // 常见原因：前端把「上一张 challenge 的 payload」配上新的用户名提交
+        bound: boundUsernameHash.slice(0, 8),
+        current: b.usernameHash.slice(0, 8),
+        requestId: meta.requestId ?? null,
+      });
       return { status: 'failed', provider: 'ALTCHA', reason: 'BINDING_MISMATCH' };
     }
 

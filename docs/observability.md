@@ -46,8 +46,53 @@ BLS-KOX 提供三层可观测性：日志（Logging）、指标（Metrics）、�
 
 | 端点 | 说明 |
 |------|------|
-| `GET /api/metrics` | Prometheus 格式指标 |
-| `GET /api/health` | 健康检查 |
+| `GET /api/metrics` | Prometheus 格式指标（生产默认关闭匿名访问，见 `METRICS_PUBLIC`） |
+| `GET /api/health` | 存活探针：恒返回 `{"status":"ok"}`，**不检查任何依赖** |
+| `GET /api/ready` | 就绪探针：探测**全部**依赖，核心依赖不可用 → `503 not_ready`；非核心不可用 → `200` 且 `degraded:true` |
+| `GET /internal/health` | 内部存活探针（需内部鉴权） |
+| `GET /internal/services` | 依赖详细视图（需内部鉴权）：地址、耗时、失败原因、启动命令 |
+| `GET /internal/metrics` | Prometheus 指标（需内部鉴权） |
+
+### 依赖自检（启动 + 运行期）
+
+依赖清单收敛在 `bls-server/src/observability/service-health.ts`，启动报告 / `/api/ready` /
+`/internal/services` / `npm run services:check` 用的是**同一份注册表**，结论不会互相矛盾。
+
+Koa 在 `server.listen` **之后立即**做自检，打印 **`KOX 服务检测`** 表格（`[ OK ]` / `[FAIL]` / `[SKIP]` + 服务名 + 类别 + 耗时 + 地址 + 检测结果；
+单元格按需折行，中文按 2 列宽对齐）。
+地址列按连通状态着色：**连通=绿 / 不通=红 / 未配置=灰**；仅在真实终端着色，管道、重定向到文件、
+CI 与日志采集一律输出纯文本（也可用 `NO_COLOR` 关闭、`FORCE_COLOR=1` 强制）。
+
+该表格是自检的**唯一**输出（没有汇总行、没有处理建议段落，也不额外打 WARN/ERROR 结构化日志）；
+启动命令等细节保留在数据里，通过 `GET /internal/services` 获取。运行期状态查 `/api/ready`。
+
+```bash
+cd bls-server && npm run services:check   # 退出码 1 = 核心依赖不可用
+```
+
+| 依赖 | 类别 | 探测方式 / 地址来源 |
+|------|------|--------------------|
+| MySQL | core | `DB_HOST` / `DB_PORT` / `DB_NAME` |
+| Redis | core | `REDIS_HOST` / `REDIS_PORT`（`REDIS_ENABLED=false` 时记 `disabled`） |
+| bls-realtime-ws | conditional | Koa 自身实时通道，**WebSocket 握手**探测（握手阶段不校验 token）；`WS_ENABLED=false` 时跳过 |
+| bls-event-service | optional | `EVENT_SERVICE_URL` + `/health`（未配置则跳过） |
+| bls-ai-service | optional | `AI_SERVICE_URL` + `/health`（开发默认 `http://127.0.0.1:7201`） |
+| bls-captcha-service | conditional | `TIANAI_BASE_URL` + `/health`（**2xx + 合法 JSON 对象**才算健康） |
+
+> Java / Rust 后端是 Koa 的**平替方案**（同时只有一个在跑，既不是 Koa 的依赖也没有联动关系），
+> 因此不在这张表里。
+
+相关环境变量：
+
+| Env | 默认 | 说明 |
+|-----|------|------|
+| `SERVICE_CHECK_STRICT` | 生产 `true` / 开发 `false` | 核心依赖不可用时是否直接拒绝启动（自检在 listen 之后，发现即 `exit(1)`） |
+| `SERVICE_CHECK_TIMEOUT_MS` | `5000` | 单个依赖探测超时；DB/Redis 跨网络部署时可调大 |
+| `SERVICE_CHECK_INTERVAL_MS` | `60000` | 运行期巡检间隔，`0` = 关闭；仅在依赖下线/恢复的瞬间记日志 |
+| `AI_SERVICE_URL` | 开发 `http://127.0.0.1:7201` | AI 微服务探测地址（生产必须显式配置，未配置即视为未部署） |
+
+> 探测前会先 `warmup`（动态 import、连接池初始化），避免冷启动把「模块编译慢」误判成
+> 「服务没开」——那在生产严格模式下会拒绝启动一个完全健康的实例。
 
 ### 指标清单
 

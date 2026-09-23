@@ -192,6 +192,17 @@ curl http://localhost:8080/api/health    # → {"status":"ok"}
 curl http://localhost:6001/api/metrics
 ```
 
+> `GET /api/health` 只表示**进程存活**，不检查任何依赖。要确认「微服务到底有没有开」：
+>
+> ```bash
+> cd bls-server
+> npm run services:check     # 打印所有依赖状态；核心依赖不可用 → 退出码 1
+> curl http://localhost:6001/api/ready   # 运行时就绪探针（含 degraded 标记）
+> ```
+>
+> Koa 启动时会自动做同一份检查，并在开放端口前打印报告；`SERVICE_CHECK_STRICT=true`
+> （生产默认）时核心依赖（MySQL / Redis）不可用会直接拒绝启动。
+
 ---
 
 ## 常见问题

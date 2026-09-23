@@ -4,6 +4,13 @@ import { join, relative } from "node:path";
 import { jwtAuth } from "../middleware/auth";
 import type { Context } from "koa";
 import { metricsRegistry } from "../observability/metrics";
+import {
+  findDegradedDeps,
+  findFatalDeps,
+  probeServices,
+  summarize,
+  type ServiceDepStatus,
+} from "../observability/service-health";
 import { env } from "../config/env";
 
 function camelToKebab(name: string): string {
@@ -167,39 +174,30 @@ export function createRouter(): Router {
     ctx.body = await metricsRegistry.metrics();
   });
 
+  /**
+   * 就绪探针：覆盖**全部**服务依赖（MySQL / Redis / 事件服务 / AI 服务 / 图形验证码服务）。
+   * - 核心依赖不可用 → 503（不要摘进负载均衡）；
+   * - 非核心依赖不可用 → 200 但 degraded=true（主体可服务，功能降级）。
+   * ⚠ 公开端点只回状态，**不回**内网地址与失败详情（避免泄露内网拓扑）；
+   *   带地址 / 耗时 / 启动命令的详细视图在 /internal/services（内部鉴权）。
+   */
   router.get("/ready", async (ctx) => {
-    const READY_TIMEOUT = 2_000;
-    const services: Record<string, string> = {};
+    const results = await probeServices();
+    const services: Record<string, ServiceDepStatus> = {};
+    for (const r of results) services[r.name] = r.status;
 
-    const withTimeout = <T>(label: string, fn: () => Promise<T>): Promise<T> =>
-      Promise.race([fn(), new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timeout`)), READY_TIMEOUT))]);
-
-    // MySQL
-    try {
-      await withTimeout('mysql', async () => {
-        const { getDb } = require("./database");
-        const db = await getDb();
-        await db.selectFrom('sys_config').select('config_id').limit(1).execute();
-      });
-      services.mysql = "up";
-    } catch { services.mysql = "down"; }
-
-    // Redis
-    try {
-      await withTimeout('redis', async () => {
-        const { getRedisClient } = require("../shared/utils/redis");
-        const r = getRedisClient();
-        if (r) await r.ping(); else throw new Error('disabled');
-      });
-      services.redis = "up";
-    } catch {
-      const { getRedisClient } = require("../shared/utils/redis");
-      services.redis = getRedisClient() ? "down" : "disabled";
-    }
-
-    const allUp = Object.values(services).every((s) => s === "up" || s === "disabled");
-    ctx.status = allUp ? 200 : 503;
-    ctx.body = { status: allUp ? "ready" : "not_ready", services };
+    const fatal = findFatalDeps(results);
+    const degraded = findDegradedDeps(results);
+    ctx.status = fatal.length > 0 ? 503 : 200;
+    ctx.body = {
+      status: fatal.length > 0 ? "not_ready" : "ready",
+      degraded: degraded.length > 0,
+      checkedAt: new Date().toISOString(),
+      summary: summarize(results),
+      // 兼容旧结构：{ mysql: 'up', redis: 'up' }
+      services,
+      unavailable: results.filter((r) => r.status === "down").map((r) => r.name),
+    };
   });
   scanAndRegister(join(__dirname, "..", "api"), join(__dirname, "..", "api"), router);
   return router;

@@ -1,9 +1,11 @@
 # 08 — API Surface, Versioning & Service Auth (shared)
 
-> **Document version:** 1.2.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
+> **Document version:** 1.3.0 · **Code version:** 1.0.0 · **Verified commit:** b4932b9 · **Last verified:** 2026-09-23
 >
-> *Uncommitted note:* the `/api/auth/captcha/*` public endpoints (ALTCHA) were verified against
-> `753d86a` + uncommitted captcha changes.
+> *Uncommitted note:* the `/api/ready` + `/internal/services` rows, the `/api/captcha/*` public
+> endpoints and the startup dependency self-check were verified against a working tree on top of
+> `b4932b9` (`bls-server/src/observability/service-health.ts`, `src/scripts/check-services.ts`,
+> `src/app.ts` are not committed yet).
 
 How every request can reach the Koa backend, and how each entry point is authenticated.
 Also covers error formatting, HTTP metrics labels, Swagger and the OpenAPI generator.
@@ -21,16 +23,38 @@ Files: `bls-server/src/app.ts`, `bls-server/src/core/router.ts`,
 | `/api/**` | per-route `jwtAuth()` + `hasPerm()` | — | The admin frontend. Also gets `Deprecation` / `Sunset` headers (see §2). |
 | `/api/v1/**` | same as `/api` | `/api/v1/x` → `/api/x` | Versioned alias of the same routes. No deprecation headers. |
 | `/openapi/v1/**` | `openApiAuth()` — API Key + HMAC + Timestamp + Nonce | `/openapi/v1/x` → `/api/x` | Planned external/partner API. **Currently always 403 — see §4.** |
-| `/internal/**` | `internalAuth()` — service token + IP allow-list | none (only 2 routes) | Service-to-service: `GET /internal/health`, `GET /internal/metrics`. |
+| `/internal/**` | `internalAuth()` — service token + IP allow-list | none (only 3 routes) | Service-to-service: `GET /internal/health`, `GET /internal/metrics`, `GET /internal/services` (dependency detail: target / latency / failure reason / start command; 503 when a **core** dep is down). |
 
 Plus unauthenticated infrastructure routes on the main router
 (`bls-server/src/core/router.ts`):
 
 | Method | Path | Behaviour |
 |---|---|---|
-| GET | `/api/health` | `{status:'ok'}` |
+| GET | `/api/health` | `{status:'ok'}` — liveness only, touches **no** dependency. |
 | GET | `/api/metrics` | Prometheus exposition (`metricsRegistry.contentType` / `metrics()`). **Not authenticated.** |
-| GET | `/api/ready` | readiness probe |
+| GET | `/api/ready` | readiness probe over **all** dependencies (`observability/service-health.ts`, 5s per probe): `200 {status:'ready', degraded, checkedAt, summary, services:{name:'up'\|'down'\|'disabled'}, unavailable:[]}`; `503 {status:'not_ready'}` only when a **core** dep (MySQL / Redis) is down. Non-core deps down → still `200` with `degraded:true`. Deliberately **no** internal addresses in the body. |
+
+Dependency self-check (same registry, three surfaces):
+
+| Surface | When | Notes |
+|---|---|---|
+| startup report | `app.ts`, **right after** `server.listen` | prints the box-drawn **`KOX 服务检测`** table (status / service / kind / latency / target / result; the target cell is green when reachable, red when not, dim when unconfigured — **TTY only**, `NO_COLOR` / pipes get plain text). The table is the **only** output: no summary line, no start-hint section, no extra structured log (`startHint` stays in the data for `/internal/services`). `SERVICE_CHECK_STRICT=true` (default in production) → `process.exit(1)` when a core dep is down, so the port is never opened half-broken. |
+| `npm run services:check` | manual / post-deploy | same output; exit code `1` iff a core dep is down. |
+| watchdog | every `SERVICE_CHECK_INTERVAL_MS` (default 60s, 0 = off) | logs **only** on up↔down transitions. |
+
+Registry (order = table order): `mysql` (core), `redis` (core), `bls-realtime-ws` (conditional,
+Koa's own `/ws/realtime` — a WebSocket handshake probe; the handshake needs no token, auth happens
+in the first `{type:'auth'}` message), `bls-event-service` (optional, `EVENT_SERVICE_URL`),
+`bls-ai-service` (optional, `AI_SERVICE_URL`, dev default `http://127.0.0.1:7201`),
+`bls-captcha-service` (conditional, `TIANAI_BASE_URL`; 2xx + JSON object, same semantics as the
+provider used by the login path). Only MySQL/Redis can make the service `not_ready`.
+
+The Java and Rust backends are **drop-in alternatives** to Koa (only one of them runs at a time; they
+are neither dependencies of Koa nor integrated with it), so they are deliberately **not** registered
+here.
+
+`warmup` (dynamic imports / pool init) runs **before** the timed probe so cold module compilation is
+never mistaken for a down service.
 
 and the docs routes (`app.ts`): `GET /api/docs` (Swagger UI HTML) and
 `GET /api/openapi.json` (serves `bls-server/openapi.json`; 404 body
@@ -40,12 +64,10 @@ Unauthenticated **business** routes (public by name or by being mounted on a cus
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/auth/login` / `logout` / `refresh` | public by function name |
-| GET | `/api/auth/captcha/config` | login captcha public config (`enabled`/`mode`/`primaryProvider`/`secondaryProvider`/`secondaryType`/**server-decided** `requiredStage`/`challengeUrl`/`secondaryChallengeUrl`/`fieldName`); never exposes thresholds or the internal risk reason |
-| GET | `/api/auth/captcha/challenge` | **layer-1 official ALTCHA challenge object, returned without the `{code,message,data}` envelope** (the widget's `challenge` attribute consumes it) — `no-store` |
-| POST | `/api/auth/captcha/verify` | layer-1 server-side ALTCHA payload verification. The request body's `stage`/`display`/`provider` are **ignored**; the stage comes only from the HMAC-signed challenge data → one-shot `captchaToken`, or `requiredStage: "secondary"` |
-| POST | `/api/auth/captcha/secondary/challenge` | layer-2 (Tianai `blockPuzzle`/`clickWord`) challenge; Koa issues a local one-shot `sessionId` bound to tenant/domain/username/IP/UA |
-| POST | `/api/auth/captcha/secondary/verify` | layer-2 answer verification (`{sessionId, username, data}`); fails closed with `503 / 50301` when Tianai is unconfigured, unhealthy, times out or errors |
+| POST | `/api/auth/login` / `logout` / `refresh` | public by function name. Login accepts **only** a one-shot `captchaTicket` issued by `/api/captcha/verify` (Redis `captcha:ticket:{sha256(ticket)}`, `GETDEL`). |
+| GET | `/api/captcha/config` | public captcha config `{enabled, primaryProvider:'ALTCHA', fallbackProvider:'TIANAI', tianaiEnabled, generateUrl, verifyUrl, fieldName}` — uppercase provider names. Never exposes thresholds, TTLs or the internal risk reason; `mode` / `requiredStage` were deleted. |
+| POST | `/api/captcha/generate` | `{scene?, provider?, username?, escalationGrant?}` → `{provider, challenge, sessionId?, expiresAt}`. ALTCHA is generated locally (signed); `provider=TIANAI` additionally requires a **one-shot escalation grant** issued by `/verify` (missing/used → `40011`), so the expensive upstream cannot be farmed by anyone. |
+| POST | `/api/captcha/verify` | `{scene?, provider?, username?, payload? (ALTCHA), sessionId?+data? (Tianai official `ImageCaptchaTrack`), escalationGrant?}` → `{status:'passed'\|'failed'\|'technical_error', provider, captchaTicket?, expiresAt?, reason?, requireFallback?, nextProvider?, escalationGrant?, escalationExpiresAt?}`. A `passed` result issues the one-shot `captchaTicket`. Escalation (`requireFallback` + fresh `escalationGrant`) is decided server-side only. Layer 2 unavailable while `captcha_tianai_enabled=true` → fail closed `503 / 50302`. |
 | GET | `/api/system/config/public-system` · `/public-theme` · `/current` | public system/theme config subset |
 | GET | `/api/system/tenant/public-list` | Host-scoped tenant options |
 

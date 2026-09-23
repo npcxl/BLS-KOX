@@ -361,6 +361,20 @@ describe('两级人机验证 —— 第一层（ALTCHA）', () => {
     expect(consumed.provider).toBe('ALTCHA');
   });
 
+  it('5d. payload 丢失签名数据（parameters.data 缺失）→ PAYLOAD_MALFORMED，而不是"环境变化"', async () => {
+    // 场景：前端喂给 widget 的 challenge 被重建，payload 里没有 parameters.data。
+    // 这属于我方数据问题，不能报 BINDING_MISMATCH 让用户反复重试。
+    const h = setup({ config: { captchaTianaiEnabled: false } });
+    const bare = await createAltchaChallenge({ hmacKey: HMAC_KEY, ttlSeconds: 180, cost: TEST_COST });
+    await h.store.claimChallengeNonce(String((bare as any).parameters.nonce), 180);
+    const payload = await solveAltcha(bare as any);
+
+    const res = await h.service.verify({ ...meta(), provider: 'ALTCHA', payload });
+    expect(res.status).toBe('failed');
+    expect(res.reason).toBe('PAYLOAD_MALFORMED');
+    expect(res.captchaTicket).toBeUndefined();
+  });
+
   it('5c. 签名不符的 challenge（他人密钥签发）→ 拒绝', async () => {
     const h = setup({ config: { captchaTianaiEnabled: false } });
     const other = await createAltchaChallenge({

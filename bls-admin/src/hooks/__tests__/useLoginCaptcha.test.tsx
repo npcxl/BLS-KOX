@@ -85,6 +85,28 @@ const needsSecondary = (grant: string) => ({
   },
 });
 
+/** 官方 payload（base64）—— 只要能解出 challenge.parameters.nonce 即可复现"陈旧回调" */
+function altchaPayload(nonce: string): string {
+  return Buffer.from(
+    JSON.stringify({ challenge: { parameters: { nonce }, signature: 's' }, solution: {} }),
+    'utf8',
+  ).toString('base64');
+}
+
+/** 第一层 challenge 响应（带指定 nonce） */
+const altchaChallengeOf = (nonce: string) => ({
+  code: 200,
+  data: {
+    provider: 'ALTCHA',
+    challenge: {
+      parameters: { algorithm: 'PBKDF2/SHA-256', nonce, salt: 's-1', cost: 10, keyLength: 32, keyPrefix: '' },
+      signature: 'sig-1',
+    },
+    expiresAt: Date.now() + 180_000,
+    fieldName: 'altchaPayload',
+  },
+});
+
 beforeEach(() => {
   for (const fn of Object.values(api)) fn.mockReset();
 });
@@ -198,6 +220,47 @@ describe('useLoginCaptcha — 第一层并发与凭证', () => {
     await waitFor(() => expect(result.current.ticket).toBeNull());
     expect(result.current.secondary).toBeNull();
     expect(result.current.submitEnabled).toBe(false);
+  });
+
+  it('陈旧 challenge 的 payload 被直接丢弃，绝不发给 /verify（否则服务端会判 BINDING_MISMATCH）', async () => {
+    api.getCaptchaConfig.mockResolvedValue({ code: 200, data: cfg() });
+    api.generateCaptcha.mockResolvedValue(altchaChallengeOf('nonce-current'));
+    api.verifyCaptcha.mockResolvedValue(passed('T-OK'));
+
+    const { result } = renderHook(() => useLoginCaptcha('alice'));
+    await waitFor(() => expect(result.current.altchaChallenge).toBeTruthy(), { timeout: 2000 });
+
+    // 旧 widget（上一张 challenge）的回调：nonce 不匹配 → 丢弃，不产生任何请求
+    act(() => { result.current.onAltchaVerified(altchaPayload('nonce-stale')); });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(api.verifyCaptcha).not.toHaveBeenCalled();
+
+    // 当前 widget 的回调正常放行
+    act(() => { result.current.onAltchaVerified(altchaPayload('nonce-current')); });
+    await waitFor(() => expect(result.current.ticket).toBe('T-OK'));
+    expect(api.verifyCaptcha).toHaveBeenCalledTimes(1);
+  });
+
+  it('第一层拿到"已作废"的判定（BINDING_MISMATCH 等）时自动换一张 challenge 自愈，不卡死用户', async () => {
+    api.getCaptchaConfig.mockResolvedValue({ code: 200, data: cfg() });
+    api.generateCaptcha
+      .mockResolvedValueOnce(altchaChallengeOf('n-1'))
+      .mockResolvedValueOnce(altchaChallengeOf('n-2'));
+    api.verifyCaptcha.mockResolvedValue({
+      code: 200,
+      data: { status: 'failed', provider: 'ALTCHA', reason: 'BINDING_MISMATCH' },
+    });
+
+    const { result } = renderHook(() => useLoginCaptcha('alice'));
+    await waitFor(() => expect(result.current.altchaChallenge).toBeTruthy(), { timeout: 2000 });
+
+    act(() => { result.current.onAltchaVerified(altchaPayload('n-1')); });
+
+    // 自愈：重新取一张 challenge（widget 会重跑 PoW），而不是只留一句错误提示
+    await waitFor(() => expect(api.generateCaptcha.mock.calls.length).toBeGreaterThanOrEqual(2), { timeout: 2000 });
+    expect(result.current.ticket).toBeNull();
+    expect(result.current.hint).toBeTruthy();
+    expect(result.current.phase).toBe('solvingSilent');
   });
 
   it('用户名变化后旧异步响应被丢弃（不会给新用户签凭证）', async () => {

@@ -30,6 +30,25 @@
   `bls-rust-server/src/**/*.rs` (1:1 char restore from Koa text; clean at `d6785e0`, read back with
   `git show d6785e0:<file>`), plus 10 pagination `count` queries that swallowed DB errors
   (`unwrap_or(0)` → `.map_err(AppError::from)?`).
+- **`bls-server` dependency self-check (2026-09-23)** — one registry
+  (`src/observability/service-health.ts`) drives the startup report (printed **right after**
+  `server.listen` — it cannot run before: the `bls-realtime-ws` row shares the HTTP port, so an
+  earlier probe always reported ECONNREFUSED), `GET /api/ready` (200 + `degraded` / `503` only for core deps), internal
+  `GET /internal/services`, and `npm run services:check`. Exactly **6** deps: mysql/redis (core),
+  Koa's own `bls-realtime-ws` (conditional, WebSocket handshake probe), event-service/ai-service
+  (optional, `EVENT_SERVICE_URL`/`AI_SERVICE_URL`), captcha-service (conditional, `TIANAI_BASE_URL`).
+  **Java / Rust backends are drop-in alternatives, not dependencies — the user explicitly rejected
+  listing them** (they are not "services Koa needs or integrates with"); likewise MinIO (no config
+  source in Koa + port 9000 collides with the frontend dev server).
+  `SERVICE_CHECK_STRICT` (prod default true) → refuse to boot when a core dep is down.
+  Before touching it: keep `warmup` (dynamic imports / pool init) **outside** the timed probe —
+  otherwise cold `import('kysely')` cost is misreported as "service down" and strict mode refuses
+  to start a healthy instance. The report is a single table (no summary line / no hints section),
+  CJK-width aware, target cell colored green/red (TTY only).
+- **Never start a temporary `bls-server` on port 6001** to "test the boot": it races the user's
+  `tsx watch` child (`EADDRINUSE on WebSocketServer`) and can kill their dev server. Use
+  `APP_PORT=6009 npx tsx src/app.ts`, then kill the exact new node PIDs (diff before/after) —
+  never by process name.
 
 ## II. Login captcha — unified ticket model (consolidated 2026-09-22)
 
@@ -42,18 +61,31 @@ widget is **not** a second layer.
   generateUrl, verifyUrl, fieldName}` (uppercase `ALTCHA`/`TIANAI`; no thresholds, no policy reasons);
   `POST /api/captcha/generate` → `{provider, challenge, sessionId?, expiresAt}`;
   `POST /api/captcha/verify` → `{status:'passed'|'failed'|'technical_error', provider, captchaTicket?,
-  expiresAt?, reason?, requireFallback?, nextProvider?}`.
-- **`POST /api/auth/login` only accepts `captchaTicket`** (issued by `CaptchaTicketService`, Redis
-  `captcha:ticket:*`, GETDEL one-shot) and never trusts a provider result directly. `captchaToken` is
-  the old name — now ignored/404.
+  expiresAt?, reason?, requireFallback?, nextProvider?, escalationGrant?, escalationExpiresAt?}`.
+  No `requiredStage`, no `mode` — both concepts were deleted.
+- **`POST /api/auth/login` only accepts `captchaTicket`** (`captcha:ticket:{sha256(ticket)}`,
+  GETDEL one-shot) and never trusts a provider result directly. `captchaToken` is the old name.
+  Redis keys and used-markers only ever contain `sha256(ticket)`.
 - Frontend may send only: `scene` / `provider` (intent) / `username` / `payload` (ALTCHA) /
-  `sessionId` + `data` (Tianai). Stage, ticket contents and the verdict are server-decided.
-- `requireFallback: true` = "layer 1 passed but policy demands Tianai" → render `TianaiCaptcha`
-  (never `altcha-widget`) and re-call `/verify` with `provider: 'TIANAI'`.
-- Internal policy reasons (`ACCOUNT_FAILURES` / `PRIVILEGED_ACCOUNT` / …) go to the security log only,
-  never to `/config` or `reason`.
-- `POST /api/system/config/batch` saves `sys.login.captcha.*` atomically and health-checks Tianai
-  **before** committing.
+  `sessionId` + `data` (Tianai) / `escalationGrant`. Ticket contents and the verdict are
+  server-decided.
+- **Layer 2 is gated by a one-shot escalation grant** (`captcha:escalation:{sha256(grant)}`): only
+  `/captcha/verify` issues it, and only when the risk policy decides to escalate;
+  `/captcha/generate?provider=TIANAI` must consume it (`GETDEL`) or get `40011`.
+- **`captcha_tianai_enabled=false` (default)** = no layer 2; risk hits are only *noted*
+  (`CAPTCHA_RISK_NOTED`, LOW). **`=true`** = a risk hit must complete Tianai; if the service cannot
+  run (no `TIANAI_BASE_URL`, failed health check, timeout) → **fail closed 50302**. It must NEVER
+  silently downgrade a high-risk account to "ALTCHA only + ticket" (that was a real security bug).
+- Health check accepts **only 2xx + parseable JSON object**. On an upstream technical failure the
+  response carries a **fresh** `escalationGrant` so the browser auto-refetches the challenge.
+- Layer-2 payload is the **official Tianai `ImageCaptchaTrack` DTO**
+  (`bgImageWidth/bgImageHeight/templateImageWidth/templateImageHeight/startTime/stopTime/
+  trackList[{x,y,t,type}]`, `type ∈ DOWN|MOVE|UP|CLICK`). Sizes come only from the upstream response;
+  no `randomY`, no 320×160 fallback, no custom `{points}`/`{x,y}`.
+- `CAPTCHA_SECONDARY_REQUIRED` (escalated → no ticket) and `CAPTCHA_RISK_NOTED` (noted only → request
+  still passes) are **mutually exclusive** within one `/verify` call.
+- `POST /api/system/config/batch` saves the 8 flat captcha keys atomically (whitelist + single
+  transaction) and health-checks Tianai **before** committing.
 - **Gotcha that cost hours:** the ALTCHA branch of `service.ts` must read the challenge nonce from the
   **decoded** payload — `meta.payload` is a base64 **string**, so `challengeNonceOf(meta.payload.challenge)`
   is always empty and turns a *successful* PoW into `PAYLOAD_MALFORMED` ("人机验证数据无效"). The provider
@@ -79,8 +111,11 @@ widget is **not** a second layer.
   when the parent has an `index.ts`**, which is how `api/auth/index.ts` (function routes) and
   `api/auth/captcha/index.ts` (custom router) coexist. A nested custom module must put the full path
   after `/api` in its own `new Router({ prefix: '/x/y' })`.
-- Config lives in `sys.login.captcha.*` (`sys_config`); env vars (see `bls-server/src/config/env.ts`):
-  `ALTCHA_HMAC_KEY` (prod required), `ALTCHA_COST`, `TIANAI_BASE_URL`, `CAPTCHA_DEV_BYPASS`.
+- Config = **8 flat keys only**: `login_captcha_enabled`, `captcha_primary_provider`,
+  `captcha_fallback_provider`, `captcha_ticket_ttl`, `captcha_tianai_enabled`,
+  `captcha_challenge_ttl`, `captcha_force_after_failures`, `captcha_secondary_type`.
+  Old `sys.login.captcha.*` is no longer read at runtime (migration `20260922_018`).
+  Env vars: `ALTCHA_HMAC_KEY` (prod required), `ALTCHA_COST`, `TIANAI_BASE_URL`, `CAPTCHA_DEV_BYPASS`.
 - Full memory: `bls-memory/pages/login-captcha.md`; also `docs/login-captcha.md`.
 
 ## III. Project conventions (follow when changing code)

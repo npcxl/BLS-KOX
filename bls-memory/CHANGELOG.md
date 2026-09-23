@@ -23,6 +23,50 @@ Rules: see the "Version metadata & maintenance" section of [`README.md`](README.
 
 ---
 
+## [1.10.0] — 2026-09-23
+
+**Service dependency self-check documented — "which microservice is not running" is now answered by
+the runtime itself.** Verified against the **working tree on top of `b4932b9`** (uncommitted Koa
+change: `observability/service-health.ts`, `scripts/check-services.ts`, `app.ts`, `core/router.ts`).
+
+Motivation: previously only MySQL + Redis were probed and `/api/health` returned `{status:'ok'}`
+without touching any dependency, so `bls-event-service` / `bls-ai-service` / the Tianai captcha
+service could be down with no signal at all — the frontend dev proxy renders "backend not listening"
+as a bare `504 Gateway Timeout`, which is very hard to attribute.
+
+### Changed
+
+- `00-common/08-external-api-and-service-auth.md` (→ v1.3.0) — one shared registry
+  (`bls-server/src/observability/service-health.ts`) now feeds four surfaces: the **`KOX 服务检测`**
+  box-drawn table printed **right after** `server.listen` (it cannot run earlier: the
+  `bls-realtime-ws` row shares the HTTP port, so probing it before `listen` always reported
+  ECONNREFUSED — a false "service not started"; status / service / kind / latency / target /
+  result, CJK-width aware, long cells wrapped, start hints listed under the table, target cell green
+  when reachable / red when not / dim when unconfigured, TTY-only coloring), `GET /api/ready` (`200 {status:'ready', degraded, checkedAt,
+  summary, services, unavailable}` / `503 not_ready` when a **core** dep is down; non-core down →
+  `200` + `degraded:true`; no internal addresses in the body), the new
+  `GET /internal/services` detail view (target / latency / failure reason / start command) and
+  `npm run services:check` (exit code 1 iff a core dep is down). `/api/health` is documented as
+  **liveness only**. Registry: `mysql`/`redis` (core), `bls-event-service`/`bls-ai-service`
+  (optional, `EVENT_SERVICE_URL`/`AI_SERVICE_URL`), `bls-captcha-service` (conditional,
+  `TIANAI_BASE_URL`, 2xx + JSON object). New env: `SERVICE_CHECK_STRICT` (production default `true`
+  → refuse to boot), `SERVICE_CHECK_TIMEOUT_MS` (5000), `SERVICE_CHECK_INTERVAL_MS` (60000,
+  transitions-only logging). `warmup` runs before the timed probe so cold module compilation is
+  never mistaken for a down service. The same file's captcha rows were corrected to the current
+  `/api/captcha/*` contract (`mode`, `requiredStage` and `/api/auth/captcha/*` were deleted in 1.9.0).
+- `docs/observability.md` — Koa endpoint table extended (`/api/ready`, `/internal/health`,
+  `/internal/services`) plus a 依赖自检 section (per-dependency table including `bls-realtime-ws`
+  via a WebSocket handshake probe, env table, warmup rationale, TTY-only coloring). The table is the
+  only output — no summary line, no start-hint section.
+- `bls-server/.env.example` — documented `AI_SERVICE_URL`, `EVENT_SERVICE_URL`, `INTERNAL_SECRET`
+  and the `SERVICE_CHECK_*` switches.
+- `docs/production-checklist.md` — readiness step now requires `mysql`/`redis` = `up` and a clean
+  startup self-check report; `npm run services:check` exit code added.
+- `docs/getting-started.md` — clarified that `/api/health` does not check dependencies and pointed
+  at `services:check` / `/api/ready`.
+
+---
+
 ## [1.9.0] — 2026-09-22
 
 **Login captcha contract repair (verified against the working tree on top of `5773b0f`).** Six real

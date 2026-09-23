@@ -61,6 +61,44 @@ export function isInsecureContext(): boolean {
 export const INSECURE_CONTEXT_HINT =
   '当前为非安全上下文（HTTP）：浏览器不允许执行人机验证，请改用 HTTPS 或 localhost 访问';
 
+/**
+ * 第一层失败后**可以自愈**的原因：
+ * 这些都不是"用户答错了"，而是"这一份 challenge/payload 已经不能用了"
+ * （用了旧 challenge 的 payload、challenge 被消费过、payload 结构损坏）。
+ * 处理方式：换一张 challenge 让 widget 重跑一次 PoW，而不是把用户永久卡在错误提示上。
+ */
+const LAYER1_RECOVERABLE_REASONS = new Set([
+  'BINDING_MISMATCH',
+  'STAGE_MISMATCH',
+  'PAYLOAD_MALFORMED',
+  'PAYLOAD_MISSING',
+  'CHALLENGE_EXPIRED',
+  'SIGNATURE_INVALID',
+]);
+
+/** 从官方 payload（base64 JSON）里取 challenge nonce */
+export function payloadChallengeNonce(payload: string): string | null {
+  try {
+    const raw = typeof atob === 'function' ? atob(payload) : Buffer.from(payload, 'base64').toString('utf8');
+    const parsed = JSON.parse(raw);
+    const nonce = parsed?.challenge?.parameters?.nonce;
+    return typeof nonce === 'string' && nonce ? nonce : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 从 `/generate` 下发的 challenge JSON 里取 nonce */
+export function challengeNonceOfJson(challengeJson: string | null): string | null {
+  if (!challengeJson) return null;
+  try {
+    const nonce = JSON.parse(challengeJson)?.parameters?.nonce;
+    return typeof nonce === 'string' && nonce ? nonce : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 配置拿不到 / 未开启时的安全默认值（fail closed 由状态机保证） */
 const DISABLED_CONFIG: CaptchaConfig = {
   enabled: false,
@@ -114,6 +152,9 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
 
   const stateRef = useRef(state);
   stateRef.current = state;
+  /** 当前 challenge（JSON 字符串）的 ref：回调里不能依赖闭包里的 state */
+  const altchaChallengeRef = useRef<string | null>(altchaChallenge);
+  altchaChallengeRef.current = altchaChallenge;
 
   /** 第一层并发守卫：一次求解只允许发出一次 verify */
   const verifyingRef = useRef(false);
@@ -210,10 +251,35 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
 
   // ---------- 第一层 ----------
 
+  /**
+   * 换一张第一层 challenge 并让 widget 重跑一次 PoW。
+   * 带重试上限，避免「失败 → 重取 → 再失败」变成请求风暴。
+   */
+  const refreshLayer1Challenge = useCallback((hint: string | null) => {
+    if (challengeRetryRef.current >= MAX_CHALLENGE_RETRY) {
+      dispatch({ type: 'SILENT_FAILED', hint: hint ?? '人机验证组件加载失败，请刷新页面重试' });
+      return;
+    }
+    challengeRetryRef.current += 1;
+    setAltchaKey();
+    void fetchSilentChallenge(stateRef.current.username, configRef.current);
+  }, [fetchSilentChallenge]);
+
   const onAltchaVerified = useCallback(
     (payload: string) => {
       // 并发守卫：多个 verified 回调 / 重挂载只允许产生一次 verify 请求
       if (verifyingRef.current || !payload) return;
+
+      // ⚠ 陈旧回调守卫（这是「验证环境发生变化」的真正来源）：
+      // 用户名变化 / 刷新 challenge 会让 widget 重挂载，但**旧 widget 的 verified 事件仍可能到达**。
+      // 旧 payload 的签名绑定的是旧 usernameHash，若直接拿它 + 新用户名去 /verify，
+      // 服务端会（正确地）返回 BINDING_MISMATCH。这里直接丢弃，等当前 widget 重新求解。
+      const payloadNonce = payloadChallengeNonce(payload);
+      const currentNonce = challengeNonceOfJson(altchaChallengeRef.current);
+      if (payloadNonce && currentNonce && payloadNonce !== currentNonce) {
+        return;
+      }
+
       const cycle = stateRef.current.cycleId;
       const name = stateRef.current.username;
       verifyingRef.current = true;
@@ -227,6 +293,8 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
 
           const data: any = (res as any)?.data ?? {};
           if (data.status === 'passed' && data.captchaTicket) {
+            // 成功 → 清零重试计数，后续（例如密码错误后重新验证）仍可自愈
+            challengeRetryRef.current = 0;
             dispatch({
               type: 'SILENT_TICKET',
               ticket: String(data.captchaTicket),
@@ -252,9 +320,16 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
               type: 'SILENT_FAILED',
               hint: CAPTCHA_REASON_TEXT[String(data.reason ?? '')] ?? '人机验证服务暂不可用，请稍后重试',
             });
+            // 技术故障同样自愈：换一张 challenge 重试
+            refreshLayer1Challenge(CAPTCHA_REASON_TEXT[String(data.reason ?? '')]);
             return;
           }
-          dispatch({ type: 'SILENT_FAILED', hint: CAPTCHA_REASON_TEXT[String(data.reason ?? '')] });
+
+          const reason = String(data.reason ?? '');
+          const hint = CAPTCHA_REASON_TEXT[reason];
+          dispatch({ type: 'SILENT_FAILED', hint });
+          // 这一份 challenge 作废（旧 payload / 已消费 / 结构损坏）→ 换一张重跑，不把用户卡死
+          if (LAYER1_RECOVERABLE_REASONS.has(reason)) refreshLayer1Challenge(hint);
         } catch {
           if (stateRef.current.cycleId !== cycle) return;
           dispatch({ type: 'SILENT_FAILED', hint: '人机验证服务暂不可用，请稍后重试' });

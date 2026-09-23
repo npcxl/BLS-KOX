@@ -105,6 +105,26 @@ export const env = {
     url: (process.env.EVENT_SERVICE_URL ?? '').replace(/\/+$/, ''),
     enabled: !!(process.env.EVENT_SERVICE_URL ?? ''),
   },
+  /**
+   * AI 微服务（bls-ai-service，默认 7201）。
+   * Koa 自身不调用它（前端 dev proxy 直连 7201），这里**只用于依赖自检**：
+   * 开发环境给默认地址，这样「AI 服务没启动」能在自检报告里直接看到；
+   * 生产环境不猜地址，必须显式配置（未配置即视为未部署，自检记 disabled）。
+   */
+  aiService: {
+    url: (process.env.AI_SERVICE_URL ?? (isProduction ? '' : 'http://127.0.0.1:7201')).replace(/\/+$/, ''),
+  },
+  /**
+   * 依赖自检参数（实现见 observability/service-health.ts）：
+   * - strict：启动时核心依赖（MySQL/Redis）不可用是否直接退出。默认生产 true、开发 false。
+   * - timeoutMs：单个依赖探测超时（毫秒）。
+   * - intervalMs：运行期巡检间隔（毫秒），0 = 关闭巡检。
+   */
+  serviceCheck: {
+    strict: (process.env.SERVICE_CHECK_STRICT ?? (isProduction ? 'true' : 'false')) === 'true',
+    timeoutMs: numberEnv('SERVICE_CHECK_TIMEOUT_MS', 3_000),
+    intervalMs: numberEnv('SERVICE_CHECK_INTERVAL_MS', 60_000),
+  },
   internalSecret: process.env.INTERNAL_SECRET ?? '',
   ws: {
     enabled: (process.env.WS_ENABLED ?? 'true') === 'true',

@@ -41,6 +41,13 @@ import { webhookJob } from './queue/jobs/webhook.job';
 import { tenantOffboardJob } from './queue/jobs/tenant-offboard.job';
 import { outboxPublisher } from './outbox/outbox-publisher';
 import { registerOutboxSubscribers } from './outbox/subscribers';
+import {
+  findFatalDeps,
+  probeServices,
+  reportStartupServices,
+  startServiceWatchdog,
+  toServiceDetail,
+} from './observability/service-health';
 
 export function createApp(): Koa {
   const app = new Koa();
@@ -201,6 +208,15 @@ export function createApp(): Koa {
   const internalR = new KoaRouter({ prefix: '/internal' });
   internalR.use(internalAuth());
   internalR.get('/health', (ctx: any) => { ctx.body = { status: 'ok' }; });
+  /**
+   * 依赖详细视图（内部鉴权）：带内网地址、耗时、失败原因与启动命令。
+   * 公开的 /api/ready 只回状态，避免把内网拓扑暴露给匿名调用者。
+   */
+  internalR.get('/services', async (ctx: any) => {
+    const detail = toServiceDetail(await probeServices());
+    ctx.status = detail.status === 'ready' ? 200 : 503;
+    ctx.body = detail;
+  });
   internalR.get('/metrics', async (ctx: any) => {
     const { metricsRegistry } = await import('./observability/metrics.js');
     ctx.set('Content-Type', metricsRegistry.contentType);
@@ -286,17 +302,57 @@ if (require.main === module) {
   const server = http.createServer(app.callback());
   const wss = attachRealtimeWs(server, app);
 
-  server.listen(env.port, env.host, () => {
-    logger.info(`${env.appName} started`, { host: env.host, port: env.port, nodeEnv: env.nodeEnv });
+  /** 运行期依赖巡检定时器（Graceful Shutdown 时清理） */
+  let serviceWatchdog: NodeJS.Timeout | null = null;
+
+  // ====== 启动顺序：先 listen，再做依赖自检 ======
+  // 为什么不是「先自检、再 listen」：Koa 的实时通道（bls-realtime-ws）与 HTTP **共用同一个端口**，
+  // 它的 WebSocket 握手只有在该端口 listen 之后才可能成功。放在 listen 之前探测必然得到
+  // ECONNREFUSED，把组件自己误报成「服务未启动」（旧实现就是这样，还在巡检里多报一次「已恢复」）。
+  // 严格模式（生产默认 SERVICE_CHECK_STRICT=true）核心依赖不可用时立刻退出：端口只开了几十毫秒，
+  // 这期间进来的请求本来也会因依赖不可用而失败。
+  void (async () => {
+    await new Promise<void>((resolve, reject) => {
+      const onError = (error: Error) => reject(error);
+      server.once('error', onError);
+      server.listen(env.port, env.host, () => {
+        // 监听成功后摘掉临时错误处理，之后的 server 错误按原行为交给进程
+        server.off('error', onError);
+        logger.info(`${env.appName} started`, { host: env.host, port: env.port, nodeEnv: env.nodeEnv });
+        resolve();
+      });
+    });
+
+    // 自检：「哪个微服务没开」必须在启动那一刻就说清楚，而不是等出错再猜：
+    //   Redis 没开 → 会话 / 防重放 / 限流静默失效；event-service 没开 → 审计事件进死信；
+    //   Tianai 没开 → 高风险账号登录 fail closed（503）；后端整体没起 → 前端只看到 504。
+    const results = await probeServices();
+    reportStartupServices(results);
+
+    const fatal = findFatalDeps(results);
+    if (fatal.length > 0) {
+      const names = fatal.map((r) => `${r.name}(${r.message})`).join('、');
+      if (env.serviceCheck.strict) {
+        logger.error(`[services] 核心依赖不可用：${names}；SERVICE_CHECK_STRICT=true，退出启动`);
+        process.exit(1);
+      }
+      logger.warn(`[services] 核心依赖不可用：${names}；SERVICE_CHECK_STRICT=false，继续启动（仅建议开发环境）`);
+    }
+
+    // 注册并启动 Worker
+    worker.register(exportJob).register(importJob).register(notificationJob).register(webhookJob)
+      .register(tenantOffboardJob).start();
+
+    // 注册订阅者并启动 Outbox Publisher
+    registerOutboxSubscribers();
+    outboxPublisher.start();
+
+    // 运行期巡检：依赖中途挂掉 / 恢复时记一条日志（只记状态变化，不刷屏）
+    serviceWatchdog = startServiceWatchdog({ initial: results });
+  })().catch((error) => {
+    logger.error('[startup] 服务启动失败', { error: String(error) });
+    process.exit(1);
   });
-
-  // 注册并启动 Worker
-  worker.register(exportJob).register(importJob).register(notificationJob).register(webhookJob)
-    .register(tenantOffboardJob).start();
-
-  // 注册订阅者并启动 Outbox Publisher
-  registerOutboxSubscribers();
-  outboxPublisher.start();
 
   // ========== DR — 定时自动备份 ==========
   const backupEnabled = (process.env.BACKUP_ENABLED ?? 'false') === 'true';
@@ -369,6 +425,10 @@ if (require.main === module) {
     // 2b. Stop Outbox Publisher
     try { await outboxPublisher.stop(); } catch {}
     logger.info('[shutdown] Outbox Publisher stopped');
+
+    // 2c. Stop 依赖巡检
+    if (serviceWatchdog) { clearInterval(serviceWatchdog); serviceWatchdog = null; }
+    logger.info('[shutdown] Service watchdog stopped');
 
     // 3. Close WebSocket
     try { await closeWebSocketServer(wss); } catch {}
