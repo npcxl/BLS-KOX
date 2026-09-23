@@ -361,12 +361,81 @@ export default function PageConfigPage() {
         </Button>,
       ]}
     >
-      <style>{`.thin-scrollbar::-webkit-scrollbar{width:4px}.thin-scrollbar::-webkit-scrollbar-thumb{background:#d9d9d9;border-radius:2px}.thin-scrollbar::-webkit-scrollbar-thumb:hover{background:#bfbfbf}`}</style>
+      <style>{`
+        .thin-scrollbar::-webkit-scrollbar{width:4px}
+        .thin-scrollbar::-webkit-scrollbar-thumb{background:#d9d9d9;border-radius:2px}
+        .thin-scrollbar::-webkit-scrollbar-thumb:hover{background:#bfbfbf}
+
+        /* ===== 左侧导航：磨砂玻璃选中 + 弹性跳动 ===== */
+
+        /* 环境光：磨砂玻璃（backdrop-filter）必须背后有可模糊的底色，
+           纯色背景上再模糊也是纯色，看不出玻璃质感。这里用极淡的三团径向渐变做底。 */
+        .kox-ambient{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+        .kox-ambient::before{
+          content:"";position:absolute;inset:-40px;
+          background:
+            radial-gradient(200px 130px at 6% 0%, rgba(22,119,255,.20), transparent 70%),
+            radial-gradient(220px 160px at 96% 24%, rgba(114,46,209,.16), transparent 72%),
+            radial-gradient(200px 170px at 10% 80%, rgba(19,194,194,.15), transparent 72%);
+          filter:blur(10px);
+          animation:koxAmbientFloat 16s ease-in-out infinite alternate;
+        }
+        @keyframes koxAmbientFloat{
+          from{transform:translate3d(0,0,0) scale(1)}
+          to{transform:translate3d(0,-16px,0) scale(1.08)}
+        }
+
+        /* 导航项：用弹性缓动（先冲过再回弹）表现「跳动」 */
+        .kox-nav-item{
+          position:relative;z-index:1;cursor:pointer;
+          padding:8px 12px;border-radius:10px;margin-bottom:4px;
+          border:1px solid transparent;
+          transition:
+            transform .34s cubic-bezier(.34,1.56,.64,1),
+            background .24s ease,
+            border-color .24s ease,
+            box-shadow .24s ease;
+        }
+        .kox-nav-item:hover{
+          background:rgba(255,255,255,.55);
+          border-color:rgba(255,255,255,.8);
+          transform:translateX(2px);
+        }
+
+        /* 选中：半透明白 + 背景模糊 = 磨砂玻璃；外发光 + 内高光模拟玻璃厚度 */
+        .kox-nav-item.is-active{
+          background:rgba(255,255,255,.62);
+          backdrop-filter:blur(12px) saturate(180%);
+          -webkit-backdrop-filter:blur(12px) saturate(180%);
+          border-color:rgba(255,255,255,.95);
+          box-shadow:
+            0 8px 20px rgba(22,119,255,.16),
+            0 1px 2px rgba(0,0,0,.04),
+            inset 0 1px 0 rgba(255,255,255,.95);
+          animation:koxNavPop .46s cubic-bezier(.34,1.56,.64,1) both;
+        }
+        /* 选中时的「弹一下」：轻微放大 → 过冲 → 回落 → 停住 */
+        @keyframes koxNavPop{
+          0%{transform:translateX(0) scale(.97)}
+          55%{transform:translateX(6px) scale(1.045)}
+          78%{transform:translateX(3px) scale(.995)}
+          100%{transform:translateX(4px) scale(1.02)}
+        }
+
+        /* 尊重系统「减弱动态效果」设置 */
+        @media (prefers-reduced-motion: reduce){
+          .kox-ambient::before{animation:none}
+          .kox-nav-item,
+          .kox-nav-item.is-active{animation:none;transition:none}
+        }
+      `}</style>
     <Layout style={{ background: "#fff", overflow: "hidden" }}>
       <Sider width={260} style={{ background: "#fafafa", borderRight: "1px solid #f0f0f0", overflow: "hidden",
-        height:"660px"
+        height:"660px", position: "relative"
        }}>
-        <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+        {/* 环境光层：给磨砂玻璃提供可模糊的底色（很淡，只做质感底噪） */}
+        <div className="kox-ambient" aria-hidden="true" />
+        <div style={{ position: "relative", zIndex: 1, height: "100%", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "12px 12px 0", flexShrink: 0 }}>
           <Input
             prefix={<SearchOutlined />}
@@ -386,18 +455,8 @@ export default function PageConfigPage() {
               return (
                 <div
                   key={item.pageCode}
+                  className={active ? "kox-nav-item is-active" : "kox-nav-item"}
                   onClick={() => setSelectedCode(item.pageCode)}
-                  style={{
-                    cursor: "pointer",
-                    padding: "8px 12px",
-                    borderRadius: 6,
-                    marginBottom: 4,
-                    background: active ? "#e6f4ff" : "transparent",
-                    border: active ? "1px solid #91caff" : "1px solid transparent",
-                    transition: "all 0.2s",
-                  }}
-                  onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "#f5f5f5"; }}
-                  onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <Text strong={active} style={{ fontSize: 13 }}>{item.pageName}</Text>
