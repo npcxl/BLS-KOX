@@ -1,12 +1,13 @@
-# ====== Stage 1: Build ======
-FROM node:22-alpine AS builder
+FROM docker.1ms.run/library/node:22-alpine AS builder
 
 ARG APP_VERSION
 ARG COMMIT_HASH
 
 WORKDIR /app
 
-RUN apk add --no-cache python3 make g++
+# Alpine 包源换成阿里云（默认 dl-cdn.alpinelinux.org 在国内很慢/易超时）
+RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories \
+ && apk add --no-cache python3 make g++
 
 RUN npm config set registry https://registry.npmmirror.com
 
@@ -19,7 +20,7 @@ COPY src/ ./src/
 RUN npm run build
 
 # ====== Stage 2: Runtime ======
-FROM node:22-alpine AS runtime
+FROM docker.1ms.run/library/node:22-alpine AS runtime
 
 ARG APP_VERSION
 ARG COMMIT_HASH
@@ -33,7 +34,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV APP_PORT=7001
 
-RUN apk add --no-cache python3 make g++ wget
+RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories \
+ && apk add --no-cache python3 make g++ wget
 
 RUN addgroup -g 2000 bls && adduser -u 2000 -G bls -D bls
 

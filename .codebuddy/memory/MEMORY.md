@@ -22,6 +22,16 @@
   server-side because the token is required). The login flow detects it (`envBlocked` /
   `ENV_UNSUPPORTED`); dev options are localhost, dev-server HTTPS, or
   `chrome://flags/#unsafely-treat-insecure-origin-as-secure` (debug only). Production must be HTTPS.
+- **`registry-mirrors` in `/etc/docker/daemon.json` does NOT apply to BuildKit.** `docker pull`
+  uses it, but `docker compose build` / `docker build` (BuildKit, and Compose v2 always uses
+  BuildKit) resolves base images itself → against docker.io directly, which in mainland China times
+  out (~30 s) and then fails with
+  `failed to resolve source metadata for docker.io/library/node:22-alpine: not found`.
+  Three fixes, in order of convenience: (1) pre-`docker pull` the base image so the build finds it
+  locally; (2) point the `FROM` at the mirror host explicitly
+  (`FROM <id>.mirror.aliyuncs.com/library/node:22-alpine`); (3) give BuildKit its own config —
+  `/etc/buildkit/buildkitd.toml` with `[registry."docker.io"] mirrors = [...]` plus a
+  `docker buildx create --driver docker-container --config ...` builder.
 - PowerShell caveats: `Get-Content`/`Select-String` decode as ANSI (UTF-8 Chinese → mojibake; judge by
   `git diff`); `node -e "..."` swallows quotes and treats the backtick as an escape char (a regex
   containing a SQL backtick matches nothing — use a temp `.js` file, or `[\x60]`); `findstr` piped
@@ -120,6 +130,29 @@ widget is **not** a second layer.
 
 ## III. Project conventions (follow when changing code)
 
+- **Deployment topology (decided 2026-09-24)**: production server `47.94.205.207` (Aliyun,
+  `xlcig.cn`) runs **only `bls-server`** — MySQL + Redis live on an **external host
+  `117.72.118.165`** (DB `kox`), so the `mysql`/`redis` containers must never be started there.
+  ⚠ The **local dev `bls-server/.env` points at the very same instance**
+  (`117.72.118.165:3306/kox`, Redis `:6379`) → dev and the future production server **share one
+  database and one Redis**; the correct `DB_PASSWORD`/`REDIS_PASSWORD` are already in that file
+  (copy them, never regenerate). Sharing means dev writes/migrations hit production data, which is
+  still an open decision.
+  Two consequences worth remembering:
+  - `bls-server` has `depends_on: mysql(healthy)/redis(healthy)`, so **`up -d bls-server` starts
+    those containers too** — always pass `--no-deps`.
+  - `REDIS_KEY_PREFIX` defaults to `bls:`; if prod and dev share that Redis instance the keys
+    collide (sessions, rate-limit counters, replay nonces, captcha tickets) → set a distinct prod prefix.
+  - ⚠ **`environment:` in the compose files is an explicit allow-list** — `REDIS_KEY_PREFIX`,
+    `AI_SERVICE_URL`, `TIANAI_BASE_URL`, `REDIS_USERNAME`, `PUBLIC_IP` appear in **no**
+    `docker-compose*.yml`, so writing them into `.env.docker` has **zero effect** on the container.
+    They must be added to the `bls-server` service's `environment:` list (or injected via an override
+    file) before they do anything. Verify with `docker compose config | grep <VAR>`.
+- **Captcha (Tianai) container wiring trap**: `docker-compose.captcha.host.yml` publishes 8083 on
+  `127.0.0.1`, which only helps when Koa runs **on the host** (`npm run dev`); for a containerised
+  `bls-server`, `127.0.0.1` is the container itself. `docker-compose.captcha.yml` puts
+  `tianai-captcha` on its own network `bls-captcha_net`, so bls-server must be attached to that
+  network (or the Java service moved into `bls-net`).
 - **`bls-event-service` is a separate Node service on `:7101`** (`cd bls-event-service && npm run dev`,
   `INTERNAL_SECRET` must match `bls-server/.env`). If it is down, `publishEvent` logs
   `event-service unreachable { error: 'fetch failed' }`, retries via the outbox and finally
@@ -143,6 +176,42 @@ widget is **not** a second layer.
   - `applyScope()` builds tenant + soft-delete + Data Scope once; must be reused inside transactions
     (never rebuild the query there). 0 affected rows on edit/remove/status/detail → 404.
   - Batch delete always takes `{ ids: [] }` (Koa/Java also accept a bare array / comma string).
+- **Production env is hard-validated at startup** (`bls-server/src/config/env.ts`, only when
+  `NODE_ENV=production`; a missing/wrong value **throws → the container crash-loops**):
+  `JWT_SECRET` (not the `please_change_me_dev_only` fallback, not `CHANGE_TO_*`), `DB_PASSWORD`,
+  `CORS_ORIGINS` (**non-empty and without `*`**), `API_SIGN_SECRET` (required whenever
+  `REPLAY_ENABLED=true`), `ALTCHA_HMAC_KEY` (**≥32 chars**), `SECRET_ENCRYPTION_KEY`,
+  `REDIS_ENABLED=true` (`env.ts` also refuses `CAPTCHA_DEV_BYPASS` in production).
+  ⚠ `docker-compose.yml`'s explicit `environment:` list only forwards `CORS_ORIGINS` and
+  `API_SIGN_SECRET` of those; `ALTCHA_HMAC_KEY`, `SECRET_ENCRYPTION_KEY`, `REDIS_KEY_PREFIX`,
+  `TIANAI_BASE_URL`, `AI_SERVICE_URL` are **not forwarded at all** — putting them in
+  `.env.docker` silently does nothing until they are added to the compose service.
+- **Envelope-encryption key vs a shared DB**: in dev, `SECRET_ENCRYPTION_KEY` is absent and the key
+  is HKDF-SHA256-derived from `JWT_SECRET` (salt `bls-kox-secret-envelope`, info
+  `secret-encryption`, 32 B); ciphertext format is `enc:v1:<keyVersion>:<iv>:<authTag>:<ct>` with
+  `keyVersion` defaulting to `v1`. Setting a *fresh* `SECRET_ENCRYPTION_KEY` while the version stays
+  `v1` makes every existing `enc:v1:v1:…` row undecryptable (GCM auth failure). Against a DB that
+  already contains such rows either reuse the derived value, or rotate properly:
+  `SECRET_ENCRYPTION_KEY_VERSION=v2` + `SECRET_ENCRYPTION_KEY_PREVIOUS=v1:<derived>` +
+  `npm run secrets:rotate`.
+- **Service dependency registry lives in exactly one place**: `bls-server/src/observability/service-health.ts`
+  (`SERVICE_DEPS`), shared by the startup self-check, `GET /api/ready`, `GET /internal/services`,
+  the watchdog and `npm run services:check`. **Core (fatal) = `mysql` + `redis` only**;
+  `bls-realtime-ws` is conditional but is part of the Koa process itself; `bls-event-service` /
+  `bls-ai-service` / `bls-captcha-service` are disabled (**`[SKIP]`, not `[FAIL]`**) when
+  `EVENT_SERVICE_URL` / `AI_SERVICE_URL` / `TIANAI_BASE_URL` are empty — and `AI_SERVICE_URL` has a
+  dev-only default (`http://127.0.0.1:7201`), in production it is empty unless set. Java/Rust
+  backends and `ollama` are deliberately **not** in the registry (Java/Rust are drop-in alternatives;
+  ollama is the AI service's own dependency). MinIO is lazy (only the storage provider touches it),
+  so bls-server boots fine without it. ⇒ a minimal bls-server deployment is `mysql + redis + bls-server`.
+- ⚠ **`LocalProvider` is a stub, not a real storage backend** (`api/system/storage/providers/LocalProvider.ts`):
+  `upload()` does nothing but echo `{bucketName, objectName}`, `getPublicUrl()` returns a URL nothing
+  serves. So `sys_storage_config.storage_type='local'` makes uploads silently "succeed" and produce
+  dead URLs. Only `minio` / `aliyun_oss` / `tencent_cos` / `aws_s3` really work — a deployment
+  without MinIO (or cloud OSS) has **no working file upload**, and the seeded row points at
+  `minio:9000` with `access_key/secret_key = minioadmin`, so it fails at connection level too.
+  (`decryptSecret` tolerates legacy plaintext, so a raw SQL update of those keys works, but the
+  storage-config page encrypts them properly.)
 - Global tables (no `tenant_id`): `sys_menu`, `sys_package`, `sys_package_menu`, `sys_role_menu`,
   `sys_user_role`; of these `sys_menu`, `sys_package`, `sys_package_menu`, `sys_role_menu` have **no
   `deleted` column** — never write it for them.
@@ -197,6 +266,14 @@ widget is **not** a second layer.
 - **Never run `git commit` unless explicitly asked.** When done, report the change list + a suggested
   commit message.
 - Reply in Simplified Chinese; AI-facing documents (`bls-memory/`, `AGENTS.md`, this file) are English.
+- **Deployment dependency preference (2026-09-24)**: the user is reluctant to depend on
+  **CNB (Tencent)** as the build/registry pipeline — it is a third party to their own Aliyun
+  server. They lean towards "git pull + `docker build` on my own server". Treat the CNB pipeline as
+  optional infrastructure: the compose files support both routes (with `-f docker-compose.deploy.yml`
+  = pull from the registry; without it = use the locally built image), and a self-contained
+  server-side script (`git pull` → build → migrate → `up -d` → health check) is the acceptable /
+  preferred automation shape when CNB is not wanted. If a registry is still desired, suggest their
+  **own Aliyun ACR** (same region, fast, free personal edition) instead of a third party's.
 - Several sessions may work in parallel here (happened repeatedly): check `git status` before editing,
   do not overwrite another session's uncommitted work, and call out any concurrent change you notice.
 - `.codebuddy/memory/*.md` and `bls-memory/*.md` may have concurrent writers: **read the file (or

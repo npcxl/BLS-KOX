@@ -1,0 +1,120 @@
+# ============================================================
+# 生产服务器覆盖文件（47.94.205.207 / xlcig.cn）
+#
+# 用法（服务器上，/opt/bls-kox 目录内）：
+#   docker compose --env-file .env.docker \
+#     -f docker-compose.yml -f docker-compose.server-only.yml \
+#     up -d --no-deps bls-server
+#   （要一起起第二层人机验证就再加上服务名：… up -d --no-deps bls-server tianai-captcha）
+#
+# 它做三件事：
+#   1) 把 bls-server 的 7001 发布到宿主【回环地址】，供宿主机 nginx 反代 /api 与 /ws。
+#      刻意写 127.0.0.1 而不是 0.0.0.0 —— 公网无法直连 7001（安全组也只放 22/80/443）。
+#   2) 补上 docker-compose.yml 的 environment 白名单里【缺失】的变量。
+#      base 文件的 environment 是显式枚举、不是 .env.docker 的全量透传，所以
+#      REDIS_KEY_PREFIX / ALTCHA_HMAC_KEY / SECRET_ENCRYPTION_KEY / AI_SERVICE_URL /
+#      TIANAI_BASE_URL 写在 .env.docker 里是【无效】的，必须在这里显式声明才会进容器。
+#      （environment 在 compose 里是按 key 合并的，所以这里只写增量即可。）
+#   3) 定义第二层人机验证服务 tianai-captcha（Java），让它加入 bls-net，
+#      这样 Koa 容器才能用服务名 http://tianai-captcha:8083 访问它（详见文件末尾注释）。
+#
+# 注意：
+#   - 本文件的路线是「本地构建镜像 → 手动上传 → docker load」，
+#     因此【不要】同时带 -f docker-compose.deploy.yml（那个会把 image 指向制品库去 pull）。
+#   - --no-deps 是必须的：bls-server 声明了 depends_on mysql(healthy) / redis(healthy)，
+#     而这两者在本部署里是【外部服务】(117.72.118.165)，本机不需要也不应该起容器。
+#   - 校验（唯一可信）：docker compose --env-file .env.docker \
+#       -f docker-compose.yml -f docker-compose.server-only.yml config | grep <变量名>
+#
+# 本文件刻意不定义 mysql / redis / minio —— 它们由外部或后续阶段提供。
+# ============================================================
+services:
+  bls-server:
+    ports:
+      - "127.0.0.1:7001:7001"
+
+    environment:
+      # ---- 与本地开发共用同一个 Redis 实例，前缀必须区分开（缺失直接报错，避免静默撞键）----
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:?REDIS_KEY_PREFIX is required on this host}
+      REDIS_USERNAME: ${REDIS_USERNAME:-}
+
+      # ---- 生产强校验项：compose 阶段就报错，好过容器起来后 crash-loop ----
+      ALTCHA_HMAC_KEY: ${ALTCHA_HMAC_KEY:?ALTCHA_HMAC_KEY is required}
+      ALTCHA_COST: ${ALTCHA_COST:-50000}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:?SECRET_ENCRYPTION_KEY is required}
+      SECRET_ENCRYPTION_KEY_VERSION: ${SECRET_ENCRYPTION_KEY_VERSION:-v1}
+      SECRET_ENCRYPTION_KEY_PREVIOUS: ${SECRET_ENCRYPTION_KEY_PREVIOUS:-}
+
+      # ---- 未部署的可选服务：留空 → 启动自检显示 [SKIP]（功能降级），而不是 [FAIL] ----
+      EVENT_SERVICE_URL: ${EVENT_SERVICE_URL:-}
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-}
+      # 部署了下面的 tianai-captcha 之后，在 .env.docker 里填 http://tianai-captcha:8083
+      TIANAI_BASE_URL: ${TIANAI_BASE_URL:-}
+
+  # ============================================================
+  # 第二层人机验证（Tianai CAPTCHA，Java）
+  #
+  # 为什么直接写在这里、而不是用仓库的 docker-compose.captcha.yml：
+  #   docker-compose.captcha.yml 是给「Koa 跑在宿主机（npm run dev）」准备的，
+  #   它把服务放在独立的 bls-captcha_net 网络上；而本机 Koa 跑在容器里，
+  #   必须在【同一个网络】里才能用服务名 tianai-captcha 解析到它，
+  #   所以这里让它加入 bls-net。容器之间用服务名互访，端口不对宿主/公网发布。
+  #
+  # 镜像：由本地打好的 jar 构建（bls-captcha-service/Dockerfile.jar），
+  #       或直接在服务器上跑官方多阶段 Dockerfile 构建，两种都会得到同一个 tag。
+  #
+  # 启动（与 bls-server 同一条命令，--no-deps 照旧）：
+  #   docker compose --env-file .env.docker \
+  #     -f docker-compose.yml -f docker-compose.server-only.yml \
+  #     up -d --no-deps bls-server tianai-captcha
+  # ============================================================
+  tianai-captcha:
+    image: bls-captcha-service:1.0.0
+    container_name: tianai-captcha
+    restart: unless-stopped
+    # 只在内网暴露：不写 ports，公网/宿主都访问不到 8083（安全要求）
+    expose:
+      - "8083"
+    environment:
+      TZ: Asia/Shanghai
+      # 注意：ENTRYPOINT 是 exec 形式，不会展开 $JAVA_OPTS；JAVA_TOOL_OPTIONS 才能被 JVM 读取
+      JAVA_TOOL_OPTIONS: -Xms256m -Xmx512m
+    networks:
+      - bls-net
+    healthcheck:
+      # Temurin JRE 极简、不带 curl，用 bash 内置 /dev/tcp 探端口
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8083"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================
+  # 边缘 nginx（容器版）—— 宿主机不需要装 nginx
+  #
+  #   - 80 端口直接对外（安全组放行 80；443 等证书就绪后再加）
+  #   - 托管 ./bls-admin/dist（你在本机构建、上传的前端产物）
+  #   - /api、/ws 反代到同一网络里的 bls-server 容器（靠服务名解析）
+  #   - 配置见 deploy/nginx/container-edge.conf（含 CSP、gzip、限流、证书启用步骤）
+  #
+  # 启动（和 bls-server 同一条命令）：
+  #   docker compose --env-file .env.docker \
+  #     -f docker-compose.yml -f docker-compose.server-only.yml \
+  #     up -d --no-deps bls-server edge-nginx
+  #
+  # 改完配置不用重建容器，只要：
+  #   docker exec bls-edge-nginx nginx -t && docker exec bls-edge-nginx nginx -s reload
+  # ============================================================
+  edge-nginx:
+    image: nginx:alpine
+    container_name: bls-edge-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # - "443:443"          # 证书就绪后再打开，并挂载 ./certs
+    volumes:
+      - ./deploy/nginx/container-edge.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./bls-admin/dist:/usr/share/nginx/html:ro
+      # - ./certs:/etc/nginx/certs:ro
+    networks:
+      - bls-net

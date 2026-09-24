@@ -1,0 +1,25 @@
+# ============================================================
+# 统一换行符（2026-09-24）
+#
+# 背景：本仓库 core.autocrlf=true —— git 库里的 blob 是 LF，但检出到 Windows
+# 工作区会变成 CRLF。而这些文件（nginx conf / compose yml / 部署脚本 / SQL）
+# 是"直接搬到 Linux 服务器上被 sed、bash、nginx、docker compose 读取"的，
+# 一旦带上 \r 就会出现隐蔽故障：
+#   - sed 的 `^    listen 80;$` 匹配不到（本次 HTTPS 配置改了却不生效就是这个原因）
+#   - bash 报 `bad interpreter: /bin/bash^M`
+#   - nginx / compose 报出难以定位的解析错误
+#
+# 显式声明 eol=lf 后，**检出到 Windows 工作区也是 LF**，
+# 复制 / 粘贴到服务器就不会再引入 \r。
+#
+# 注意：不要用 `* text=auto` —— 那会把大量源码文件一起重写，
+# 产生一次巨大且无意义的 diff；这里只覆盖部署运行时会读的那几类。
+# ============================================================
+
+*.conf        text eol=lf
+*.sh          text eol=lf
+*.sql         text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+Dockerfile    text eol=lf
+*.dockerfile  text eol=lf

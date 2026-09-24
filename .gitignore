@@ -39,3 +39,47 @@ logs/
 # IDE
 .DS_Store
 Thumbs.db
+
+# ============================================================
+# 2026-09-24 补充：本机 / 部署过程产物（一律不提交）
+# ============================================================
+
+# --- 环境变量：只有 *.example 模板可以入库，其余一律不提交 ---
+.env.*
+!.env.example
+!.env.docker.example
+!*.env.example
+!*.env.production.example
+.env.docker.bak*
+*.env.bak*
+*.env.save
+
+# --- 证书 / 私钥（certs/ 与 *.pem / *.key 上面已有，这里兜底其它格式）---
+*.crt
+*.cer
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# --- 生产服务器上的本地配置（.env.docker 上面已忽略，这里覆盖手工副本）---
+deploy/server/.env.docker
+deploy/server/*.local
+
+# --- 导出的镜像 / 数据库备份（"本机构建镜像 → docker save → 上传服务器" 会产生）---
+*.tar
+*.tar.gz
+*.tgz
+*.sql.gz
+*.dump
+
+# --- 本机运行时数据目录 ---
+mysql-data/
+redis-data/
+minio-data/
+
+# --- AI 工具运行时数据（.codebuddy/memory 的会话记录是有意入库的，这里只排除运行时目录）---
+.codebuddy/teams/
+.codebuddy/automations/
+.codebuddy/history/
+.codebuddy/logs/

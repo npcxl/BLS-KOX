@@ -1,6 +1,6 @@
 # 00 — Architecture & Request Pipeline (shared)
 
-> **Document version:** 1.3.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
+> **Document version:** 1.3.2 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
 >
 > *Uncommitted note:* the `4001x`/`50301` captcha error codes, the router sub-directory recursion
 > and the envelope-less `/api/auth/captcha/challenge` exception were verified against `753d86a` +
@@ -34,6 +34,40 @@ Only **one** backend (Koa or Java) runs at a time. Switch by editing
 /ws/realtime                 -> bls-server:7001 (WebSocket)
 /files                       -> MinIO / static files
 ```
+
+### Production deployment artifacts (host `xlcig.cn` / `47.94.205.207`)
+
+| File | Purpose |
+|---|---|
+| `docker-compose.server-only.yml` (repo root) | Override for a host where MySQL/Redis are **external**: publishes `127.0.0.1:7001:7001` (host nginx reverse-proxies `/api` + `/ws`) **and forwards the env vars missing from the base `environment:` allow-list** (`REDIS_KEY_PREFIX`, `ALTCHA_HMAC_KEY`, `SECRET_ENCRYPTION_KEY*`, `AI_SERVICE_URL`, `TIANAI_BASE_URL`, `EVENT_SERVICE_URL`). Used **instead of** `docker-compose.deploy.yml` (which points `image:` at the registry). Always run with `--no-deps`: `bls-server` declares `depends_on: mysql(healthy)/redis(healthy)` and would otherwise start those containers. |
+| `deploy/nginx/xlcig.cn.conf` | Host nginx site: `admin.xlcig.cn` serves the pre-built `bls-admin/dist` (frontend is built locally and uploaded, **not** containerised) and proxies `/api` + `/ws`; `api.xlcig.cn` is an API-only exit (login and `/internal` denied); `xlcig.cn` / `www` 301 to admin. Contains the ACME `--webroot` bootstrap steps and the mandatory CSP (`worker-src 'self' blob: data:` for the ALTCHA Proof-of-Work worker). |
+| `deploy/nginx/container-edge.conf` | **Containerised** edge nginx, loaded by the `edge-nginx` service in `docker-compose.server-only.yml` (the host installs no nginx): serves `./bls-admin/dist` from `/usr/share/nginx/html` and proxies `/api` + `/ws` to `bls-server:7001` **by compose service name** (same network; Docker DNS via `resolver 127.0.0.11` + variable `proxy_pass`, so it still starts when the backend is down). Contains the CSP (`worker-src 'self' blob: data:` for the ALTCHA worker), gzip, rate-limit zones and the TLS enablement steps (host runs **certbot only**). |
+| `deploy/server/env.docker.production.example` | Production `.env.docker` template: external DB/Redis, `REDIS_KEY_PREFIX`, every startup-mandatory secret, and the shared-database caveat for `SECRET_ENCRYPTION_KEY`. |
+
+⚠ **The `environment:` lists in the compose files are an explicit allow-list, not a pass-through of
+`.env.docker`.** `REDIS_KEY_PREFIX`, `ALTCHA_HMAC_KEY`, `SECRET_ENCRYPTION_KEY`,
+`SECRET_ENCRYPTION_KEY_VERSION/_PREVIOUS`, `TIANAI_BASE_URL` and `AI_SERVICE_URL` are **not**
+forwarded by `docker-compose.yml`; writing them into `.env.docker` has no effect on the container
+until they are added to that service's `environment:` list (`docker-compose.server-only.yml` does
+exactly that for this host — `environment` is merged by key, so an override only needs the additions).
+Verify with `docker compose config | grep <VAR>` — never by reading `.env.docker`.
+
+⚠ **BuildKit ignores `registry-mirrors` from `/etc/docker/daemon.json`** — that setting only affects
+`docker pull`. A mainland-China build therefore resolves the base image against docker.io directly:
+~30 s timeout, then
+`failed to resolve source metadata for docker.io/library/node:22-alpine: not found`.
+Two fixes that actually work:
+(a) name a **prefix-capable public mirror** in `FROM` — what `bls-server/Dockerfile` does
+(`FROM docker.1ms.run/library/node:22-alpine`; the repo's own `docs/docker-deploy.md` recommends
+`docker.1ms.run` / `docker.xuanyuan.me`, and `docker.m.daocloud.io` also works); or
+(b) configure BuildKit itself — `/etc/buildkit/buildkitd.toml` with
+`[registry."docker.io"] mirrors = [...]` plus
+`docker buildx create --driver docker-container --config … --use` (Dockerfile stays `node:22-alpine`).
+⚠ **Aliyun's personal accelerator (`<id>.mirror.aliyuncs.com`) is NOT usable as an image prefix** —
+it 404s. It only works as a daemon `registry-mirrors` entry; that is a real difference between
+mirror kinds, not a typo.
+`bls-server/Dockerfile` also switches the Alpine repositories to `mirrors.aliyun.com` before each
+`apk add`: harmless in any environment, much faster in China.
 
 ---
 

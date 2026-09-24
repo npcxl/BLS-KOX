@@ -23,6 +23,54 @@ Rules: see the "Version metadata & maintenance" section of [`README.md`](README.
 
 ---
 
+## [1.11.0] — 2026-09-24
+
+**Added the production deployment artifacts for the `xlcig.cn` / `47.94.205.207` host** (external
+MySQL + Redis, frontend built locally and uploaded, no registry pipeline). Verified against the
+**working tree on top of `54feb1d`** (uncommitted).
+
+### Added
+
+- `docker-compose.server-only.yml` — publishes `127.0.0.1:7001:7001` so the host nginx can reach
+  `bls-server`, **and forwards the env vars the base `environment:` allow-list omits**
+  (`REDIS_KEY_PREFIX`, `ALTCHA_HMAC_KEY`, `ALTCHA_COST`, `SECRET_ENCRYPTION_KEY*`, `AI_SERVICE_URL`,
+  `TIANAI_BASE_URL`, `EVENT_SERVICE_URL`) — `environment` merges by key, so the override only adds.
+  Documents why this file replaces `docker-compose.deploy.yml` on this host (no registry) and why
+  `--no-deps` is mandatory (`depends_on: mysql/redis` are external services).
+- `deploy/nginx/xlcig.cn.conf` — host nginx site for the four names (`admin` serves the uploaded
+  `bls-admin/dist` and proxies `/api` + `/ws`; `api` is API-only with login and `/internal` denied;
+  `xlcig.cn`/`www` 301 to admin). Includes the ACME `--webroot` bootstrap order, the
+  `add_header` inheritance caveat and the ALTCHA-required `worker-src 'self' blob: data:` CSP.
+- `deploy/server/env.docker.production.example` — production `.env.docker` template with external
+  DB/Redis, `REDIS_KEY_PREFIX`, every startup-mandatory secret, and the shared-database
+  `SECRET_ENCRYPTION_KEY` derivation caveat.
+- `bls-captcha-service/Dockerfile.jar` — builds the second-layer captcha image from an already-built
+  fat jar (no Maven, no dependency download on the target host). Note the jar in `target/` **must be
+  rebuilt** with `mvn -B -DskipTests clean package` before use, otherwise it silently lags the source.
+- `deploy/nginx/container-edge.conf` + an `edge-nginx` service in `docker-compose.server-only.yml` —
+  nginx runs **in a container** (the host installs nothing): port 80 outward, `./bls-admin/dist`
+  mounted at `/usr/share/nginx/html`, `/api` and `/ws` proxied to `bls-server:7001`**by compose
+  service name** (same network, Docker DNS through `resolver 127.0.0.11` + variable `proxy_pass`).
+  Carries the CSP (`worker-src 'self' blob: data:` for the ALTCHA worker), gzip, rate-limit zones and
+  the step-by-step TLS enablement (host runs **certbot only**, never nginx).
+- `docker-compose.server-only.yml` also defines `tianai-captcha` (second-layer captcha: image
+  `bls-captcha-service:1.0.0`, **no published ports**, joined to `bls-net` so Koa resolves it by name).
+- `bls-server/Dockerfile` — the base image is named through a prefix-capable public mirror
+  (`docker.1ms.run/library/node:22-alpine`, both stages) and the Alpine repositories are switched to
+  `mirrors.aliyun.com` before each `apk add`. Driven by two measured facts: **BuildKit ignores
+  `registry-mirrors` from `/etc/docker/daemon.json`** (only `docker pull` honours it), and **Aliyun's
+  personal accelerator cannot be used as an image prefix** — `<id>.mirror.aliyuncs.com/library/node:22-alpine`
+  returns not-found, it is a daemon registry mirror only.
+
+### Changed
+
+- `00-common/00-architecture.md` (1.3.0 → 1.3.1) — new "Production deployment artifacts" section
+  under §1, plus the warning that the compose `environment:` lists are an **explicit allow-list**
+  (`REDIS_KEY_PREFIX`, `ALTCHA_HMAC_KEY`, `SECRET_ENCRYPTION_KEY`, `TIANAI_BASE_URL`,
+  `AI_SERVICE_URL` are not forwarded; verify with `docker compose config`).
+
+---
+
 ## [1.10.0] — 2026-09-23
 
 **Service dependency self-check documented — "which microservice is not running" is now answered by
