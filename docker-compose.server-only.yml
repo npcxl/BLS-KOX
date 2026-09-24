@@ -52,6 +52,37 @@ services:
       TIANAI_BASE_URL: ${TIANAI_BASE_URL:-}
 
   # ============================================================
+  # AI 微服务（bls-ai-service，Koa）
+  #
+  #   - 容器内监听 7201，**不发布端口**：前端经 edge-nginx 的 /api/ai/ 与 /ws/ai 进入
+  #     （见 deploy/nginx/container-edge.conf），bls-server **不代理** AI 请求。
+  #   - 它只依赖 Redis（外部 117.72.118.165），且 base 里写了 depends_on redis(healthy)
+  #     → 必须 --no-deps，否则会把 redis 容器一起拉起来。
+  #   - REDIS_KEY_PREFIX / AI_TIMEOUT_MS / AI_TEMPERATURE / SQL_GUARD_ENABLED 等
+  #     **不在 base 的 environment 白名单里**，写 .env.docker 无效，必须在这里显式声明。
+  #   - 镜像二选一（默认走「本地/服务器构建」，与 bls-server 一致）：
+  #       a) 服务器构建：up -d 时会用 base 的 build: ./bls-ai-service 就地构建；
+  #       b) 用 CNB 构建好的镜像（需 docker login 私有制品库），取消下面 image 的注释：
+  #          image: ${CNB_DOCKER_REGISTRY:-docker.cnb.cool}/${CNB_REPO_SLUG:-bls-xl/bls-kox}/bls-ai-service:${AI_IMAGE_TAG:-latest}
+  #
+  # 启动：
+  #   docker compose --env-file .env.docker \
+  #     -f docker-compose.yml -f docker-compose.server-only.yml \
+  #     up -d --no-deps bls-ai-service
+  # ============================================================
+  bls-ai-service:
+    environment:
+      # 与本地开发共用同一个 Redis → 必须和 bls-server 的 blsprod: 前缀区分开
+      REDIS_KEY_PREFIX: ${AI_REDIS_KEY_PREFIX:-blsprod-ai:}
+      REDIS_USERNAME: ${REDIS_USERNAME:-}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-60000}
+      AI_TEMPERATURE: ${AI_TEMPERATURE:-0.3}
+      AI_RATE_LIMIT_PER_MINUTE: ${AI_RATE_LIMIT_PER_MINUTE:-10}
+      AI_SQL_RATE_LIMIT_PER_MINUTE: ${AI_SQL_RATE_LIMIT_PER_MINUTE:-5}
+      # 生产必须为 true：关掉等于允许 AI 生成非 SELECT 语句
+      SQL_GUARD_ENABLED: ${SQL_GUARD_ENABLED:-true}
+
+  # ============================================================
   # 第二层人机验证（Tianai CAPTCHA，Java）
   #
   # 为什么直接写在这里、而不是用仓库的 docker-compose.captcha.yml：
@@ -111,10 +142,12 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      # - "443:443"          # 证书就绪后再打开，并挂载 ./certs
+      - "443:443"          # 证书就绪后打开；对应证书挂载见下面 volumes
     volumes:
       - ./deploy/nginx/container-edge.conf:/etc/nginx/conf.d/default.conf:ro
       - ./bls-admin/dist:/usr/share/nginx/html:ro
-      # - ./certs:/etc/nginx/certs:ro
+      # 证书目录（生产必需：container-edge.conf 里已 listen 443 ssl，缺证书 nginx 起不来）
+      # 目录里至少要有 fullchain.pem / privkey.pem；本地无证书调试请改用 docker-compose.yml
+      - ./certs:/etc/nginx/certs:ro
     networks:
       - bls-net

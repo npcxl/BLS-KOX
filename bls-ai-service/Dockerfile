@@ -1,5 +1,6 @@
 # ====== Stage 1: Build ======
-FROM node:22-alpine AS builder
+# 国内构建：node 基础镜像走 docker.1ms.run、npm 走 npmmirror（与 bls-server/Dockerfile 一致）
+FROM docker.1ms.run/library/node:22-alpine AS builder
 
 ARG APP_VERSION
 ARG COMMIT_HASH
@@ -7,7 +8,8 @@ ARG COMMIT_HASH
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN npm config set registry https://registry.npmmirror.com \
+ && npm ci --ignore-scripts
 
 COPY tsconfig.json ./
 COPY src/ ./src/
@@ -16,7 +18,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ====== Stage 2: Runtime ======
-FROM node:22-alpine
+FROM docker.1ms.run/library/node:22-alpine
 
 ARG APP_VERSION
 ARG COMMIT_HASH
