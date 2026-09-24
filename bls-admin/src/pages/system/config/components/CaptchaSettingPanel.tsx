@@ -16,17 +16,18 @@
  *
  * 密钥类配置（ALTCHA_HMAC_KEY / ALTCHA_COST / TIANAI_BASE_URL）来自环境变量，不在本页面暴露。
  */
-import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
+import { ReloadOutlined, SaveOutlined, SettingOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
   Card,
-  Collapse,
   Descriptions,
   Form,
   InputNumber,
+  Modal,
   Select,
   Skeleton,
+  Space,
   Switch,
   Tag,
   message,
@@ -154,6 +155,8 @@ export default function CaptchaSettingPanel({ canEdit = true, onSaved }: Captcha
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  /** 高级配置放在弹窗里：折叠面板会把大量表单摊在页面上，容易误改也影响阅读 */
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -206,14 +209,14 @@ export default function CaptchaSettingPanel({ canEdit = true, onSaved }: Captcha
     [enabled, saveBatch],
   );
 
-  const handleSaveAdvanced = useCallback(async () => {
+  const handleSaveAdvanced = useCallback(async (): Promise<boolean> => {
     let values: CaptchaSettingValues;
     try {
       values = await form.validateFields();
     } catch {
-      return; // 表单校验失败
+      return false; // 表单校验失败
     }
-    await saveBatch(
+    return saveBatch(
       [
         [CAPTCHA_KEYS.primaryProvider, values.primaryProvider],
         [CAPTCHA_KEYS.fallbackProvider, values.fallbackProvider],
@@ -226,6 +229,12 @@ export default function CaptchaSettingPanel({ canEdit = true, onSaved }: Captcha
       '登录人机验证配置已更新，立即生效',
     );
   }, [form, saveBatch]);
+
+  /** 弹窗里点「保存高级配置」：成功才关闭弹窗（失败保留用户输入） */
+  const handleModalOk = useCallback(async () => {
+    const ok = await handleSaveAdvanced();
+    if (ok) setAdvancedOpen(false);
+  }, [handleSaveAdvanced]);
 
   const summary = useMemo(() => {
     const values = toValues(rows);
@@ -256,13 +265,22 @@ export default function CaptchaSettingPanel({ canEdit = true, onSaved }: Captcha
         </span>
       }
       extra={
-        <Switch
-          checked={enabled}
-          checkedChildren="开启"
-          unCheckedChildren="关闭"
-          disabled={!canEdit || saving || loading}
-          onChange={handleToggleEnabled}
-        />
+        <Space size={8}>
+          <Button
+            icon={<SettingOutlined />}
+            disabled={!canEdit || saving}
+            onClick={() => setAdvancedOpen(true)}
+          >
+            高级配置
+          </Button>
+          <Switch
+            checked={enabled}
+            checkedChildren="开启"
+            unCheckedChildren="关闭"
+            disabled={!canEdit || saving || loading}
+            onChange={handleToggleEnabled}
+          />
+        </Space>
       }
     >
       {loading ? (
@@ -276,17 +294,36 @@ export default function CaptchaSettingPanel({ canEdit = true, onSaved }: Captcha
               </Descriptions.Item>
             ))}
           </Descriptions>
-          <Collapse
-            ghost
-            items={[
-              {
-                key: 'advanced',
-                label: '高级配置',
-                children: (
+          <Modal
+            title="登录人机验证 · 高级配置"
+            open={advancedOpen}
+            onCancel={() => setAdvancedOpen(false)}
+            width={640}
+            // forceRender：弹窗关闭时也挂载内部 Form，否则 form.setFieldsValue 会落空
+            forceRender
+            footer={[
+              <Button key="reload" icon={<ReloadOutlined />} onClick={load} disabled={saving}>
+                重新加载
+              </Button>,
+              <Button key="cancel" onClick={() => setAdvancedOpen(false)}>
+                取消
+              </Button>,
+              <Button
+                key="save"
+                type="primary"
+                icon={<SaveOutlined />}
+                loading={saving}
+                disabled={!canEdit}
+                onClick={handleModalOk}
+              >
+                保存高级配置
+              </Button>,
+            ]}
+          >
                   <Form<CaptchaSettingValues>
                     form={form}
                     layout="vertical"
-                    initialValues={DEFAULTS}
+                    initialValues={toValues(rows)}
                     disabled={!canEdit}
                   >
                     <Alert
@@ -354,25 +391,8 @@ export default function CaptchaSettingPanel({ canEdit = true, onSaved }: Captcha
                     >
                       <InputNumber min={1} max={100} style={{ width: 180 }} />
                     </Form.Item>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <Button
-                        type="primary"
-                        icon={<SaveOutlined />}
-                        loading={saving}
-                        disabled={!canEdit}
-                        onClick={handleSaveAdvanced}
-                      >
-                        保存高级配置
-                      </Button>
-                      <Button icon={<ReloadOutlined />} onClick={load} disabled={saving}>
-                        重新加载
-                      </Button>
-                    </div>
                   </Form>
-                ),
-              },
-            ]}
-          />
+          </Modal>
         </>
       )}
     </Card>
