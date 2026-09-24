@@ -4,6 +4,7 @@ import { getDb } from '../../../core/database';
 import { getCurrentTenantId } from '../../../middleware/tenant';
 import { invalidateConfigCache, getDynamicConfig, type DynamicConfig } from '../../../config/dynamic-config';
 import { logger } from '../../../core/logger';
+import batchRouter from './batch';
 
 function getTenantOrFail(): string {
   const tid = getCurrentTenantId();
@@ -25,6 +26,8 @@ publicRouter.get('/public-theme', async (ctx: Context) => {
 publicRouter.get('/current', async (ctx: Context) => {
   ctx.body = { code: 200, data: await fetchSystemConfigs() };
 });
+
+publicRouter.use(batchRouter.routes(), batchRouter.allowedMethods());
 
 export const config = {
   table: 'sys_config', pkField: 'config_id',

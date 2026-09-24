@@ -23,6 +23,24 @@ Rules: see the "Version metadata & maintenance" section of [`README.md`](README.
 
 ---
 
+## [1.12.0] — 2026-09-24
+
+**SQL-audit page: the SQL statement cell is now click-to-copy.** Verified against the **working tree
+on top of `066db4f`** (uncommitted frontend change:
+`bls-admin/src/pages/system/log/sql-audit.tsx`).
+
+### Changed
+
+- `pages/system-log-sql-audit.md` (1.0.0 → 1.1.0) — the `sqlText` column no longer only expands on
+  click: **clicking the text copies the full statement** (`navigator.clipboard` when
+  `window.isSecureContext`, otherwise a hidden `<textarea>` + `execCommand('copy')`) and shows
+  `message.success('SQL 已复制')`. Added a `CopyOutlined` icon button with the same action and moved
+  expand/collapse onto an `ExpandOutlined` / `CompressOutlined` icon button (rendered only when
+  `text.length > 120`); a `Tooltip` reveals the full text while collapsed. Documented the behaviour in
+  §2 (column table) and §5 (frontend-only action, no request).
+
+---
+
 ## [1.11.0] — 2026-09-24
 
 **Added the production deployment artifacts for the `xlcig.cn` / `47.94.205.207` host** (external

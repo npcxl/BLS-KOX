@@ -39,28 +39,36 @@ const userCreateSchema = z.object({
   username: z.string().trim().min(3, '用户名至少 3 位').max(50).regex(/^[A-Za-z0-9_.@-]+$/, '用户名只能包含字母、数字、_ . @ -'),
   password: z.string().min(6, '密码至少 6 位').max(100).optional(),
   nickname: z.string().trim().min(1, '昵称不能为空').max(50),
-  realName: z.string().max(50).optional(),
-  avatar: z.string().max(200).optional(),
-  gender: z.enum(['0', '1', '2']).optional(),
-  email: z.string().max(100).optional().refine((v) => !v || EMAIL_RE.test(v), '邮箱格式不正确'),
-  phone: z.string().max(20).optional(),
-  deptId: z.string().max(32).optional(),
+  // ⚠ 可空列必须用 nullish()（= optional + nullable）：
+  //    编辑既有记录时，库里这些列是 NULL，前端原样回填后提交 null，
+  //    只写 .optional() 会报 "expected string, received null"（400 参数错误）。
+  //    status 保持 optional（非空列，不允许置空）。
+  realName: z.string().max(50).nullish(),
+  avatar: z.string().max(200).nullish(),
+  gender: z.enum(['0', '1', '2']).nullish(),
+  email: z.string().max(100).nullish().refine((v) => !v || EMAIL_RE.test(v), '邮箱格式不正确'),
+  phone: z.string().max(20).nullish(),
+  deptId: z.string().max(32).nullish(),
   status: z.enum(['0', '1']).optional(),
-  remark: z.string().max(500).optional(),
+  remark: z.string().max(500).nullish(),
   roleIds: z.array(z.string().trim().min(1).max(32)).max(50).optional(),
 });
 
 const userEditSchema = z.object({
   userId: z.string().trim().min(1).max(32),
   nickname: z.string().trim().min(1).max(50).optional(),
-  realName: z.string().max(50).optional(),
-  avatar: z.string().max(200).optional(),
-  gender: z.enum(['0', '1', '2']).optional(),
-  email: z.string().max(100).optional().refine((v) => !v || EMAIL_RE.test(v), '邮箱格式不正确'),
-  phone: z.string().max(20).optional(),
-  deptId: z.string().max(32).optional(),
+  // ⚠ 可空列必须用 nullish()（= optional + nullable）：
+  //    编辑既有记录时，库里这些列是 NULL，前端原样回填后提交 null，
+  //    只写 .optional() 会报 "expected string, received null"（400 参数错误）。
+  //    status 保持 optional（非空列，不允许置空）。
+  realName: z.string().max(50).nullish(),
+  avatar: z.string().max(200).nullish(),
+  gender: z.enum(['0', '1', '2']).nullish(),
+  email: z.string().max(100).nullish().refine((v) => !v || EMAIL_RE.test(v), '邮箱格式不正确'),
+  phone: z.string().max(20).nullish(),
+  deptId: z.string().max(32).nullish(),
   status: z.enum(['0', '1']).optional(),
-  remark: z.string().max(500).optional(),
+  remark: z.string().max(500).nullish(),
   roleIds: z.array(z.string().trim().min(1).max(32)).max(50).optional(),
 });
 

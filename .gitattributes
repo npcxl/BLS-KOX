@@ -22,4 +22,5 @@
 *.yml         text eol=lf
 *.yaml        text eol=lf
 Dockerfile    text eol=lf
-*.dockerfile  text eol=lf
+# Dockerfile* 覆盖 Dockerfile、Dockerfile.jar 等（BuildKit 读的那份也必须是 LF）
+Dockerfile*   text eol=lf

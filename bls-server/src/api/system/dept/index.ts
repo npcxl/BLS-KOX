@@ -15,7 +15,7 @@ const T = 'sys_dept';
 
 const deptCreateSchema = z.object({
   deptName: z.string().trim().min(1, 'deptName 不能为空').max(50),
-  parentId: z.string().trim().max(32).optional(),
+  parentId: z.string().trim().max(32).nullish(),
   sortNum: z.number().int().min(0).max(100000).optional(),
   status: z.enum(['0', '1']).optional(),
 });
@@ -137,6 +137,9 @@ router.post('/add', jwtAuth(), hasPerm('system:dept:add'), async (ctx: Context) 
 router.put('/edit', jwtAuth(), hasPerm('system:dept:edit'), async (ctx: Context) => {
   const db = (await getDb()) as any;
   const b = parseOrThrow(deptUpdateSchema, ctx.request.body ?? {});
+  // 顶层部门的 parent_id 在库里可能是 NULL，前端原样回填就是 null → 统一成根哨兵 '000000'，
+  // 否则下面的"不能是自己/不能是子部门"判断与 Set<string> 校验都会拿 null 去比较。
+  if (b.parentId === null) b.parentId = '000000';
   const tid = requireTenantId();
 
   const existing = await db.selectFrom(T).select('dept_id')

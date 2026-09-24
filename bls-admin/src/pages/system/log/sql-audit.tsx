@@ -1,7 +1,8 @@
 import { PageContainer, ProTable } from "@ant-design/pro-components";
 import type { ProColumns } from "@ant-design/pro-components";
 import { listSqlAudits, type SqlAuditRecord } from "@/services/system/log";
-import { Tag, Tooltip } from "antd";
+import { CopyOutlined, DownOutlined, RightOutlined } from "@ant-design/icons";
+import { Button, message, Tag, Tooltip } from "antd";
 import { useState } from "react";
 
 const operationColor: Record<string, string> = {
@@ -9,6 +10,32 @@ const operationColor: Record<string, string> = {
   query_one: 'geekblue',
   execute: 'orange',
   transaction: 'purple',
+};
+
+const copySql = async (text?: string | null) => {
+  if (!text) {
+    message.warning('没有可复制的内容');
+    return;
+  }
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    message.success('SQL 已复制');
+  } catch (error) {
+    console.error('复制失败:', error);
+    message.error('复制失败，请手动复制');
+  }
 };
 
 const ellipsisText = (value?: string | null, width = 240) =>
@@ -46,22 +73,49 @@ export default function SqlAuditPage() {
       render: (_, r) => {
         const expanded = expandedRows[r.auditId];
         const text = r.sqlText ?? '';
+        if (!text) return '-';
         return (
-          <div style={{ cursor: 'pointer' }} onClick={() => setExpandedRows((s) => ({ ...s, [r.auditId]: !s[r.auditId] }))}>
-            <pre style={{
-              margin: 0,
-              whiteSpace: expanded ? 'pre-wrap' : 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: 480,
-              fontFamily: 'monospace',
-              fontSize: 12,
-              background: expanded ? '#f5f5f5' : undefined,
-              padding: expanded ? 8 : 0,
-              borderRadius: 4,
-            }}>
-              {expanded ? text : text.slice(0, 120) + (text.length > 120 ? ' …' : '')}
-            </pre>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+            <Tooltip title={expanded ? undefined : text} placement="topLeft">
+              <pre
+                onClick={() => void copySql(text)}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  margin: 0,
+                  cursor: 'copy',
+                  whiteSpace: expanded ? 'pre-wrap' : 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: 480,
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  background: expanded ? '#f5f5f5' : undefined,
+                  padding: expanded ? 8 : 0,
+                  borderRadius: 4,
+                }}
+              >
+                {expanded ? text : text.slice(0, 120) + (text.length > 120 ? ' …' : '')}
+              </pre>
+            </Tooltip>
+            <Tooltip title="复制 SQL">
+              <Button
+                type="text"
+                size="small"
+                icon={<CopyOutlined />}
+                onClick={() => void copySql(text)}
+              />
+            </Tooltip>
+            {text.length > 120 && (
+              <Tooltip title={expanded ? '收起' : '展开'}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={expanded ? <DownOutlined /> : <RightOutlined />}
+                  onClick={() => setExpandedRows((s) => ({ ...s, [r.auditId]: !s[r.auditId] }))}
+                />
+              </Tooltip>
+            )}
           </div>
         );
       },

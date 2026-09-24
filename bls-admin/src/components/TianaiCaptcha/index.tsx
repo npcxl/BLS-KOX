@@ -525,7 +525,13 @@ const TianaiCaptcha: React.FC<TianaiCaptchaProps> = ({ challenge, loading, disab
           style={{ display: 'block', maxWidth: '100%' }}
         />
 
-        {/* 滑块模板图：整条背景等高（缺口 Y 已含在图内），只随 x 平移 */}
+        {/* 滑块模板图：整条背景等高（缺口 Y 已含在图内），只随 x 平移。
+            ⚠ 位置与尺寸必须用**百分比**，不能用图像像素：
+               背景图带 `maxWidth: 100%`，在登录卡里会被缩小（600px → 卡片宽度），
+               而模板图若按 px 定位/定尺，就与缺口**缩放比不一致** →
+               看上去"图块和缺口永远对不上"，用户怎么拖都拼不进去。
+               用 % 后两者按同一比例缩放，天然对齐。
+               （高度用 auto 保持模板自身宽高比，避免百分比高度在 auto 高度父容器上失效） */}
         {!clickWord && piece && info.templateImageWidth && info.templateImageHeight && (
           <img
             src={piece}
@@ -533,10 +539,10 @@ const TianaiCaptcha: React.FC<TianaiCaptchaProps> = ({ challenge, loading, disab
             draggable={false}
             style={{
               position: 'absolute',
-              left: pieceX,
+              left: `${(pieceX / width) * 100}%`,
               top: 0,
-              width: info.templateImageWidth,
-              height: info.templateImageHeight,
+              width: `${(info.templateImageWidth / width) * 100}%`,
+              height: 'auto',
               pointerEvents: 'none',
             }}
           />

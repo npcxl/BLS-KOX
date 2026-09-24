@@ -1,7 +1,9 @@
 /**
- * 系统参数页 —— 「登录人机验证」开关与高级配置（两级架构）
+ * 系统参数页 —— 「登录人机验证」配置弹窗（两级架构）
  *
- * 第一层：ALTCHA 静默 Proof-of-Work（`captcha_primary_provider`）
+ * 入口：系统参数页**右上角工具栏**的「人机验证」按钮（页面上不再占用一整张卡片）。
+ *
+ * 第一层：ALTCHA Proof-of-Work（`captcha_primary_provider`，登录页可见确认框，浏览器本地求解）
  * 第二层：Tianai 图形验证（`captcha_tianai_enabled` + `captcha_secondary_type`，风控命中时才出现）
  *
  * ⚠ 配置键**只有**下面这 8 个扁平键（与后端 `dynamic-config.ts` 的 SCHEMA 一一对应）：
@@ -12,27 +14,26 @@
  *   没有后端实现，已删除。
  *
  * 保存走 `POST /api/system/config/batch`（后端白名单 + **单事务** + Tianai 可用性预检），
- * 保存成功后后端清空 Dynamic Config 缓存，配置立即生效。
+ * **8 个键一次提交**，不会出现"改了一半"；保存成功后后端清空 Dynamic Config 缓存，配置立即生效。
  *
  * 密钥类配置（ALTCHA_HMAC_KEY / ALTCHA_COST / TIANAI_BASE_URL）来自环境变量，不在本页面暴露。
+ *
+ * 交互：
+ *   - **懒加载**：页面加载时不发请求（原来那张卡片每次进系统参数页都要分页扫 sys_config，
+ *     行数超过 100 时最多会打 5 次列表接口），只有点开弹窗才读配置；
+ *   - 首次成功读取后，按钮上带「已开启 / 已关闭」状态；
+ *   - 读取失败时**禁用保存**，避免把默认值写回去覆盖线上配置。
  */
-import { ReloadOutlined, SaveOutlined, SettingOutlined } from '@ant-design/icons';
+import { ReloadOutlined, SafetyOutlined, SaveOutlined } from '@ant-design/icons';
+import { Alert, Button, Tag, message } from 'antd';
 import {
-  Alert,
-  Button,
-  Card,
-  Descriptions,
-  Form,
-  InputNumber,
-  Modal,
-  Select,
-  Skeleton,
-  Space,
-  Switch,
-  Tag,
-  message,
-} from 'antd';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+  ModalForm,
+  ProFormDigit,
+  ProFormSelect,
+  ProFormSwitch,
+  type ProFormInstance,
+} from '@ant-design/pro-components';
+import { useCallback, useRef, useState } from 'react';
 import { listResource } from '@/services/system/crud';
 import { batchUpdateConfigs, type ConfigBatchItem } from '@/services/system/config';
 import type { ConfigRecord } from '../index';
@@ -56,8 +57,8 @@ const ALL_KEYS: readonly string[] = Object.values(CAPTCHA_KEYS);
 
 /** 行不存在时新建用的展示名与默认值（与后端 Dynamic Config 默认值保持一致） */
 const KEY_META: Record<string, { name: string; defaultValue: string; remark: string }> = {
-  [CAPTCHA_KEYS.enabled]: { name: '登录人机验证开关', defaultValue: 'true', remark: '是否开启登录人机验证（第一层 ALTCHA 仍然强制）' },
-  [CAPTCHA_KEYS.primaryProvider]: { name: '第一层人机验证提供方', defaultValue: 'ALTCHA', remark: '第一层（静默）固定 ALTCHA：ALTCHA/TIANAI' },
+  [CAPTCHA_KEYS.enabled]: { name: '登录人机验证开关', defaultValue: 'true', remark: '是否开启登录人机验证（关闭后第一层 Proof-of-Work 也不再执行）' },
+  [CAPTCHA_KEYS.primaryProvider]: { name: '第一层人机验证提供方', defaultValue: 'ALTCHA', remark: '第一层（Proof-of-Work）固定 ALTCHA：ALTCHA/TIANAI' },
   [CAPTCHA_KEYS.fallbackProvider]: { name: '第二层人机验证提供方', defaultValue: 'TIANAI', remark: '第二层（显式）固定 TIANAI：ALTCHA/TIANAI' },
   [CAPTCHA_KEYS.ticketTtl]: { name: '登录凭证有效期(秒)', defaultValue: '120', remark: '一次性 captchaTicket 有效期 30-600' },
   [CAPTCHA_KEYS.tianaiEnabled]: { name: '启用第二层 Tianai', defaultValue: 'false', remark: '部署 Tianai 并配置 TIANAI_BASE_URL 后才开启；开启后风控命中即 fail closed' },
@@ -67,6 +68,7 @@ const KEY_META: Record<string, { name: string; defaultValue: string; remark: str
 };
 
 export interface CaptchaSettingValues {
+  captchaEnabled: boolean;
   primaryProvider: 'ALTCHA' | 'TIANAI';
   fallbackProvider: 'ALTCHA' | 'TIANAI';
   secondaryType: 'blockPuzzle' | 'clickWord';
@@ -77,6 +79,7 @@ export interface CaptchaSettingValues {
 }
 
 const DEFAULTS: CaptchaSettingValues = {
+  captchaEnabled: true,
   primaryProvider: 'ALTCHA',
   fallbackProvider: 'TIANAI',
   secondaryType: 'blockPuzzle',
@@ -97,6 +100,7 @@ function toValues(rows: Map<string, ConfigRecord>): CaptchaSettingValues {
   const fallbackProvider = get(CAPTCHA_KEYS.fallbackProvider, DEFAULTS.fallbackProvider);
   const secondaryType = get(CAPTCHA_KEYS.secondaryType, DEFAULTS.secondaryType);
   return {
+    captchaEnabled: toBoolean(get(CAPTCHA_KEYS.enabled, DEFAULTS.captchaEnabled ? 'true' : 'false')),
     primaryProvider: (['ALTCHA', 'TIANAI'].includes(primaryProvider) ? primaryProvider : DEFAULTS.primaryProvider) as CaptchaSettingValues['primaryProvider'],
     fallbackProvider: (['ALTCHA', 'TIANAI'].includes(fallbackProvider) ? fallbackProvider : DEFAULTS.fallbackProvider) as CaptchaSettingValues['fallbackProvider'],
     secondaryType: (['blockPuzzle', 'clickWord'].includes(secondaryType) ? secondaryType : DEFAULTS.secondaryType) as CaptchaSettingValues['secondaryType'],
@@ -150,31 +154,41 @@ export interface CaptchaSettingPanelProps {
 }
 
 export default function CaptchaSettingPanel({ canEdit = true, onSaved }: CaptchaSettingPanelProps) {
-  const [form] = Form.useForm<CaptchaSettingValues>();
+  const formRef = useRef<ProFormInstance<CaptchaSettingValues>>();
   const [rows, setRows] = useState<Map<string, ConfigRecord>>(new Map());
-  const [enabled, setEnabled] = useState(true);
-  const [loading, setLoading] = useState(true);
+  /** 弹窗开关 */
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  /** 高级配置放在弹窗里：折叠面板会把大量表单摊在页面上，容易误改也影响阅读 */
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  /** 最近一次读取是否失败：失败必须禁止保存，否则会把默认值写回线上 */
+  const [loadFailed, setLoadFailed] = useState(false);
+  /** 是否成功读过一次（未读过时按钮上不显示状态，避免页面加载即请求） */
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const map = await loadCaptchaRows();
       setRows(map);
-      setEnabled(toBoolean(map.get(CAPTCHA_KEYS.enabled)?.configValue ?? KEY_META[CAPTCHA_KEYS.enabled].defaultValue));
-      form.setFieldsValue(toValues(map));
+      formRef.current?.setFieldsValue(toValues(map));
+      setLoadFailed(false);
+      setLoaded(true);
     } catch {
-      message.error('加载登录人机验证配置失败');
+      setLoadFailed(true);
+      message.error('加载登录人机验证配置失败，已禁止保存以免覆盖线上配置');
     } finally {
       setLoading(false);
     }
-  }, [form]);
+  }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  /** 打开时才读配置（懒加载）；关闭只收起弹窗，不重新请求 */
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      setOpen(next);
+      if (next) void load();
+    },
+    [load],
+  );
 
   /** 批量事务保存（后端失败整体回滚，不会出现"改了一半"） */
   const saveBatch = useCallback(
@@ -183,8 +197,10 @@ export default function CaptchaSettingPanel({ canEdit = true, onSaved }: Captcha
       try {
         await batchUpdateConfigs(toBatchItems(entries));
         message.success(successText);
-        await load();
+        setLoaded(false);
+        setRows(new Map());
         onSaved?.();
+        setOpen(false);
         return true;
       } catch (err: any) {
         message.error(err?.response?.data?.message ?? '保存失败，请重试');
@@ -193,208 +209,160 @@ export default function CaptchaSettingPanel({ canEdit = true, onSaved }: Captcha
         setSaving(false);
       }
     },
-    [load, onSaved],
+    [onSaved],
   );
 
-  const handleToggleEnabled = useCallback(
-    async (next: boolean) => {
-      const previous = enabled;
-      setEnabled(next);
-      const ok = await saveBatch(
-        [[CAPTCHA_KEYS.enabled, next ? 'true' : 'false']],
-        next ? '已开启登录人机验证' : '已关闭登录人机验证',
-      );
-      if (!ok) setEnabled(previous);
-    },
-    [enabled, saveBatch],
+  /** 8 个键一次提交 */
+  const handleFinish = useCallback(
+    async (values: CaptchaSettingValues) =>
+      saveBatch(
+        [
+          [CAPTCHA_KEYS.enabled, values.captchaEnabled ? 'true' : 'false'],
+          [CAPTCHA_KEYS.primaryProvider, values.primaryProvider],
+          [CAPTCHA_KEYS.fallbackProvider, values.fallbackProvider],
+          [CAPTCHA_KEYS.secondaryType, values.secondaryType],
+          [CAPTCHA_KEYS.tianaiEnabled, values.tianaiEnabled ? 'true' : 'false'],
+          [CAPTCHA_KEYS.challengeTtl, String(values.challengeTtlSeconds)],
+          [CAPTCHA_KEYS.ticketTtl, String(values.ticketTtlSeconds)],
+          [CAPTCHA_KEYS.forceAfterFailures, String(values.forceAfterFailures)],
+        ],
+        '登录人机验证配置已更新，立即生效',
+      ),
+    [saveBatch],
   );
 
-  const handleSaveAdvanced = useCallback(async (): Promise<boolean> => {
-    let values: CaptchaSettingValues;
-    try {
-      values = await form.validateFields();
-    } catch {
-      return false; // 表单校验失败
-    }
-    return saveBatch(
-      [
-        [CAPTCHA_KEYS.primaryProvider, values.primaryProvider],
-        [CAPTCHA_KEYS.fallbackProvider, values.fallbackProvider],
-        [CAPTCHA_KEYS.secondaryType, values.secondaryType],
-        [CAPTCHA_KEYS.tianaiEnabled, values.tianaiEnabled ? 'true' : 'false'],
-        [CAPTCHA_KEYS.challengeTtl, String(values.challengeTtlSeconds)],
-        [CAPTCHA_KEYS.ticketTtl, String(values.ticketTtlSeconds)],
-        [CAPTCHA_KEYS.forceAfterFailures, String(values.forceAfterFailures)],
-      ],
-      '登录人机验证配置已更新，立即生效',
-    );
-  }, [form, saveBatch]);
-
-  /** 弹窗里点「保存高级配置」：成功才关闭弹窗（失败保留用户输入） */
-  const handleModalOk = useCallback(async () => {
-    const ok = await handleSaveAdvanced();
-    if (ok) setAdvancedOpen(false);
-  }, [handleSaveAdvanced]);
-
-  const summary = useMemo(() => {
-    const values = toValues(rows);
-    return [
-      { label: '第一层', value: 'ALTCHA（静默 Proof-of-Work）' },
-      {
-        label: '第二层',
-        value: values.tianaiEnabled
-          ? `Tianai（${values.secondaryType === 'clickWord' ? '点选文字' : '滑块拼图'}）`
-          : '未启用（风控命中时不会升级）',
-      },
-      { label: '凭证有效期', value: `${values.ticketTtlSeconds} 秒` },
-      { label: '挑战有效期', value: `${values.challengeTtlSeconds} 秒` },
-      { label: '连续失败升档', value: `${values.forceAfterFailures} 次` },
-    ];
-  }, [rows]);
+  const enabled = toBoolean(
+    rows.get(CAPTCHA_KEYS.enabled)?.configValue ?? KEY_META[CAPTCHA_KEYS.enabled].defaultValue,
+  );
 
   return (
-    <Card
-      size="small"
-      style={{ marginBottom: 16 }}
-      title={
-        <span>
-          登录人机验证{' '}
-          <Tag color={enabled ? 'green' : 'default'} style={{ marginLeft: 4 }}>
+    <>
+      <Button icon={<SafetyOutlined />} onClick={() => handleOpenChange(true)}>
+        人机验证
+        {loaded ? (
+          <Tag
+            color={enabled ? 'green' : 'default'}
+            style={{ marginInlineStart: 6, marginInlineEnd: 0 }}
+          >
             {enabled ? '已开启' : '已关闭'}
           </Tag>
-        </span>
-      }
-      extra={
-        <Space size={8}>
-          <Button
-            icon={<SettingOutlined />}
-            disabled={!canEdit || saving}
-            onClick={() => setAdvancedOpen(true)}
-          >
-            高级配置
-          </Button>
-          <Switch
-            checked={enabled}
-            checkedChildren="开启"
-            unCheckedChildren="关闭"
-            disabled={!canEdit || saving || loading}
-            onChange={handleToggleEnabled}
+        ) : null}
+      </Button>
+
+      <ModalForm<CaptchaSettingValues>
+        title="登录人机验证 · 配置"
+        open={open}
+        onOpenChange={handleOpenChange}
+        width={640}
+        layout="vertical"
+        grid
+        rowProps={{ gutter: 16 }}
+        formRef={formRef}
+        initialValues={toValues(rows)}
+        modalProps={{
+          styles: { body: { maxHeight: 'calc(80vh - 160px)', overflowY: 'auto', overflowX: 'hidden' } },
+        }}
+        submitter={{
+          searchConfig: { submitText: '保存', resetText: '取消' },
+          render: (_props, dom) => [
+            <Button key="reload" icon={<ReloadOutlined />} onClick={() => { void load(); }} disabled={saving || loading}>
+              重新加载
+            </Button>,
+            ...dom,
+          ],
+          submitButtonProps: {
+            loading: saving,
+            disabled: !canEdit || loadFailed,
+            icon: <SaveOutlined />,
+          },
+        }}
+        onFinish={handleFinish}
+      >
+        {loadFailed ? (
+          <Alert
+            type="error"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="配置读取失败，暂不能保存"
+            description="为避免把默认值写回线上，请先点左下角「重新加载」；仍失败则检查网络或 system:config 权限。"
           />
-        </Space>
-      }
-    >
-      {loading ? (
-        <Skeleton active paragraph={{ rows: 2 }} />
-      ) : (
-        <>
-          <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3 }} style={{ marginBottom: 8 }}>
-            {summary.map((item) => (
-              <Descriptions.Item key={item.label} label={item.label}>
-                {item.value}
-              </Descriptions.Item>
-            ))}
-          </Descriptions>
-          <Modal
-            title="登录人机验证 · 高级配置"
-            open={advancedOpen}
-            onCancel={() => setAdvancedOpen(false)}
-            width={640}
-            // forceRender：弹窗关闭时也挂载内部 Form，否则 form.setFieldsValue 会落空
-            forceRender
-            footer={[
-              <Button key="reload" icon={<ReloadOutlined />} onClick={load} disabled={saving}>
-                重新加载
-              </Button>,
-              <Button key="cancel" onClick={() => setAdvancedOpen(false)}>
-                取消
-              </Button>,
-              <Button
-                key="save"
-                type="primary"
-                icon={<SaveOutlined />}
-                loading={saving}
-                disabled={!canEdit}
-                onClick={handleModalOk}
-              >
-                保存高级配置
-              </Button>,
-            ]}
-          >
-                  <Form<CaptchaSettingValues>
-                    form={form}
-                    layout="vertical"
-                    initialValues={toValues(rows)}
-                    disabled={!canEdit}
-                  >
-                    <Alert
-                      type="info"
-                      showIcon
-                      style={{ marginBottom: 16 }}
-                      message="密钥与服务地址来自环境变量"
-                      description="ALTCHA_HMAC_KEY（生产必填）、ALTCHA_COST、TIANAI_BASE_URL 由部署环境配置，不在本页面暴露。启用第二层前请先确保 Tianai 服务可用（保存时会做健康检查），否则保存会被拒绝。"
-                    />
-                    <Form.Item
-                      label="启用第二层 Tianai"
-                      name="tianaiEnabled"
-                      valuePropName="checked"
-                      extra="默认关闭。部署 Tianai 并配置 TIANAI_BASE_URL 后再开启；开启后一旦风控要求第二层而服务不可用，登录会 fail closed（不会静默降级为仅第一层）。"
-                    >
-                      <Switch checkedChildren="启用" unCheckedChildren="停用" />
-                    </Form.Item>
-                    <Form.Item
-                      label="第一层提供方（静默）"
-                      name="primaryProvider"
-                      extra="固定 ALTCHA：浏览器后台完成 Proof-of-Work，服务端校验，用户无感"
-                    >
-                      <Select options={[{ value: 'ALTCHA', label: 'ALTCHA（ALTCHA 自托管，默认）' }]} />
-                    </Form.Item>
-                    <Form.Item
-                      label="第二层提供方（显式）"
-                      name="fallbackProvider"
-                      extra="固定 TIANAI：独立部署的 Tianai CAPTCHA 服务，由 Koa 通过内网代理（浏览器永不直连）"
-                    >
-                      <Select options={[{ value: 'TIANAI', label: 'TIANAI（Tianai CAPTCHA，默认）' }]} />
-                    </Form.Item>
-                    <Form.Item
-                      label="第二层验证类型"
-                      name="secondaryType"
-                      extra="blockPuzzle=滑块拼图（官方 SLIDER）；clickWord=点选文字（官方 WORD_IMAGE_CLICK），两者都支持键盘与触摸"
-                    >
-                      <Select
-                        options={[
-                          { value: 'blockPuzzle', label: 'blockPuzzle（滑块拼图）' },
-                          { value: 'clickWord', label: 'clickWord（点选文字）' },
-                        ]}
-                      />
-                    </Form.Item>
-                    <Form.Item
-                      label="验证挑战有效期（秒）"
-                      name="challengeTtlSeconds"
-                      extra="ALTCHA challenge 与第二层会话的有效期（30-900）"
-                      rules={[{ required: true, message: '请输入有效期' }]}
-                    >
-                      <InputNumber min={30} max={900} style={{ width: 180 }} />
-                    </Form.Item>
-                    <Form.Item
-                      label="登录凭证有效期（秒）"
-                      name="ticketTtlSeconds"
-                      extra="一次性 captchaTicket 有效期，默认 120（30-600）"
-                      rules={[{ required: true, message: '请输入有效期' }]}
-                    >
-                      <InputNumber min={30} max={600} style={{ width: 180 }} />
-                    </Form.Item>
-                    <Form.Item
-                      label="连续失败要求第二层次数"
-                      name="forceAfterFailures"
-                      extra="同一账号近期连续登录失败达到该值后，必须完成第二层 Tianai 验证（1-100）"
-                      rules={[{ required: true, message: '请输入次数' }]}
-                    >
-                      <InputNumber min={1} max={100} style={{ width: 180 }} />
-                    </Form.Item>
-                  </Form>
-          </Modal>
-        </>
-      )}
-    </Card>
+        ) : (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="密钥与服务地址来自环境变量，不在本页编辑"
+            description="ALTCHA_HMAC_KEY、ALTCHA_COST、TIANAI_BASE_URL 由部署环境配置。启用第二层前请先确保 Tianai 服务可用（保存时后端会做健康检查，不可用会被拒绝）。"
+          />
+        )}
+
+        <ProFormSwitch
+          name="captchaEnabled"
+          label="登录人机验证总开关"
+          colProps={{ span: 24 }}
+          tooltip="关闭后登录页不再做任何人机验证（第一层 Proof-of-Work 也一并关闭）。仅在内网/调试时短期关闭，公网环境务必保持开启。"
+        />
+        <ProFormSwitch
+          name="tianaiEnabled"
+          label="启用第二层图形验证（Tianai）"
+          colProps={{ span: 24 }}
+          tooltip="默认关闭。部署 Tianai 并配置 TIANAI_BASE_URL 后再开启；开启后一旦风控要求第二层而服务不可用，登录会 fail closed（不会静默降级为仅第一层）。"
+        />
+        <ProFormSelect
+          name="primaryProvider"
+          label="第一层提供方（Proof-of-Work）"
+          colProps={{ span: 12 }}
+          tooltip="固定 ALTCHA：登录页展示「我不是机器人」确认框，浏览器本地完成 Proof-of-Work，服务端校验并签发一次性凭证。"
+          options={[{ value: 'ALTCHA', label: 'ALTCHA（自托管，默认）' }]}
+        />
+        <ProFormSelect
+          name="fallbackProvider"
+          label="第二层提供方（显式）"
+          colProps={{ span: 12 }}
+          tooltip="固定 TIANAI：独立部署的 Tianai CAPTCHA 服务，由 Koa 通过内网代理，浏览器永不直连。"
+          options={[{ value: 'TIANAI', label: 'TIANAI（Tianai CAPTCHA，默认）' }]}
+        />
+        <ProFormSelect
+          name="secondaryType"
+          label="第二层验证类型"
+          colProps={{ span: 12 }}
+          tooltip="blockPuzzle=滑块拼图（官方 SLIDER）；clickWord=点选文字（官方 WORD_IMAGE_CLICK），两者都支持键盘与触摸。"
+          options={[
+            { value: 'blockPuzzle', label: 'blockPuzzle（滑块拼图）' },
+            { value: 'clickWord', label: 'clickWord（点选文字）' },
+          ]}
+        />
+        <ProFormDigit
+          name="forceAfterFailures"
+          label="连续失败要求第二层次数"
+          colProps={{ span: 12 }}
+          tooltip="同一账号近期连续登录失败达到该值后，必须完成第二层 Tianai 验证。"
+          min={1}
+          max={100}
+          rules={[{ required: true, message: '请输入次数' }]}
+          fieldProps={{ style: { width: '100%' } }}
+        />
+        <ProFormDigit
+          name="challengeTtlSeconds"
+          label="验证挑战有效期（秒）"
+          colProps={{ span: 12 }}
+          tooltip="ALTCHA challenge 与第二层会话的有效期（30-900）。"
+          min={30}
+          max={900}
+          rules={[{ required: true, message: '请输入有效期' }]}
+          fieldProps={{ style: { width: '100%' } }}
+        />
+        <ProFormDigit
+          name="ticketTtlSeconds"
+          label="登录凭证有效期（秒）"
+          colProps={{ span: 12 }}
+          tooltip="一次性 captchaTicket 的有效期（30-600）。"
+          min={30}
+          max={600}
+          rules={[{ required: true, message: '请输入有效期' }]}
+          fieldProps={{ style: { width: '100%' } }}
+        />
+      </ModalForm>
+    </>
   );
 }

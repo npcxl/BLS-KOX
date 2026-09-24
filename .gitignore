@@ -1,5 +1,8 @@
 target/
 !.mvn/wrapper/maven-wrapper.jar
+# 例外：Dockerfile.jar 是文本形式的 Dockerfile（不是构建产物），必须入库，
+# 否则服务器 clone 里没有它 → docker build -f Dockerfile.jar 报 no such file or directory
+!Dockerfile.jar
 *.class
 *.jar
 *.war

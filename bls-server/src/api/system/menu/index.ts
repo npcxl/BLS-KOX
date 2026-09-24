@@ -16,7 +16,7 @@ const T = 'sys_menu', RM = 'sys_role_menu', PM = 'sys_package_menu';
 // 注意：sys_menu 是全局表，没有 tenant_id / deleted 列。
 
 const menuCreateSchema = z.object({
-  parentId: z.string().trim().max(32).optional(),
+  parentId: z.string().trim().max(32).nullish(),
   menuName: z.string().trim().min(1, 'menuName 不能为空').max(50),
   path: z.string().max(200).nullish(),
   component: z.string().max(200).nullish(),

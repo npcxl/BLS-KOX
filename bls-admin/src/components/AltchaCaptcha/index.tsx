@@ -128,12 +128,7 @@ const AltchaCaptcha: React.ForwardRefRenderFunction<AltchaCaptchaHandle, AltchaC
     };
   }, [enabled, instanceKey, challenge]);
 
-  // 可见（standard）形态下主动触发一次求解，保证用户立刻看到官方交互控件
-  useEffect(() => {
-    if (!enabled || display !== 'standard' || solved) return undefined;
-    const timer = setTimeout(() => reset(), 0);
-    return () => clearTimeout(timer);
-  }, [display, enabled, solved, reset]);
+
 
   if (!enabled) return null;
 

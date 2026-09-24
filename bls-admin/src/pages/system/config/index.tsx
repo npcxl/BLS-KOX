@@ -43,11 +43,17 @@ function ConfigPageInner() {
   const openRebuild = useCallback(() => setRebuildOpen(true), []);
   const closeRebuild = useCallback(() => setRebuildOpen(false), []);
 
+  const handleCaptchaSaved = useCallback(async () => {
+    await refreshGlobalSettings();
+  }, []);
+
   const toolbarExtra = useMemo(() => [
+    // 登录人机验证的 8 个键全部收进这个按钮的弹窗（原来是一张占满宽度的卡片）
+    <CaptchaSettingPanel key="captcha" canEdit={hasPermission} onSaved={handleCaptchaSaved} />,
     <Button key="rebuild" icon={<ReloadOutlined />} onClick={openRebuild}>
       重建索引
     </Button>,
-  ], [openRebuild]);
+  ], [openRebuild, hasPermission, handleCaptchaSaved]);
 
   const handleSaved = useCallback(async (_mode: 'create' | 'edit', values: Partial<ConfigRecord>) => {
     const key = String(values.configKey ?? '');
@@ -62,13 +68,8 @@ function ConfigPageInner() {
     }
   }, []);
 
-  const handleCaptchaSaved = useCallback(async () => {
-    await refreshGlobalSettings();
-  }, []);
-
   return (
     <>
-      <CaptchaSettingPanel canEdit={hasPermission} onSaved={handleCaptchaSaved} />
       <CrudTablePage<ConfigRecord>
         title="系统参数"
         rowKey="configId"

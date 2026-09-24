@@ -28,9 +28,9 @@ import { TianaiProvider } from '../../../security/captcha/providers/tianai-provi
 const itemSchema = z.object({
   configKey: z.string().min(1).max(128),
   configValue: z.string().max(2048),
-  configName: z.string().max(64).optional(),
-  configType: z.string().max(32).optional(),
-  remark: z.string().max(255).optional(),
+  configName: z.string().max(64).nullish(),
+  configType: z.string().max(32).nullish(),
+  remark: z.string().max(255).nullish(),
 });
 
 const batchSchema = z.object({ items: z.array(itemSchema).min(1).max(50) });

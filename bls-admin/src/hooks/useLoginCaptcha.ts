@@ -17,6 +17,7 @@
  *   - 用 cycleId 丢弃用户名变化 / 组件重挂载造成的过期响应，保证并发安全；
  *   - 用 expiresAt 定时让本地 ticket 失效并自动重新验证。
  */
+import { message } from 'antd';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
   CAPTCHA_FIELD_NAME,
@@ -152,6 +153,25 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
 
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  /**
+   * 排障：把状态机每次迁移打到控制台。
+   *
+   * 为什么必须有它：这套流程里「第一层成功」会清空 hint，「升级凭证失效」会静默回第一层，
+   * 一旦出现循环，界面上看不出任何信息（用户只能看到"它一直在转"）。
+   * 时间线在控制台里能一眼看出循环的类型：是在 SECONDARY_* 之间打转（第二层失败），
+   * 还是在 SILENT_* ↔ SECONDARY_* 之间来回（凭证/会话被消费）。
+   */
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.info('[captcha] phase', state.phase, {
+      hint: state.hint,
+      ticket: state.ticket ? 'yes' : 'no',
+      secondary: state.secondary ? state.secondary.type : null,
+      grant: state.escalationGrant ? 'yes' : 'no',
+      cycleId: state.cycleId,
+    });
+  }, [state.phase, state.hint, state.ticket, state.secondary, state.escalationGrant, state.cycleId]);
   /** 当前 challenge（JSON 字符串）的 ref：回调里不能依赖闭包里的 state */
   const altchaChallengeRef = useRef<string | null>(altchaChallenge);
   altchaChallengeRef.current = altchaChallenge;
@@ -160,6 +180,15 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
   const verifyingRef = useRef(false);
   /** 第二层 challenge 是否正在加载 */
   const secondaryLoadingRef = useRef(false);
+  /**
+   * 已经用过的升级凭证。
+   *
+   * 升级凭证是**服务器一次性**的（取用即 GETDEL 消费）：同一个 grant 只可能成功一次，
+   * 重复请求必然拿到 40011，而 40011 会让前端「回第一层重来」→ 看起来就是
+   * "第二层一闪就跳回第一层、循环往复"。dev 下 React StrictMode 双调用 effect、
+   * 或任何重复触发都可能踩到，因此这里按 grant 值硬去重。
+   */
+  const usedGrantRef = useRef<string | null>(null);
   /** 当前 config（用于回调里读最新值，避免闭包过期） */
   const configRef = useRef<CaptchaConfig | null>(null);
   const [altchaKey, setAltchaKey] = useReducer((n: number) => n + 1, 0);
@@ -261,6 +290,10 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
       return;
     }
     challengeRetryRef.current += 1;
+    // ⚠ 先清空 challenge 再重挂载：否则 widget 会**拿着旧 challenge 立刻开始求解**，
+    //   而新 challenge 随后才到 → 旧 payload 与当前 challenge 对不上 → 被守卫丢弃 →
+    //   界面显示"已验证"但状态机永远拿不到 ticket（登录按钮一直灰）。
+    setAltchaChallenge(null);
     setAltchaKey();
     void fetchSilentChallenge(stateRef.current.username, configRef.current);
   }, [fetchSilentChallenge]);
@@ -269,6 +302,27 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
     (payload: string) => {
       // 并发守卫：多个 verified 回调 / 重挂载只允许产生一次 verify 请求
       if (verifyingRef.current || !payload) return;
+
+      // ⚠ 关键守卫（无限循环的真正成因，2026-09-24 实测定位）：
+      //
+      //   第一层 challenge 是**一次性**的（其 nonce 在 /verify 里被服务端 GETDEL 消费）。
+      //   第二层完成后 phase 变 `ready`，登录页的第一层组件会因 `needSecondary` 由 true 变回
+      //   false 而**重新挂载**，官方 widget 的 `auto="onload"` 于是**再求解同一份 challenge**，
+      //   再次触发本回调 → 服务端判 CHALLENGE_EXPIRED → SILENT_FAILED → clearCredentials
+      //   把**刚拿到的第二层 ticket 清掉** → 回第一层 → 风控又要求第二层 → 无限循环。
+      //
+      //   因此：已经拿到凭证（任一层的 ticket），或已经进入 / 完成 / 正在提交第二层之后，
+      //   一律忽略 verified 事件。第一层「已通过」的视觉状态由组件自身保留，不需要再校验。
+      const phaseNow = stateRef.current.phase;
+      if (
+        stateRef.current.ticket
+        || phaseNow === 'secondaryRequired'
+        || phaseNow === 'solvingSecondary'
+        || phaseNow === 'ready'
+        || phaseNow === 'submitting'
+      ) {
+        return;
+      }
 
       // ⚠ 陈旧回调守卫（这是「验证环境发生变化」的真正来源）：
       // 用户名变化 / 刷新 challenge 会让 widget 重挂载，但**旧 widget 的 verified 事件仍可能到达**。
@@ -308,6 +362,8 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
           //   ② 第一层技术故障且本部署启用了第二层（status=technical_error）
           // 两者都会带上服务端签发的一次性 escalationGrant。
           if (data.requireFallback || data.reason === 'SECONDARY_REQUIRED') {
+            // 服务端刚补发了新的升级凭证：允许用它发起第二层请求
+            usedGrantRef.current = null;
             dispatch({
               type: 'SECONDARY_REQUIRED',
               hint: CAPTCHA_REASON_TEXT.SECONDARY_REQUIRED,
@@ -344,6 +400,7 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
   const onAltchaExpired = useCallback(() => {
     verifyingRef.current = false;
     dispatch({ type: 'HINT', hint: '验证已过期，正在重新验证…' });
+    setAltchaChallenge(null);
     setAltchaKey();
     void fetchSilentChallenge(stateRef.current.username, configRef.current);
   }, [fetchSilentChallenge]);
@@ -366,6 +423,8 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
     }
     challengeRetryRef.current += 1;
     dispatch({ type: 'SILENT_FAILED', hint: '正在重新获取验证码…' });
+    // 同上：先清空 challenge，避免用旧 challenge 求解
+    setAltchaChallenge(null);
     setAltchaKey();
     void fetchSilentChallenge(stateRef.current.username, configRef.current);
   }, [fetchSilentChallenge]);
@@ -386,6 +445,7 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
     secondaryLoadingRef.current = false;
     challengeRetryRef.current = 0;
     dispatch({ type: 'RESET' });
+    setAltchaChallenge(null);
     setAltchaKey();
     await fetchSilentChallenge(stateRef.current.username, configRef.current);
   }, [fetchSilentChallenge]);
@@ -401,6 +461,11 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
       void restartSilent();
       return null;
     }
+
+    // 一次性凭证去重：同一 grant 已在请求中（或已成功用过）就直接返回，
+    // 绝不再发第二次 —— 第二次必被服务端判 40011，而 40011 会触发"回第一层"的循环。
+    if (usedGrantRef.current === grant) return null;
+    usedGrantRef.current = grant;
 
     secondaryLoadingRef.current = true;
     dispatch({ type: 'SECONDARY_LOADING', secondaryType: null });
@@ -428,6 +493,19 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
       const code = Number(err?.response?.data?.code);
       // 40011 = 升级凭证无效/已消费 → 回到第一层重新申请（不是密码错误，不重放登录）
       if (code === 40011 || code === 40012 || code === 40013) {
+        // ⚠ 这条分支过去是**完全静默**的：只拆掉第二层、回第一层重来。
+        //   一旦它反复命中（例如一次性 grant 被重复请求消费掉），
+        //   用户看到的就是"第二层一闪就回第一层、循环往复、没有任何提示"。
+        //   因此这里必须留痕（控制台 + 屏幕），否则等于把故障藏起来。
+        // eslint-disable-next-line no-console
+        console.warn('[captcha] 第二层 challenge 请求被拒（升级凭证无效/已消费/绑定不一致）', {
+          code,
+          message: err?.response?.data?.message,
+          httpStatus: err?.response?.status,
+        });
+        message.warning(
+          `第二层验证凭证已失效（${code}），正在重新申请：${err?.response?.data?.message ?? ''}`,
+        );
         void restartSilent();
         return null;
       }
@@ -477,6 +555,15 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
           // 技术故障（上游超时/不可达）+ 服务端补发新凭证 → 自动换一张 challenge，
           // **不要求用户先重复提交一次**，也不重放登录口令。
           if (payload.requireFallback && payload.escalationGrant) {
+            // 服务端补发了新凭证 → 解除去重
+            usedGrantRef.current = null;
+            // 上游技术故障 / 会话失效 → 服务端补发凭证，前端自动换图（用户会看到"滑块反复出现"）
+            // eslint-disable-next-line no-console
+            console.warn('[captcha] 第二层技术故障，已自动换图（不是用户答错）', {
+              reason: payload.reason,
+              message: payload.message,
+              data: payload,
+            });
             dispatch({
               type: 'ESCALATION_RENEWED',
               escalationGrant: String(payload.escalationGrant),
@@ -485,13 +572,30 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
             return;
           }
           // 用户答错：会话与授权都已被消费 → 回到第一层重新申请授权
-          dispatch({
-            type: 'SECONDARY_FAILED',
-            hint: CAPTCHA_REASON_TEXT[String(payload.reason ?? '')] ?? '验证未通过，请重试',
+          const reason = String(payload.reason ?? '');
+          const hint = CAPTCHA_REASON_TEXT[reason] ?? '验证未通过，请重试';
+          // ⚠ 必须把原因显式留痕：紧接着的「第一层成功」会 dispatch hint:null 把它清掉，
+          //   否则前端只剩"第二层失败 → 回第一层 → 又第二层"的死循环，看不到任何原因。
+          // eslint-disable-next-line no-console
+          console.warn('[captcha] 第二层(Tianai)判定未通过', {
+            reason,
+            message: payload.message,
+            status: payload.status,
+            data: payload,
           });
+          message.warning(`第二层验证未通过：${payload.message ?? reason ?? '未知原因'}`);
+          dispatch({ type: 'SECONDARY_FAILED', hint });
           void restartSilent();
         } catch (err: any) {
           if (stateRef.current.cycleId !== cycle) return;
+          // eslint-disable-next-line no-console
+          console.warn('[captcha] 第二层校验请求失败', {
+            httpStatus: err?.response?.status,
+            code: err?.response?.data?.code,
+            message: err?.response?.data?.message,
+            data: err?.response?.data,
+          });
+          message.warning(err?.response?.data?.message ?? '验证服务暂不可用，请稍后重试');
           dispatch({
             type: 'SECONDARY_FAILED',
             hint: err?.response?.data?.message ?? '验证服务暂不可用，请稍后重试',
@@ -512,6 +616,7 @@ export function useLoginCaptcha(username: string): UseLoginCaptchaResult {
       // 过期后**显式**重新取一次 challenge。
       // ⚠ 不要写成"监听 phase === 'solvingSilent' 且 challenge 为空就 fetch"的 effect：
       //   用户名每变一次都会清空 challenge，于是每个字符都会触发一次 generate（而且失败会自激）。
+      setAltchaChallenge(null);
       setAltchaKey();
       void fetchSilentChallenge(stateRef.current.username, configRef.current);
     }, delay);

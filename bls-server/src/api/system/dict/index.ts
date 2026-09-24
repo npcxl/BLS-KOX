@@ -32,7 +32,7 @@ const dataCreateSchema = z.object({
   dictLabel: z.string().trim().min(1, 'dictLabel 不能为空').max(100),
   dictValue: z.string().trim().min(1, 'dictValue 不能为空').max(100),
   dictSort: z.number().int().min(0).max(100000).optional(),
-  tag: z.string().max(30).optional(),
+  tag: z.string().max(30).nullish(),
   status: z.enum(['0', '1']).optional(),
   remark: z.string().max(500).nullish(),
 });

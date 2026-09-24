@@ -1,7 +1,8 @@
 /**
  * 登录页 —— 两级人机验证状态机
  *
- * 第一层：ALTCHA invisible Proof-of-Work（用户无感，`solvingSilent`）
+ * 第一层：ALTCHA Proof-of-Work，可见形态（`display="standard"`，展示"我不是机器人"确认框；
+ *        状态机内部仍叫 `solvingSilent`，因为对状态流转而言它是自动的、不是用户答题）
  * 第二层：服务端策略命中后由 Tianai CAPTCHA 完成（`secondaryRequired` / `solvingSecondary`）
  *
  * 提交规则（不可绕过）：
@@ -267,19 +268,35 @@ const Login: React.FC = () => {
             ]}
           />
 
-          {/* 第一层：ALTCHA 静默 PoW（不可见；它不是第二层） */}
-          {captcha.enabled && !captcha.needSecondary && captcha.altchaChallenge && (
-            <AltchaCaptcha
-              enabled={captcha.enabled}
-              display="invisible"
-              challenge={captcha.altchaChallenge}
-              fieldName={captcha.config?.fieldName ?? 'altchaPayload'}
-              instanceKey={captcha.altchaKey}
-              solved={captcha.silentSolved}
-              onVerified={captcha.onAltchaVerified}
-              onExpired={captcha.onAltchaExpired}
-              onError={captcha.onAltchaError}
-            />
+          {/*
+            第一层：ALTCHA Proof-of-Work。
+            display="standard" → 官方可见形态（"我不是机器人"确认框 + 求解进度），
+            用户**看得见**正在做安全校验，不再是"提交后莫名失败"。
+            交互仍是 PoW：进页面即自动开始求解（约 0.5-2 秒后自动打勾），
+            没算完/失败时用户可点击重试；完成才向前端发一次性 captchaTicket。
+            它不是第二层（图形验证）—— 第二层见下面的 TianaiCaptcha。
+          */}
+          {/*
+            ⚠ 第二层期间这里**只隐藏、不卸载**（曾经的 `!needSecondary &&` 写法会卸载）。
+            卸载后等第二层通过（needSecondary 变回 false）第一层组件会重新挂载，
+            官方 widget 的 auto="onload" 会再求解一次**同一份已被消费的 challenge** →
+            服务端判过期 → SILENT_FAILED 把刚签发的 ticket 清掉 → 回第一层 → 风控又要求
+            第二层 → 无限循环。保持挂载后 widget 不会重跑，配合 hook 里的阶段守卫双保险。
+          */}
+          {captcha.enabled && captcha.altchaChallenge && (
+            <div style={{ display: captcha.needSecondary ? 'none' : undefined }}>
+              <AltchaCaptcha
+                enabled={captcha.enabled}
+                display="standard"
+                challenge={captcha.altchaChallenge}
+                fieldName={captcha.config?.fieldName ?? 'altchaPayload'}
+                instanceKey={captcha.altchaKey}
+                solved={captcha.silentSolved}
+                onVerified={captcha.onAltchaVerified}
+                onExpired={captcha.onAltchaExpired}
+                onError={captcha.onAltchaError}
+              />
+            </div>
           )}
 
           {/* 第二层：Tianai 图形验证（独立组件，不复用 altcha-widget） */}

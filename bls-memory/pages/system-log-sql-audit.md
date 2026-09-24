@@ -1,6 +1,9 @@
 # Page — Log Center: SQL Audit (`/system/log/sql-audit`)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.1.0 · **Code version:** 1.0.0 · **Verified commit:** 066db4f · **Last verified:** 2026-09-24
+>
+> §2 was re-checked against `066db4f` **plus the uncommitted working-tree change** to
+> `bls-admin/src/pages/system/log/sql-audit.tsx` (click-to-copy on the SQL cell).
 
 ## 1. Summary
 
@@ -37,7 +40,7 @@ Columns:
 | `errorCode` | |
 | `errorMessage` | |
 | `clientIp` | searchable |
-| `sqlText` | not searchable; click to expand/collapse (collapsed shows `text.slice(0,120) + ' …'`) |
+| `sqlText` | not searchable; **click the text copies the full SQL** (`navigator.clipboard` on a secure context, hidden-`<textarea>` + `execCommand('copy')` fallback) → `message.success('SQL 已复制')`; a `CopyOutlined` icon button does the same; a `ExpandOutlined`/`CompressOutlined` icon button (only when `text.length > 120`) toggles full display, collapsed shows `text.slice(0,120) + ' …'`; a `Tooltip` shows the full text while collapsed |
 | `createdAt` | `valueType: 'dateTime'`, not searchable |
 
 ---
@@ -86,7 +89,8 @@ sensitive data.
 
 ## 5. Frontend-only validation
 
-None — read-only.
+None — read-only. The copy action is client-only: no request is sent, and on a non-secure context
+(`http://<LAN-IP>`) it falls back to a hidden `<textarea>` + `document.execCommand('copy')`.
 
 ---
 
