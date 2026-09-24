@@ -15,7 +15,7 @@
  */
 import { getDb } from '../../../core/database';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
-import { hashPasswordArgon2, hashPasswordMd5 } from '../../../shared/utils/password';
+import { hashPasswordCanonical } from '../../../shared/utils/password';
 import { AppError, ConflictError, ValidationError } from '../../../core/errors';
 import { getRedisClient } from '../../../shared/utils/redis';
 import { PLATFORM_TENANT_ID } from '../../../shared/constants/tenant';
@@ -137,9 +137,7 @@ async function initRoleMenusFromPackage(ctx: ProvisionContext, packageId: string
 
 async function createDefaultAdminUser(ctx: ProvisionContext, input: ProvisionTenantInput): Promise<void> {
   const { trx, tenantId, userId } = ctx;
-  const raw = String(input.adminPassword ?? '');
-  const md5 = /^[a-f0-9]{32}$/i.test(raw) ? raw.toLowerCase() : hashPasswordMd5(raw);
-  const hashed = await hashPasswordArgon2(md5);
+  const hashed = await hashPasswordCanonical(input.adminPassword ?? '');
 
   await trx.insertInto('sys_user').values({
     user_id: userId,

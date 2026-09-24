@@ -9,7 +9,7 @@ import { getRequestContext } from '../../../core/request-context';
 import { logSecurity } from '../../../core/security-audit';
 import { SecurityEventType } from '../../../core/security-audit';
 import { pickAllowed, toSnake, USER_PROFILE_FIELDS, USER_CREATE_FIELDS, USER_EDIT_FIELDS } from '../../../shared/utils/mass-assignment';
-import { hashPasswordArgon2, hashPasswordMd5 } from '../../../shared/utils/password';
+import { hashPasswordCanonical } from '../../../shared/utils/password';
 import { generateSnowflakeId } from '../../../shared/utils/snowflake';
 import { appendEvent, EventTypes } from '../../../outbox/outbox';
 import { sessionCenter } from '../../../security/session/session-center';
@@ -174,7 +174,8 @@ router.post('/add', jwtAuth(), hasPerm('system:user:add'), async (ctx: Context) 
       .executeTakeFirst() as any;
     data.password = defaultPwd?.config_value || '123456';
   }
-  data.password = await hashPasswordArgon2(String(data.password));
+  // 存储规范：argon2id(md5(password))，与登录接口（前端发 md5）保持一致
+  data.password = await hashPasswordCanonical(data.password);
 
   // 用户名租户内唯一（uk_username_tenant）
   const dup = await db.selectFrom(T).select('user_id')
@@ -293,7 +294,8 @@ router.put('/changePassword', jwtAuth(), async (ctx: Context) => {
   const valid = await verifyPassword(String(oldPassword), user.password, algorithm);
   if (!valid) throw new ValidationError('旧密码不正确');
 
-  const newHash = await hashPasswordArgon2(String(newPassword));
+  // 新密码同样按存储规范写入：argon2id(md5(newPassword))
+  const newHash = await hashPasswordCanonical(newPassword);
   const result: any = await db.updateTable(T)
     .set({ password: newHash, password_algorithm: 'argon2id' } as any)
     .where('user_id', '=', u.userId)
@@ -428,9 +430,7 @@ router.post('/resetPassword', jwtAuth(), hasPerm('system:user:resetPassword'), a
     .executeTakeFirst();
   if (!existing) throw new NotFoundError();
 
-  const raw = String(b.newPassword);
-  const md5 = /^[a-f0-9]{32}$/i.test(raw) ? raw.toLowerCase() : hashPasswordMd5(raw);
-  const hashed = await hashPasswordArgon2(md5);
+  const hashed = await hashPasswordCanonical(b.newPassword);
 
   const result: any = await db.updateTable(T)
     .set({ password: hashed, password_algorithm: 'argon2id', password_update_time: new Date() } as any)

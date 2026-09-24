@@ -141,8 +141,10 @@ export class AuthService {
     // 阶段四：MD5 旧用户登录成功后，在同一次登录流程中静默升级为 Argon2id
     if (algorithm === 'md5') {
       try {
-        const { hashPasswordArgon2 } = passwordModule;
-        const upgraded = await hashPasswordArgon2(password);
+        // 必须用存储规范（argon2id(md5(password))）写入：登录接口收到的是 md5(明文)，
+        // 若直接 hashPasswordArgon2(password) 会写出另一种规范，导致改密 / 下次登录对不上
+        const { hashPasswordCanonical } = passwordModule;
+        const upgraded = await hashPasswordCanonical(password);
         await db.updateTable('sys_user')
           .set({ password: upgraded, password_algorithm: 'argon2id', password_update_time: new Date() } as any)
           .where('user_id', '=', user.userId)

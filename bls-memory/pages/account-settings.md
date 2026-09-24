@@ -1,6 +1,10 @@
 # Page — Personal Settings (`/account/settings`)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.1.0 · **Code version:** 1.0.0 · **Verified commit:** efcf8a5 · **Last verified:** 2026-09-24
+>
+> *Uncommitted note:* the change-password section was re-checked against `efcf8a5` **plus uncommitted
+> changes** to `bls-server/src/api/system/user/index.ts` + `shared/utils/password.ts` (canonical
+> password form fix).
 
 ## 1. Summary
 
@@ -60,9 +64,13 @@ and `queryClient.invalidateQueries(['current-user'])`.
 - Auth: `jwtAuth()` only. Handler in the same module.
 - Zod `passwordSchema`: `oldPassword` 1–100, `newPassword` 6–100.
 - Loads `password` + `password_algorithm` for `user_id AND tenant_id AND deleted=0`.
-- `verifyPassword(oldPassword, hash, algorithm)` — MD5 mode or Argon2id mode
-  (stored as `argon2id(md5(password))`). Mismatch → `ValidationError('旧密码不正确')`.
-- Re-hashes with Argon2id, sets `password_algorithm='argon2id'`.
+- ⚠ **This page sends the passwords as PLAINTEXT** (`components/security.tsx` — unlike the login
+  form, which MD5s client-side). `verifyPassword(oldPassword, hash, algorithm)` normalises the input
+  (`normalizePasswordInput` → MD5) before the Argon2 check, so plaintext and MD5 inputs both work
+  against the canonical `argon2id(md5(password))`. Mismatch → `ValidationError('旧密码不正确')`.
+- Re-hashes with `hashPasswordCanonical(newPassword)` (`argon2id(md5(newPassword))`) and sets
+  `password_algorithm='argon2id'` — a wrong form here would lock the user out at the next login,
+  because login always submits `md5(password)`.
 - **`sessionCenter.revokeAll(tenantId, userId)`** — this invalidates every active session
   (including the current one) because `jwtAuth()` validates the session on every request.
 - Writes a `PERM_CHANGE` security log with the title `修改密码`.

@@ -16,7 +16,7 @@ import { execute, queryOne } from '../../core/database';
 import { ValidationError } from '../../core/errors';
 import { passwordResetService } from '../../services/password-reset-service';
 import { emailSender } from '../../services/email-sender';
-import { hashPasswordArgon2, hashPasswordMd5 } from '../../shared/utils/password';
+import { hashPasswordCanonical } from '../../shared/utils/password';
 import { sessionCenter } from '../../security/session/session-center';
 import { buildRequestMeta } from '../../shared/utils/request-meta';
 import { logger } from '../../core/logger';
@@ -150,9 +150,7 @@ router.post('/reset-password', async (ctx: Context) => {
   const consumed = await passwordResetService.consume(body.token, 'reset_password');
   if (!consumed) throw new ValidationError('重置链接无效或已过期');
 
-  const raw = String(body.newPassword);
-  const md5 = /^[a-f0-9]{32}$/i.test(raw) ? raw.toLowerCase() : hashPasswordMd5(raw);
-  const hashed = await hashPasswordArgon2(md5);
+  const hashed = await hashPasswordCanonical(body.newPassword);
 
   const result = await execute(
     `UPDATE sys_user

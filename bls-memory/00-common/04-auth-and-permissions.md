@@ -1,9 +1,11 @@
 # 04 — Auth, Permissions, Tenancy (shared)
 
-> **Document version:** 1.2.0 · **Code version:** 1.0.0 · **Verified commit:** 61aaf9a · **Last verified:** 2026-09-21
+> **Document version:** 1.3.0 · **Code version:** 1.0.0 · **Verified commit:** efcf8a5 · **Last verified:** 2026-09-24
 >
-> *Uncommitted note:* the captcha gate / `captchaToken` and the `/api/auth/captcha/*` endpoints
-> were verified against `61aaf9a` + uncommitted captcha changes.
+> *Uncommitted note:* §5 (Passwords) was re-checked against `efcf8a5` **plus uncommitted changes** to
+> `shared/utils/password.ts` and the five endpoints that hash/verify passwords (canonical-form fix).
+> The captcha gate / `captchaToken` and `/api/auth/captcha/*` endpoints were verified against `61aaf9a`
+> + uncommitted captcha changes.
 
 Relevant files:
 
@@ -180,15 +182,29 @@ hand-written system modules do not consume it.
 ## 5. Passwords
 
 - Frontend sends `md5(password)` (legacy contract, `bls-admin/src/services/ant-design-pro/api.ts`).
+  ⚠ **Not every endpoint gets MD5**: the login form MD5s before sending, but
+  `PUT /api/system/user/changePassword` (`pages/account/settings/components/security.tsx`), the
+  admin reset, forgot-password reset and tenant provisioning all send/accept the **plaintext**.
 - Storage algorithm column: `sys_user.password_algorithm` (`md5` | `argon2id`).
-- `md5` mode: accept an incoming 32-char MD5 as-is, otherwise MD5-hash it; compare lowercase.
-- `argon2id` mode: stored value is `argon2id(md5(password))`, so the incoming MD5 is verified
-  directly with `argon2.verify`.
-- New/re-hashed passwords use Argon2id (`memoryCost 65536`, `timeCost 3`, `parallelism 4`).
-- Users still on `md5` are transparently upgraded on the next successful login
-  (log message `[auth] MD5 user logged in (migration pending)`).
+- **Canonical storage form is `argon2id(md5(password))`** — `hashPasswordCanonical(raw)` in
+  `shared/utils/password.ts` builds it and must be the only way passwords are written; it first runs
+  `normalizePasswordInput(raw)` (a 32-char hex input is treated as already-MD5, anything else is
+  MD5-hashed) so both "frontend MD5" and "plaintext" callers produce the same value.
+- `verifyPassword(password, hash, algorithm)` accepts **either plaintext or 32-char MD5**:
+  - `algorithm === 'md5'` → `verifyPasswordMd5` (32-char input compared as-is, otherwise MD5-hashed;
+    lowercase comparison);
+  - anything else (`argon2id`, and the Java backend's `argon2`) → Argon2 branch: verify
+    `normalizePasswordInput(password)` first, then the raw input as a fallback for **legacy
+    `argon2id(plaintext)` rows** (written by the old `createUser` / `changePassword`).
+- Argon2 parameters: `memoryCost 65536`, `timeCost 3`, `parallelism 4`.
+- Users still on `md5` are transparently upgraded on the next successful login with
+  `hashPasswordCanonical` (⚠ the incoming value is already MD5 and normalization is idempotent, so
+  the upgrade writes `argon2id(md5(password))`).
 - A successful MD5 login should be followed by an Argon2id rehash — when adding auth code,
   keep this migration path.
+- ⚠ **Legacy `argon2id(plaintext)` rows are unrecoverable through login** (login only ever submits
+  `md5(password)`, which cannot be un-hashed): those accounts need an admin reset. New writes can
+  no longer create them.
 
 ---
 

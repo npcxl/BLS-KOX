@@ -23,6 +23,31 @@ Rules: see the "Version metadata & maintenance" section of [`README.md`](README.
 
 ---
 
+## [1.13.0] — 2026-09-24
+
+**Password storage form unified to `argon2id(md5(password))` — fixes "旧密码不正确" on
+`PUT /api/system/user/changePassword`.** Verified against **`efcf8a5` + uncommitted changes** to
+`bls-server/src/shared/utils/password.ts`, `api/system/user/index.ts`, `api/auth/index.ts`,
+`api/auth-password/index.ts`, `api/system/tenant/provisioning.ts`.
+
+### Changed
+
+- `00-common/04-auth-and-permissions.md` (1.2.0 → 1.3.0) — §5 rewritten around the **canonical storage
+  form** `argon2id(md5(password))` (`hashPasswordCanonical` / `normalizePasswordInput`), the fact that
+  **only the login form MD5s client-side** (changePassword / admin reset / forgot-password reset /
+  provisioning send plaintext), that `verifyPassword` now accepts either input and still validates
+  legacy `argon2id(plaintext)` rows, that a non-`md5` algorithm label (e.g. Java's `argon2`) takes the
+  Argon2 branch, and that legacy `argon2id(plaintext)` accounts are unrecoverable via login.
+- `pages/account-settings.md` (1.0.0 → 1.1.0) — the change-password endpoint section now states that
+  this page submits **plaintext** and that the new password must be written with
+  `hashPasswordCanonical`, otherwise the next login (which sends MD5) fails.
+- `pages/system-user.md` (1.0.0 → 1.1.0) — `POST /add`'s password rule now spells out the canonical
+  form and why `argon2id(plaintext)` creates un-loggable accounts; documented the existing
+  **camelCase** `POST /api/system/user/resetPassword` endpoint (previously listed as
+  "not implemented" under its kebab-case spelling, which is still unrouted).
+
+---
+
 ## [1.12.0] — 2026-09-24
 
 **SQL-audit page: the SQL statement cell is now click-to-copy.** Verified against the **working tree

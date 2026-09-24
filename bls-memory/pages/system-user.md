@@ -1,6 +1,10 @@
 # Page — User Management (`/system/user`)
 
-> **Document version:** 1.0.0 · **Code version:** 1.0.0 · **Verified commit:** 0fc7c43 · **Last verified:** 2026-09-20
+> **Document version:** 1.1.0 · **Code version:** 1.0.0 · **Verified commit:** efcf8a5 · **Last verified:** 2026-09-24
+>
+> *Uncommitted note:* the password rows of `POST /add` and the `POST /resetPassword` endpoint were
+> re-checked against `efcf8a5` **plus uncommitted changes** to
+> `bls-server/src/api/system/user/index.ts` + `shared/utils/password.ts`.
 
 ## 1. Summary
 
@@ -86,7 +90,10 @@ Module: custom router `prefix: '/system/user'`; tables `sys_user` (`T`), `sys_us
 | `remark` | ≤500 |
 | `roleIds` | array, ≤50 |
 
-- Password hashed with **Argon2id**.
+- Password written with **`hashPasswordCanonical`** = `argon2id(md5(password))` (see
+  `00-common/04-auth-and-permissions.md` §5). The submitted value is plaintext, so writing
+  `argon2id(plaintext)` here — as the code did before 2026-09-24 — creates accounts that **can never
+  log in**, because the login form always submits `md5(password)`.
 - Uniqueness: `username` + `tenant_id` → `ConflictError('用户名已存在')`.
 - `assertRolesValid` — roles must belong to the current tenant (platform tenant may use any).
 - **Transaction**: insert `sys_user` + `sys_user_role`, then an outbox event `USER_CREATED`.
@@ -108,6 +115,16 @@ Module: custom router `prefix: '/system/user'`; tables `sys_user` (`T`), `sys_us
 
 - `jwtAuth()` only. See `pages/account-settings.md`.
 
+### `POST /api/system/user/resetPassword` (admin reset)
+
+- Permission: `system:user:resetPassword`; tenant-scoped
+  (`user_id AND tenant_id AND deleted=0`, else 404).
+- Writes `hashPasswordCanonical(newPassword)` (`argon2id(md5(password))`),
+  `password_algorithm='argon2id'`, `password_update_time = NOW()`.
+- Then `sessionCenter.revokeAll` + `passwordResetService.invalidateForUser` and a `PERM_CHANGE`
+  security log (`管理员重置用户密码：<username>`).
+- ⚠ The path is **camelCase**: `/resetPassword`. The kebab-case `/reset-password` is *not* routed.
+
 ### `GET /api/system/user/sessions/:userId` and `POST /api/system/user/kick`
 
 - Permission: `system:user:kick`.
@@ -118,8 +135,9 @@ Module: custom router `prefix: '/system/user'`; tables `sys_user` (`T`), `sys_us
 
 ### Not implemented
 
-- `POST /api/system/user/reset-password` — referenced by the **signature** replay rule but there is
-  **no route**. Do not assume it exists.
+- `POST /api/system/user/reset-password` (kebab-case) — referenced by the **signature** replay rule
+  but there is **no such route**; the real endpoint is the camelCase `/resetPassword` (above), so
+  that replay rule currently matches nothing.
 - `PUT /api/system/user/status` — the frontend disables the status toggle.
 
 Tables touched: `sys_user`, `sys_user_role`, `sys_role`, `sys_config`, `sys_page_column_config`,

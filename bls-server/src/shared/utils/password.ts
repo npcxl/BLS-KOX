@@ -38,34 +38,61 @@ export function verifyPasswordMd5(password: string, hash: string): boolean {
   return inputHash.toLowerCase() === hash.toLowerCase();
 }
 
+// ============ 存储规范归一化 ============
+
+/**
+ * 把任意入口收到的密码归一成「入库前统一处理的形态」：32 位 MD5（小写）。
+ *
+ * 为什么要归一：前端登录接口发的是 `md5(明文)`（`services/ant-design-pro/api.ts`），
+ * 而改密 / 重置 / 建租户等接口发的是**明文**。历史实现里两种值各写各的，
+ * 导致同一张表的 `password` 出现 `argon2id(md5(p))` 与 `argon2id(p)` 两种规范，
+ * 于是「登录能过、修改密码报旧密码不正确」这类问题必然出现。
+ *
+ * 约定（与 Java 后端 `AuthService.verifyPassword` 一致）：
+ * **存储统一为 `argon2id(md5(password))`**；已带 32 位十六进制的入参视为已归一，原样透传。
+ */
+export function normalizePasswordInput(password: unknown): string {
+  const raw = String(password ?? '');
+  return /^[a-f0-9]{32}$/i.test(raw) ? raw.toLowerCase() : hashPasswordMd5(raw);
+}
+
+/** 生成「存储规范」哈希 `argon2id(md5(password))` —— 所有写密码的地方都应使用它 */
+export async function hashPasswordCanonical(password: unknown): Promise<string> {
+  return hashPasswordArgon2(normalizePasswordInput(password));
+}
+
 // ============ 统一入口（保留旧签名兼容） ============
 
 /**
- * 统一哈希密码（默认 Argon2id）
- * @deprecated 新代码应使用 hashPasswordArgon2
+ * 统一哈希密码（默认 Argon2id，输出存储规范 `argon2id(md5(password))`）
+ * @deprecated 新代码应使用 hashPasswordCanonical
  */
 export async function hashPassword(password: string): Promise<string> {
-  return hashPasswordArgon2(password);
+  return hashPasswordCanonical(password);
 }
 
 /**
  * 统一验证密码
- * @param password 前端传入的密码（可能是 MD5 或明文）
+ * @param password 前端传入的密码（**可能是明文，也可能是 32 位 MD5**）
  * @param hash 数据库中存储的哈希值
- * @param algorithm 密码算法，默认 'md5' 兼容老数据
+ * @param algorithm 密码算法；默认 'md5' 兼容老数据，其余值（argon2id / argon2 / …）按 Argon2 处理
  */
 export async function verifyPassword(
   password: string,
   hash: string,
   algorithm: PasswordAlgorithm = 'md5',
 ): Promise<boolean> {
-  if (algorithm === 'argon2id') {
-    // 前端发送的是 MD5(password)，Argon2id 存储的是 argon2id(md5(password))
-    // 所以验证时用前端传过来的值（已经是 MD5）直接 verify
-    return verifyPasswordArgon2(password, hash);
-  }
-  // MD5 兼容模式
-  return verifyPasswordMd5(password, hash);
+  // 只有显式标记 md5 的才走 MD5 直比（该方法本身已同时兼容明文与 32 位 MD5）
+  if (algorithm === 'md5') return verifyPasswordMd5(password, hash);
+
+  // Argon2 分支：先按存储规范归一（md5）再验证
+  const normalized = normalizePasswordInput(password);
+  if (await verifyPasswordArgon2(normalized, hash)) return true;
+
+  // 兼容历史不一致数据：早期 createUser / changePassword 写入过 argon2id(明文)
+  const raw = String(password ?? '');
+  if (raw === normalized) return false;
+  return verifyPasswordArgon2(raw, hash);
 }
 
 /** 判断哈希值是否为 Argon2id 格式（以 $argon2 开头） */

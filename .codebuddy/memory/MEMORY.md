@@ -150,6 +150,13 @@ a separate Java service proxied by Koa). ALTCHA's `display="standard"` widget is
 - **Backend is the source of truth for permission codes**; the frontend `permissions` prop and the SQL
   seed must match `hasPerm('…')` exactly (common bug: `:create` vs `:add`). `ctx.state.user` exposes
   both `perms` and `permissions` (`AuthService.profile` duplicates them); `hasPerm` accepts either.
+- **Password contract (fixed 2026-09-24)**: canonical stored form is **`argon2id(md5(password))`**.
+  Only the **login** form MD5s client-side (`services/ant-design-pro/api.ts`); changePassword / admin
+  reset / forgot-password reset / tenant provisioning send **plaintext**. So every write must go
+  through `hashPasswordCanonical()` and every check through `verifyPassword()` (which normalises the
+  input and accepts either form, plus legacy `argon2id(plaintext)` rows; any `algorithm !== 'md5'`,
+  including Java's `argon2`, takes the Argon2 branch). Writing `argon2id(plaintext)` makes an account
+  that can **never** log in (md5 is not reversible); such legacy rows need an admin reset.
 - Koa CRUD factory (`core/crud.ts` + `core/crud-config.ts`, declared with `defineCrudConfig`):
   - 6 endpoints: `GET /list`, `GET /:id`, `POST /add`, `PUT /edit`, `DELETE /remove`, `PUT /status`;
     `actions`-disabled endpoints are not registered.
