@@ -149,6 +149,19 @@ cd bls-admin && npm install && npm run dev       # http://localhost:9000
 
 详见 [SECURITY.md](./SECURITY.md)。
 
+### 体验账号
+
+在线演示环境（无需部署，打开就能用）：
+
+| 项目 | 值 |
+|---|---|
+| 演示地址 | **<https://admin.xlcig.cn>** |
+| 账号 | `admin` |
+| 密码 | `123456` |
+
+> ⚠️ 公开演示环境：**请勿修改密码、请勿写入真实或敏感数据**，演示数据可能被定期重置。
+> 生产部署请务必修改默认密码，详见 [SECURITY.md](./SECURITY.md)。
+
 ## 🔀 切换后端
 
 三套后端 API 完全兼容，改 Nginx upstream 即可；本地开发也可改前端 dev proxy 指向目标端口。

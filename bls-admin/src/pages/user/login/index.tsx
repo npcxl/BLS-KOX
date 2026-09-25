@@ -28,26 +28,94 @@ import { CAPTCHA_ERROR_CODES } from '@/services/auth/captcha';
 import { tokenStore } from '@/auth/token-store';
 import Settings from '../../../../config/defaultSettings';
 
-const useStyles = createStyles(({ token }) => ({
-  lang: {
-    width: 42,
-    height: 42,
-    lineHeight: '42px',
-    position: 'fixed',
-    right: 16,
-    borderRadius: token.borderRadius,
-    ':hover': {
-      backgroundColor: token.colorBgTextHover,
+const useStyles = createStyles(({ token, isDarkMode }) => {
+  /** 磨砂玻璃的底色 / 描边：浅色模式用白色半透明，深色模式用深色半透明 */
+  const glassBg = isDarkMode ? 'rgba(22, 24, 29, 0.55)' : 'rgba(255, 255, 255, 0.55)';
+  const glassBorder = isDarkMode ? 'rgba(255, 255, 255, 0.14)' : 'rgba(255, 255, 255, 0.65)';
+  const glassBlur = 'blur(18px) saturate(160%)';
+
+  return {
+    lang: {
+      width: 42,
+      height: 42,
+      lineHeight: '42px',
+      position: 'fixed',
+      right: 16,
+      borderRadius: token.borderRadius,
+      // 语言切换按钮浮在背景图上，同样给一层玻璃，避免看不清
+      background: glassBg,
+      border: `1px solid ${glassBorder}`,
+      backdropFilter: 'blur(10px)',
+      WebkitBackdropFilter: 'blur(10px)',
+      ':hover': {
+        backgroundColor: token.colorBgTextHover,
+      },
     },
-  },
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100vh',
-    overflow: 'auto',
-    background: '#fff',
-  },
-}));
+    container: {
+      display: 'flex',
+      flexDirection: 'column',
+      minHeight: '100vh',
+      overflow: 'auto',
+      // 全屏背景图：public/login-bg.png → 构建后位于站点根路径，用绝对路径引用
+      backgroundImage: 'url(/login-bg.png)',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+    },
+    /** 登录区：把登录框推到右侧居中；窄屏回落到居中、内边距收紧 */
+    loginArea: {
+      flex: 1,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      padding: '32px 6vw',
+      '@media (max-width: 768px)': {
+        justifyContent: 'center',
+        padding: '24px 16px',
+      },
+    },
+    /** 磨砂玻璃面板：半透明底 + 背景模糊 + 细描边 + 投影 */
+    panel: {
+      width: 420,
+      maxWidth: '100%',
+      padding: '32px 32px 16px',
+      borderRadius: 20,
+      background: glassBg,
+      border: `1px solid ${glassBorder}`,
+      backdropFilter: glassBlur,
+      WebkitBackdropFilter: glassBlur,
+      boxShadow: isDarkMode
+        ? '0 12px 40px rgba(0, 0, 0, 0.55)'
+        : '0 12px 40px rgba(0, 0, 0, 0.18)',
+      /**
+       * ⚠ pro-components 的 `LoginForm` **自带白色容器**（`.ant-pro-form-login-container`），
+       * 会把玻璃面板挡成"白卡片"，只剩四角能看出磨砂 → 这里把它的底色去掉、内边距交给面板。
+       * 同时 `.ant-pro-form-login-main` 默认固定 328px，会造成"输入框窄、登录按钮宽"的错位，
+       * 一并撑满面板。
+       */
+      '.ant-pro-form-login-container': {
+        backgroundColor: 'transparent',
+        padding: 0,
+      },
+      '.ant-pro-form-login-main': {
+        width: '100%',
+        maxWidth: '100%',
+        backgroundColor: 'transparent',
+      },
+      '.ant-pro-form-login-header': {
+        backgroundColor: 'transparent',
+      },
+      // ALTCHA 官方组件自带白底，同样让它透出玻璃（只影响本页）
+      'altcha-widget': {
+        backgroundColor: 'transparent',
+      },
+      '@media (max-width: 768px)': {
+        width: '100%',
+        padding: '24px 20px 8px',
+      },
+    },
+  };
+});
 
 const Lang = () => {
   const { styles } = useStyles();
@@ -200,10 +268,11 @@ const Login: React.FC = () => {
         </title>
       </Helmet>
       <Lang />
-      <div style={{ flex: '1', padding: '32px 0' }}>
+      <div className={styles.loginArea}>
+        <div className={styles.panel}>
         <LoginForm
           formRef={formRef}
-          contentStyle={{ minWidth: 280, maxWidth: '75vw' }}
+          contentStyle={{ minWidth: 280, maxWidth: '100%', width: '100%' }}
           logo={appLogo || undefined}
           title={appName}
           subTitle={intl.formatMessage({ id: 'pages.layouts.userLayout.title' })}
@@ -325,6 +394,7 @@ const Login: React.FC = () => {
             </a>
           </div>
         </LoginForm>
+        </div>
       </div>
       <Footer />
     </div>

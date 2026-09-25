@@ -86,3 +86,14 @@ minio-data/
 .codebuddy/automations/
 .codebuddy/history/
 .codebuddy/logs/
+
+# ============================================================
+# 本地部署 / 排障产生的临时文件（一律不入库）
+# 部署脚本与上传包只在本机用，不进项目；构建/测试日志同理
+# ============================================================
+tmp-deploy.py
+dist-upload.tgz
+build-*.log
+vt-*.log
+ssh.log
+tsc-*.log
