@@ -1,0 +1,39 @@
+{
+  "name": "bls-site",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "BLS-KOX product website — One Frontend. Three Backends. One SaaS Foundation.",
+  "license": "MulanPSL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/npcxl/BLS-KOX.git",
+    "directory": "bls-site"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 5181",
+    "tsc": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-three/fiber": "^9.3.0",
+    "framer-motion": "^13.4.3",
+    "gsap": "^3.13.0",
+    "lucide-react": "^0.545.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.180.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.7"
+  }
+}

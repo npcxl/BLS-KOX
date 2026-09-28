@@ -1,0 +1,109 @@
+/* ============================================================================
+   BLS-KOX — Design Tokens
+   Single source of truth for colour, glass, radius, motion and layout.
+   Every component reads from here — no component defines its own glass CSS.
+   ========================================================================== */
+
+:root {
+  /* ---------- surface ---------- */
+  --c-page: #f7f9fc;
+  --c-page-soft: #fafbfd;
+  --c-white: #ffffff;
+
+  /* ---------- brand ---------- */
+  --c-primary: #1677ff;
+  --c-primary-light: #4096ff;
+  --c-primary-lighter: #69b1ff;
+  --c-primary-wash: #e6f4ff;
+  --c-primary-ghost: #f0f7ff;
+  --c-primary-deep: #0b4fc4;
+
+  /* ---------- text ---------- */
+  --c-text: #171a21;
+  --c-text-2: #596579;
+  --c-text-3: #8b95a7;
+  --c-text-invert: #ffffff;
+
+  /* ---------- lines ---------- */
+  --c-border: rgba(20, 50, 90, 0.08);
+  --c-border-strong: rgba(20, 50, 90, 0.14);
+  --c-hairline: rgba(20, 50, 90, 0.05);
+
+  /* ---------- semantic ---------- */
+  --c-ok: #16a34a;
+  --c-ok-soft: rgba(22, 163, 74, 0.12);
+
+  /* ---------- glass (Liquid Glass language) ---------- */
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-mid: rgba(255, 255, 255, 0.68);
+  --glass-bg-strong: rgba(255, 255, 255, 0.82);
+  --glass-blur: 18px;
+  --glass-blur-strong: 28px;
+  --glass-saturate: 165%;
+
+  --glass-border: rgba(255, 255, 255, 0.62);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.34);
+  --glass-refract: inset 0 -1px 1px rgba(255, 255, 255, 0.5),
+    inset 0 -7px 16px -12px rgba(22, 119, 255, 0.42);
+
+  --glass-shadow: 0 1px 1px rgba(16, 42, 74, 0.03), 0 8px 22px -14px rgba(16, 42, 74, 0.18);
+  --glass-shadow-lift: 0 2px 4px rgba(16, 42, 74, 0.04), 0 22px 48px -22px rgba(16, 42, 74, 0.28);
+  --glass-shadow-float: 0 12px 32px -16px rgba(16, 42, 74, 0.24),
+    0 2px 6px -2px rgba(16, 42, 74, 0.06);
+
+  /* ---------- radius ---------- */
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 20px;
+  --r-xl: 24px;
+  --r-2xl: 32px;
+  --r-pill: 999px;
+
+  /* ---------- motion ---------- */
+  --t-micro: 200ms;
+  --t-hover: 300ms;
+  --t-split: 700ms;
+  --t-morph: 900ms;
+  --t-section: 1000ms;
+  --t-intro: 2000ms;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-glide: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* spring equivalents for the JS motion layer (src/lib/motion.ts) */
+  --spring-stiffness: 260;
+  --spring-damping: 26;
+
+  /* ---------- layout ---------- */
+  --shell: 1280px;
+  --shell-wide: 1440px;
+  --shell-narrow: 1040px;
+  --gutter: 28px;
+  --nav-h: 60px;
+  --section-y: 132px;
+
+  /* ---------- typography ---------- */
+  --font-sans: 'Inter', 'HarmonyOS Sans SC', 'PingFang SC', 'Microsoft YaHei',
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, 'Cascadia Mono', Consolas,
+    'Liberation Mono', Menlo, monospace;
+
+  --fs-display: clamp(2.75rem, 5.4vw, 4.75rem);
+  --fs-h2: clamp(1.9rem, 3.3vw, 3rem);
+  --fs-h3: clamp(1.2rem, 1.6vw, 1.5rem);
+  --fs-lede: clamp(1.0625rem, 1.25vw, 1.25rem);
+  --fs-body: 1rem;
+  --fs-sm: 0.875rem;
+  --fs-xs: 0.8125rem;
+  --fs-label: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  :root {
+    --section-y: 88px;
+    --gutter: 20px;
+  }
+}

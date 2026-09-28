@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="0.55" stop-color="#FAFBFD" />
+      <stop offset="1" stop-color="#F0F7FF" />
+    </linearGradient>
+    <radialGradient id="glow" cx="78%" cy="42%" r="52%">
+      <stop offset="0" stop-color="#4096FF" stop-opacity="0.20" />
+      <stop offset="1" stop-color="#4096FF" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="core" cx="36%" cy="30%" r="76%">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="52%" stop-color="#69B1FF" />
+      <stop offset="100%" stop-color="#1677FF" />
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#page)" />
+  <rect width="1200" height="630" fill="url(#glow)" />
+
+  <g font-family="Inter, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+    <text x="88" y="176" font-size="20" letter-spacing="3.4" fill="#8B95A7">ENTERPRISE SAAS FOUNDATION</text>
+    <text x="84" y="284" font-size="92" font-weight="700" letter-spacing="-2.4" fill="#171A21">BLS-KOX</text>
+    <text x="88" y="360" font-size="38" font-weight="600" letter-spacing="-0.6" fill="#1677FF">
+      One Frontend. Three Backends.
+    </text>
+    <text x="88" y="408" font-size="38" font-weight="600" letter-spacing="-0.6" fill="#4096FF">
+      One SaaS Foundation.
+    </text>
+    <text x="88" y="486" font-size="24" fill="#596579">React 19 · Koa · Spring Boot · Rust</text>
+    <text x="88" y="526" font-size="24" fill="#596579">MySQL 8 · Redis 7 · Docker Compose</text>
+    <rect x="88" y="562" width="252" height="1.6" fill="rgba(20,50,90,0.10)" />
+    <text x="88" y="592" font-size="19" fill="#8B95A7">github.com/npcxl/BLS-KOX</text>
+  </g>
+
+  <g transform="translate(890 318)">
+    <circle r="150" fill="#FFFFFF" fill-opacity="0.55" stroke="rgba(20,50,90,0.08)" />
+    <g fill="none" stroke="#1677FF" stroke-width="2.4">
+      <ellipse rx="136" ry="50" opacity="0.24" />
+      <ellipse rx="136" ry="50" opacity="0.40" transform="rotate(60)" />
+      <ellipse rx="136" ry="50" opacity="0.58" transform="rotate(120)" />
+    </g>
+    <circle r="58" fill="url(#core)" />
+    <circle r="58" fill="none" stroke="#FFFFFF" stroke-opacity="0.65" stroke-width="2" />
+    <circle cx="-18" cy="-22" r="13" fill="#FFFFFF" fill-opacity="0.85" />
+    <g fill="#1677FF">
+      <circle cx="136" cy="0" r="7" />
+      <circle cx="-68" cy="118" r="7" />
+      <circle cx="-68" cy="-118" r="7" />
+    </g>
+  </g>
+</svg>
