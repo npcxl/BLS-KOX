@@ -1,0 +1,29 @@
+/**
+ * 登录页背景（静态插画层）。
+ *
+ * 固定铺满视口、置于页面内容之下（页面内容 `z-index: 1`，见 pages/user/login/index.tsx）。
+ * 图片用 `object-fit: cover`：等比铺满并居中裁切，窗口比例变化不拉伸、不变形。
+ */
+
+.bls-login-background {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+
+  overflow: hidden;
+
+  background: #f7fbff;
+}
+
+.bls-login-background__image {
+  width: 100%;
+  height: 100%;
+
+  display: block;
+
+  object-fit: cover;
+  object-position: center;
+
+  user-select: none;
+  pointer-events: none;
+}

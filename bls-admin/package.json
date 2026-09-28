@@ -65,6 +65,7 @@
     "clsx": "^2.1.1",
     "d3": "^7.9.0",
     "dayjs": "^1.11.20",
+    "framer-motion": "^13.4.3",
     "highlight.js": "^11.11.1",
     "md5": "^2.3.0",
     "prosemirror-transform": "^1.12.0",

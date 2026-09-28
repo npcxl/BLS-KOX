@@ -22,6 +22,7 @@ import React, { startTransition, useCallback, useRef, useState } from 'react';
 import { Footer } from '@/components';
 import AltchaCaptcha from '@/components/AltchaCaptcha';
 import TianaiCaptcha from '@/components/TianaiCaptcha';
+import AnimatedSaaSBackground from './AnimatedSaaSBackground';
 import { useLoginCaptcha } from '@/hooks/useLoginCaptcha';
 import { login } from '@/services/ant-design-pro/api';
 import { CAPTCHA_ERROR_CODES } from '@/services/auth/captcha';
@@ -56,11 +57,9 @@ const useStyles = createStyles(({ token, isDarkMode }) => {
       flexDirection: 'column',
       minHeight: '100vh',
       overflow: 'auto',
-      // 全屏背景图：public/login-bg.png → 构建后位于站点根路径，用绝对路径引用
-      backgroundImage: 'url(/login-bg.png)',
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      backgroundRepeat: 'no-repeat',
+      // 背景交给固定的 <AnimatedSaaSBackground /> 层；页面内容整体抬到它上面
+      position: 'relative',
+      zIndex: 1,
     },
     /** 登录区：把登录框推到右侧居中；窄屏回落到居中、内边距收紧 */
     loginArea: {
@@ -268,6 +267,8 @@ const Login: React.FC = () => {
         </title>
       </Helmet>
       <Lang />
+      {/* 背景：固定定位的底层静态插画 */}
+      <AnimatedSaaSBackground />
       <div className={styles.loginArea}>
         <div className={styles.panel}>
         <LoginForm

@@ -210,6 +210,27 @@ a separate Java service proxied by Koa). ALTCHA's `display="standard"` widget is
   constraints**; the platform tenant id is `'000000'`; business responses are `{code, message, data,
   total}` with `pageNum` / `pageSize` (max 100).
 
+- **Ad-hoc deploy scripts stay local — never add them to the repo** (user, 2026-09-25). The helper used to
+  push a release (`tmp-deploy.py`), the upload tarball (`dist-upload.tgz`) and build/test logs
+  (`build-*.log`, `vt-*.log`, `tsc-*.log`, `ssh.log`) are session-scoped: write → use → delete. `.gitignore`
+  covers those names now. The deployment shape that actually works from this Windows box:
+  1. build locally (`cd bls-admin && npm run build`, or `tsc` for `bls-server`);
+  2. upload artifacts — **Windows OpenSSH `ssh`/`scp` cannot take a password non-interactively**, so use
+     **paramiko** (`python -m pip install --user paramiko`): a ~30-line script with `--put local=remote`
+     (SFTP) and `--cmd` (exec), reading the password from `DEPLOY_PW`;
+  3. on the server: `tar -xzf <pkg> -C bls-admin/` for the frontend (never delete the `dist` **directory**
+     itself — it is a bind mount), then `docker compose --env-file .env.docker -f docker-compose.yml
+     -f docker-compose.server-only.yml up -d --no-deps --build <service>`;
+  4. **tag the current image first** (`docker tag bls-kox-bls-server:latest …:pre-<change>`) for any
+     auth/password-path change — rollback = re-tag `latest` + `up -d --no-deps`.
+  Hard-won checks: the only reliable "frontend really deployed" proof is
+  `grep -rl <new-literal> bls-admin/dist` (e.g. `login-bg`) — `index.html` mtime alone is weak. The IDE
+  **`write_to_file` intermittently writes a 0-byte file** (bit us twice with `tmp-deploy.py`; same class as
+  the `.sql` trap above) ⇒ check the size before relying on a generated script, and re-read files on the
+  server instead of trusting `--put` output. `npm run build` (utoopack) also fails spuriously
+  (`Unable to deserializate response from webpack loaders transform … missing field source` on an
+  untouched `.less`) — **just run it again** before investigating.
+
 ## IV. Documentation & memory system (most important convention)
 
 - **`bls-memory/` is the single entry point for page-level memory**; repo-root `AGENTS.md` points at it.
@@ -278,6 +299,12 @@ a separate Java service proxied by Koa). ALTCHA's `display="standard"` widget is
   click and per-render O(n²) work (menu trees can hold hundreds of nodes).
 - Do not launch `agent-browser`/an automated browser here to self-verify UI changes; the user cancels it.
   State the change instead and let them look.
+- **Aligning an overlay (SVG) with a background image**: match `viewBox` to the image's **real pixel
+  size** (else `preserveAspectRatio="slice"` crops differently from CSS `background-size: cover`), and
+  never put a `scale` on only one of the two layers — **`transform-origin` differs**: HTML elements
+  default to `50% 50%`, **SVG elements to `0 0`**, so the same `scale` shifts them apart (1.02 ≈ 33px).
+  Keep both untransformed (parallax via `x`/`y` only). Verify without a browser by sampling the Bezier
+  paths with Pillow onto the image (`tmp-preview.py` → `preview-align.png`, git-ignored).
 - Long text cells that must be copied (`pages/system/log/sql-audit.tsx` `sqlText`, settled 2026-09-24):
   clicking the text copies it (`navigator.clipboard` when `window.isSecureContext`, else hidden
   `<textarea>` + `execCommand('copy')`) and shows `message.success`; keep a `CopyOutlined` icon button for
