@@ -1,4 +1,3 @@
-import { GooeyFilter } from './components/liquid';
 import { LiquidNav } from './components/liquid/LiquidNav';
 import { Hero } from './sections/Hero';
 import { Backends } from './sections/Backends';
@@ -19,7 +18,6 @@ export default function App() {
         跳到主要内容
       </a>
 
-      <GooeyFilter />
       <LiquidNav />
 
       <main id="main">

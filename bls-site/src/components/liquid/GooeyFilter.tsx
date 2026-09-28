@@ -1,24 +1,35 @@
-export const GOO_FILTER_ID = 'bls-goo';
-
 /**
- * A single SVG gooey filter definition, mounted once at the app root.
- * Only ever applied to small, local SVG layers (never a full-page subtree).
+ * Inline gooey-filter definition (place inside the very SVG that draws the
+ * liquid shapes — avoids cross-SVG `url(#id)` resolution issues).
+ *
+ * The standard gooey recipe is: Gaussian blur → high alpha contrast.
+ * There is intentionally NO `feBlend in="SourceGraphic"` — blending the sharp
+ * source back in keeps every shape's own edge and destroys the "one blob"
+ * merge, which is exactly what was making the split look like four separate
+ * circles instead of one stretching liquid.
  */
-export function GooeyFilter({ id = GOO_FILTER_ID }: { id?: string }) {
+
+export function GooDefs({ id }: { id: string }) {
   return (
-    <svg className="lq-goo-defs" aria-hidden="true" focusable="false" width="0" height="0">
-      <defs>
-        <filter id={id} colorInterpolationFilters="sRGB">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
-          <feColorMatrix
-            in="blur"
-            mode="matrix"
-            values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10"
-            result="goo"
-          />
-          <feBlend in="SourceGraphic" in2="goo" />
-        </filter>
-      </defs>
-    </svg>
+    <defs>
+      {/* widened filter region so the blur is never clipped at the shape edges */}
+      <filter
+        id={id}
+        x="-40%"
+        y="-40%"
+        width="180%"
+        height="180%"
+        colorInterpolationFilters="sRGB"
+      >
+        <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
+        <feColorMatrix
+          in="blur"
+          mode="matrix"
+          values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -12"
+        />
+      </filter>
+    </defs>
   );
 }
+
+export const GOO_FILTER_ID = 'bls-goo';

@@ -119,7 +119,7 @@ export const BACKENDS = {
     },
   ],
   invariants: ['Same Frontend', 'Same Database', 'Compatible API'],
-  switchNote: 'the Nginx upstream (prod) or bls-admin/config/proxy.ts (dev)',
+  switchNote: 'Nginx upstream（生产）或 bls-admin/config/proxy.ts（开发）',
 } as const;
 
 /* -------------------------------------------------------------------------- */

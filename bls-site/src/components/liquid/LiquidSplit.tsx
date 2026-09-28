@@ -1,140 +1,154 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { animate, motion, useMotionValue, useTransform } from 'framer-motion';
 import { EASE_GLIDE } from '../../lib/motion';
-import { GOO_FILTER_ID } from './GooeyFilter';
+import { GooDefs } from './GooeyFilter';
 
 /* ---------------------------------------------------------------------------
- * Geometry of the goo layer (viewBox units).
- * One wide capsule → internal tension → the neck thins → three droplets break.
+ * Geometry (viewBox units). The liquid spans the full card row; the three
+ * droplets settle at the three column centres (1/6, 1/2, 5/6 of 1200) so the
+ * droplets land on top of the three cards that then materialise.
  * ------------------------------------------------------------------------- */
 const VB_W = 1200;
-const VB_H = 140;
+const VB_H = 170;
 const CY = VB_H / 2;
-const R = 46;
-const CAPSULE_W = 640;
-const DROP_X = [-390, 0, 390];
+const R = 58;
+const DROP_X = [-400, 0, 400];
+const GAP = 400;
+const CAPSULE_W = 960;
+
+/** Visible, translucent liquid fill — light blue on the light page background. */
+const FILL = '#b9d4ff';
 
 export interface LiquidSplitProps {
   children: ReactNode;
-  /** Flip to true (once) when the section scrolls into view. */
+  /** Fires once when the section scrolls into view. */
   trigger: boolean;
-  /** false → reduced motion / compact viewport: no gooey filter, straight to the result. */
+  /** false (reduced motion / compact viewport) → show the cards immediately. */
   enabled?: boolean;
   className?: string;
 }
 
+/**
+ * One wide liquid capsule → internal tension → the necks thin → it breaks into
+ * three independent glass cards. Runs once and never merges back. Everything —
+ * geometry and the final cards — is driven by the single `progress` value, so
+ * the swap is synchronised with the actual animation, not a guessed timeout.
+ */
 export function LiquidSplit({ children, trigger, enabled = true, className }: LiquidSplitProps) {
-  const [revealed, setRevealed] = useState(!enabled);
-  const progress = useMotionValue(0);
+  const [done, setDone] = useState(!enabled);
+  const ranOnce = useRef(false);
+  const progress = useMotionValue(enabled ? 0 : 1);
 
   useEffect(() => {
-    if (!trigger) return;
     if (!enabled) {
-      setRevealed(true);
+      setDone(true);
+      progress.set(1);
       return;
     }
-    const controls = animate(progress, 1, { duration: 0.95, ease: EASE_GLIDE });
-    const revealTimer = window.setTimeout(() => setRevealed(true), 560);
-    return () => {
-      controls.stop();
-      window.clearTimeout(revealTimer);
-    };
+    if (ranOnce.current || !trigger) return;
+    ranOnce.current = true;
+    setDone(false);
+    const controls = animate(progress, 1, {
+      duration: 1.05,
+      ease: EASE_GLIDE,
+      onComplete: () => setDone(true),
+    });
+    return () => controls.stop();
   }, [trigger, enabled, progress]);
 
-  /* --- capsule --- */
-  const capsuleOpacity = useTransform(progress, [0.08, 0.3], [1, 0]);
-  const capsuleScaleX = useTransform(progress, [0, 0.32], [1, 0.86]);
+  const capsuleOpacity = useTransform(progress, [0.16, 0.34], [1, 0]);
+  const capsuleScaleX = useTransform(progress, [0.1, 0.36], [1, 0.9]);
+  const neckScaleY = useTransform(progress, [0.2, 0.62], [1, 0.05]);
+  const neckOpacity = useTransform(progress, [0.18, 0.3, 0.55, 0.68], [0, 1, 1, 0]);
+  const dropScale = useTransform(progress, [0.06, 0.26, 0.66, 0.82, 1], [0.4, 1, 1, 1.035, 1]);
+  const gooOpacity = useTransform(progress, [0.8, 0.98], [1, 0]);
 
-  /* --- droplets --- */
-  const dropX0 = useTransform(progress, [0.16, 0.74], [0, DROP_X[0]]);
-  const dropX1 = useTransform(progress, [0.16, 0.74], [0, DROP_X[1]]);
-  const dropX2 = useTransform(progress, [0.16, 0.74], [0, DROP_X[2]]);
-  const dropScale = useTransform(progress, [0.02, 0.24], [0.5, 1]);
+  const dx0 = useTransform(progress, [0.18, 0.72], [0, DROP_X[0]]);
+  const dx1 = useTransform(progress, [0.18, 0.72], [0, DROP_X[1]]);
+  const dx2 = useTransform(progress, [0.18, 0.72], [0, DROP_X[2]]);
+  const dropX = [dx0, dx1, dx2];
 
-  /* --- necks between the droplets --- */
-  const neckScaleY = useTransform(progress, [0.18, 0.6], [1, 0.045]);
-  const neckOpacity = useTransform(progress, [0.16, 0.26, 0.52, 0.64], [0, 0.95, 0.95, 0]);
+  const so0 = useTransform(progress, [0.56, 0.76], [0, 1]);
+  const so1 = useTransform(progress, [0.6, 0.8], [0, 1]);
+  const so2 = useTransform(progress, [0.64, 0.84], [0, 1]);
+  const slotOpacity = [so0, so1, so2];
+  const slotScale = useTransform(progress, [0.52, 0.88], [0.94, 1]);
 
-  /* --- the whole goo layer dissolves as the glass modules settle in --- */
-  const gooOpacity = useTransform(progress, [0.74, 1], [1, 0]);
-  const gooSettle = useTransform(progress, [0.6, 0.86, 1], [1.03, 1.008, 1]);
-
-  const drops = [dropX0, dropX1, dropX2];
+  const slots = Array.isArray(children) ? children : [children];
+  const showGoo = enabled && !done;
 
   return (
-    <div className={[`lq-split ${revealed ? 'is-revealed' : ''}`, className ?? ''].filter(Boolean).join(' ')}>
-      {enabled ? (
+    <div className={['lq-split', done ? 'is-done' : '', className ?? ''].filter(Boolean).join(' ')}>
+      {showGoo ? (
         <motion.div className="lq-split__goo" style={{ opacity: gooOpacity }} aria-hidden="true">
-          <motion.svg
+          <svg
             viewBox={`0 0 ${VB_W} ${VB_H}`}
             preserveAspectRatio="none"
-            style={{ filter: `url(#${GOO_FILTER_ID})`, scale: gooSettle }}
+            style={{ width: '100%', height: '100%' }}
           >
-            {/* the original capsule */}
-            <motion.rect
-              x={(VB_W - CAPSULE_W) / 2}
-              y={CY - R}
-              width={CAPSULE_W}
-              height={R * 2}
-              rx={R}
-              fill="#ffffff"
-              style={{
-                opacity: capsuleOpacity,
-                scaleX: capsuleScaleX,
-                transformBox: 'fill-box',
-                transformOrigin: 'center',
-              }}
-            />
-
-            {/* necks: full height while merged, thinned to a hairline before breaking */}
-            {[
-              { x: VB_W / 2 + DROP_X[0], w: -DROP_X[0] },
-              { x: VB_W / 2, w: DROP_X[2] },
-            ].map((neck, index) => (
+            <GooDefs id="bls-split-goo" />
+            <g style={{ filter: 'url(#bls-split-goo)' }}>
               <motion.rect
-                key={`neck-${index}`}
-                x={neck.x}
+                x={(VB_W - CAPSULE_W) / 2}
                 y={CY - R}
-                width={neck.w}
+                width={CAPSULE_W}
                 height={R * 2}
-                fill="#ffffff"
+                rx={R}
+                fill={FILL}
                 style={{
-                  scaleY: neckScaleY,
-                  opacity: neckOpacity,
+                  opacity: capsuleOpacity,
+                  scaleX: capsuleScaleX,
                   transformBox: 'fill-box',
                   transformOrigin: 'center',
                 }}
               />
-            ))}
 
-            {/* the three droplets */}
-            {drops.map((x, index) => (
-              <motion.circle
-                key={`drop-${index}`}
-                cx={VB_W / 2}
-                cy={CY}
-                r={R}
-                fill="#ffffff"
-                style={{ x, scale: dropScale, transformBox: 'fill-box', transformOrigin: 'center' }}
-              />
-            ))}
-          </motion.svg>
+              {DROP_X.slice(0, -1).map((target, index) => (
+                <motion.rect
+                  key={`neck-${index}`}
+                  x={VB_W / 2 + target}
+                  y={CY - R}
+                  width={GAP}
+                  height={R * 2}
+                  fill={FILL}
+                  style={{
+                    scaleY: neckScaleY,
+                    opacity: neckOpacity,
+                    transformBox: 'fill-box',
+                    transformOrigin: 'center',
+                  }}
+                />
+              ))}
+
+              {dropX.map((x, index) => (
+                <motion.circle
+                  key={`drop-${index}`}
+                  cx={VB_W / 2}
+                  cy={CY}
+                  r={R}
+                  fill={FILL}
+                  style={{ x, scale: dropScale, transformBox: 'fill-box', transformOrigin: 'center' }}
+                />
+              ))}
+            </g>
+          </svg>
         </motion.div>
       ) : null}
 
       <div className="lq-split__outputs">
-        {Array.isArray(children)
-          ? children.map((child, index) => (
-              <div
-                key={index}
-                className="lq-split__slot"
-                style={{ transitionDelay: enabled ? `${index * 90}ms` : '0ms' }}
-              >
-                {child}
-              </div>
-            ))
-          : children}
+        {slots.map((slot, index) => (
+          <motion.div
+            key={index}
+            className="lq-split__slot"
+            style={{
+              opacity: enabled ? slotOpacity[index] ?? so0 : 1,
+              scale: enabled ? slotScale : 1,
+            }}
+          >
+            {slot}
+          </motion.div>
+        ))}
       </div>
     </div>
   );

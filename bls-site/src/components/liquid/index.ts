@@ -1,4 +1,4 @@
-export { GooeyFilter, GOO_FILTER_ID } from './GooeyFilter';
+export { GooDefs, GOO_FILTER_ID } from './GooeyFilter';
 export { LiquidPanel } from './LiquidPanel';
 export type { LiquidPanelProps } from './LiquidPanel';
 export { LiquidButton } from './LiquidButton';

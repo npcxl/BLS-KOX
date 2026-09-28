@@ -488,16 +488,16 @@
   position: absolute;
   left: 0;
   right: 0;
-  top: 0;
-  height: 116px;
-  display: flex;
-  justify-content: center;
+  top: -8px;
+  height: 170px;
   pointer-events: none;
   z-index: 0;
+  filter: drop-shadow(0 12px 28px rgba(22, 119, 255, 0.16));
 }
 .lq-split__goo svg {
   width: 100%;
   height: 100%;
+  overflow: visible;
 }
 
 .lq-split__outputs {
@@ -507,17 +507,12 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 22px;
 }
-
-.lq-split__slot {
-  opacity: 0;
-  transform: translateY(12px) scale(0.965);
-  transition:
-    opacity 0.5s var(--ease-out),
-    transform 0.55s var(--ease-out);
+/* the cards are not clickable until the liquid has settled onto them */
+.lq-split:not(.is-done) .lq-split__outputs {
+  pointer-events: none;
 }
-.lq-split.is-revealed .lq-split__slot {
-  opacity: 1;
-  transform: none;
+.lq-split__slot {
+  will-change: transform, opacity;
 }
 
 /* ------------------------------------------------- split reveal (buttons) -- */
@@ -528,14 +523,18 @@
 }
 .lq-reveal__goo {
   position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 72px;
+  transform: translateY(-50%);
   pointer-events: none;
+  filter: drop-shadow(0 10px 22px rgba(22, 119, 255, 0.16));
 }
 .lq-reveal__goo svg {
   width: 100%;
-  height: 64px;
+  height: 100%;
+  overflow: visible;
 }
 .lq-reveal__items {
   position: relative;
@@ -544,16 +543,11 @@
   justify-content: space-between;
   gap: 10px;
 }
-.lq-reveal__item {
-  opacity: 0;
-  transform: scale(0.8);
-  transition:
-    opacity 0.42s var(--ease-out),
-    transform 0.5s var(--ease-out);
+.lq-reveal:not(.is-done) .lq-reveal__items {
+  pointer-events: none;
 }
-.lq-reveal.is-settled .lq-reveal__item {
-  opacity: 1;
-  transform: none;
+.lq-reveal__item {
+  will-change: transform, opacity;
 }
 
 /* ----------------------------------------------------------------- tabs ---- */
